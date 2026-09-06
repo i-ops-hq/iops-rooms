@@ -1,0 +1,38 @@
+{
+  "name": "iops-rooms",
+  "version": "0.1.0",
+  "description": "Rooms by I-Ops — local, inspectable shared rooms for agent sessions",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "rooms": "./src/cli.js"
+  },
+  "exports": {
+    ".": "./src/store.js"
+  },
+  "files": [
+    "src",
+    "skills",
+    "templates",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "rooms": "node src/cli.js",
+    "mcp": "node src/mcp.js",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "mcp",
+    "agents",
+    "cursor",
+    "rooms"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/i-ops/rooms"
+  }
+}

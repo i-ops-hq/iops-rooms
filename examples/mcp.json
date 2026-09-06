@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "iops-rooms": {
+      "command": "npx",
+      "args": ["-y", "iops-rooms@0.1.0", "mcp"]
+    }
+  }
+}
