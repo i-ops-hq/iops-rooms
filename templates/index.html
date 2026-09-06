@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{TITLE}} · {{CODE}} · Rooms by I-Ops</title>
+    <title>All rooms · Rooms by I-Ops</title>
     <!--
       Visual tokens from I-Ops (sky, Jakarta/Inter/Plex stacks, #2f6fed).
       No Google Fonts, no remote CSS. Uses those families only if installed.
@@ -234,6 +234,14 @@
       .empty {
         color: var(--ink-2);
       }
+      a.event {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+      }
+      a.event:hover {
+        border-color: var(--blue);
+      }
       .event {
         background: var(--card);
         border: 1px solid var(--line);
@@ -287,40 +295,6 @@
         border-radius: 10px;
         color: var(--ink);
       }
-
-      .device {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        color: var(--ink-3);
-      }
-      .tools-strip {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        margin: 0 0 18px;
-        font-family: var(--font-mono);
-        font-size: 13px;
-        color: var(--ink-2);
-      }
-      .tool-chip {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: var(--r-pill);
-        padding: 6px 12px;
-        font-weight: 500;
-      }
-      .dot-sep {
-        color: var(--ink-3);
-        padding: 0 2px;
-      }
-      .network-blurb,
-      .posters-blurb {
-        font-size: 14px;
-        color: var(--ink-2);
-        margin: 10px 0 0;
-        max-width: 52ch;
-      }
       @media (prefers-reduced-motion: reduce) {
         * {
           transition: none !important;
@@ -332,38 +306,21 @@
     <header class="hero">
       <div class="wrap">
         <span class="eyebrow">I-Ops · Rooms</span>
-        <h1 class="h-display">{{TITLE}}</h1>
-        <p class="code">{{CODE}}</p>
-        <p class="lead">One project’s room. Other apps and other folders are not watched.</p>
-        <p class="lead">Two people / two agent tabs, same <span class="code" style="font-size:15px">.room</span>.</p>
-        <p class="stamp">created {{CREATED}} · {{BY}}</p>
+        <h1 class="h-display">On this Mac</h1>
+        <p class="lead">Rooms you created. Not every AI window that happens to be open.</p>
         <div class="facts">
-          <div class="fact"><b>{{POSTERS}}</b><span>posters</span></div>
-          <div class="fact"><b>{{COUNT}}</b><span>events</span></div>
-          <div class="fact"><b>{{NETWORK}}</b><span>network</span></div>
-          <div class="fact"><b>.room</b><span>on disk</span></div>
+          <div class="fact"><b>{{COUNT}}</b><span>rooms found</span></div>
         </div>
-        <p class="posters-blurb">{{POSTERS_BLURB}}</p>
-        <p class="network-blurb">{{NETWORK_BLURB}}</p>
       </div>
     </header>
     <main class="wrap stage">
       <p class="note">
-        <strong>Opt-in log.</strong>
-        Only CLI and MCP posts land here — not ChatGPT, Grok, or Claude in the browser.
-        Join is local <span class="code" style="font-size:13px">.room</span> state on your machines — not an I-Ops account.
-        Other projects: <span class="code" style="font-size: 13px">rooms index --open</span>.
-        This board does not phone home. This file does not load anything from the network.
+        <strong>Opt-in only.</strong>
+        ChatGPT, Claude.ai, and Grok in the browser never appear here.
+        Cursor or Claude Code appear after you add the Rooms MCP and the agent posts into a <code>.room/</code>.
+        Different projects are different rooms — click one to open its board.
       </p>
-      {{TOOLS_STRIP}}
-      <div class="legend">
-        <span class="lg" data-tone="note"><span class="dot"></span>note</span>
-        <span class="lg" data-tone="diff"><span class="dot"></span>diff</span>
-        <span class="lg" data-tone="review_requested"><span class="dot"></span>review</span>
-        <span class="lg" data-tone="approved"><span class="dot"></span>approved</span>
-        <span class="lg" data-tone="system"><span class="dot"></span>system</span>
-      </div>
-      {{EVENTS}}
+      {{ROWS}}
     </main>
   </body>
 </html>

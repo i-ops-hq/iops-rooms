@@ -4,6 +4,9 @@ import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
 import {
   actor,
+  deviceId,
+  exportRoomBundle,
+  importRoomBundle,
   initRoom,
   joinRoom,
   postNote,
@@ -30,12 +33,15 @@ Usage:
   rooms approve [note]
   rooms wait [--since <iso>] [--timeout 15000]
   rooms export [file.md]
+  rooms export-room [dir]
+  rooms import-room <dir>
   rooms whoami
+  rooms index [--open]
   rooms mcp
   rooms help
 
-Data lives in .room/ (gitignored unless --share). Network is off.
-Same folder: two people or two tools. Open the board with rooms open.
+One .room/ per project. Other AI windows are not scanned.
+Cursor/Claude Code only show up if the Rooms MCP is installed and they post.
 `;
 
 function args(argv) {
@@ -174,6 +180,27 @@ async function main() {
     return;
   }
 
+  if (cmd === "index") {
+    const { listRooms, writeIndex } = await import("./index-page.js");
+    const rooms = await listRooms();
+    process.stdout.write(
+      rooms.length
+        ? rooms
+            .map(
+              (r) =>
+                `${r.id}  ${r.name}  ${r.events} ev  ${r.projectDir}`,
+            )
+            .join("\n") + "\n"
+        : "no rooms found under ~/Projects (init first)\n",
+    );
+    if (argv.open) {
+      const path = await writeIndex(rooms);
+      openPath(path);
+      process.stdout.write(`opened ${path}\n`);
+    }
+    return;
+  }
+
   if (cmd === "open") {
     const dir = await requireRoomDir();
     const board = await refreshBoard(dir);
@@ -233,7 +260,10 @@ async function main() {
   }
 
   if (cmd === "whoami") {
-    process.stdout.write(`actor  ${actor()}\ntool   ${tool()}\n`);
+    const a = await actor();
+    const t = await tool();
+    const d = await deviceId();
+    process.stdout.write(`actor     ${a}\ntool      ${t}\ndeviceId  ${d}\n`);
     return;
   }
 

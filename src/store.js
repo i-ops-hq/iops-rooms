@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { constants } from "node:fs";
 import { eventId, roomCode } from "./ids.js";
 import { writeBoard } from "./board.js";
+import { loadIdentity } from "./identity.js";
 
 export const ROOM_DIR_NAME = ".room";
 const META = "room.json";
@@ -105,7 +106,7 @@ export function transcriptMarkdown(meta, events) {
     ``,
   ];
   for (const ev of events) {
-    lines.push(`## ${ev.at} · ${ev.type} · ${ev.actor} (${ev.tool})`);
+    lines.push(`## ${ev.at} · ${ev.type} · ${ev.actor} · ${ev.deviceId || "?"} (${ev.tool})`);
     lines.push("");
     lines.push(ev.text || "");
     if (ev.path) lines.push(`\nFile: \`${ev.path}\``);
@@ -133,10 +134,14 @@ export async function readEvents(projectDir) {
 
 export async function appendEvent(projectDir, event) {
   const paths = roomPaths(projectDir);
+  const idn = await identity();
   const record = {
     id: eventId(),
     at: new Date().toISOString(),
     ...event,
+    deviceId: event.deviceId || idn.deviceId,
+    actor: event.actor || idn.displayName,
+    tool: event.tool || idn.tool,
   };
   await appendFile(paths.events, `${JSON.stringify(record)}\n`, "utf8");
   const meta = await readMeta(projectDir);
@@ -153,12 +158,23 @@ export async function refreshBoard(projectDir) {
   return paths.board;
 }
 
-function actor() {
-  return process.env.ROOMS_ACTOR || process.env.USER || process.env.USERNAME || "local";
+async function identity() {
+  return loadIdentity();
 }
 
-function tool() {
-  return process.env.ROOMS_TOOL || "cli";
+async function actor() {
+  const id = await identity();
+  return id.displayName;
+}
+
+async function tool() {
+  const id = await identity();
+  return id.tool;
+}
+
+async function deviceId() {
+  const id = await identity();
+  return id.deviceId;
 }
 
 export async function initRoom({
@@ -191,7 +207,7 @@ export async function initRoom({
     id: (code || roomCode()).toUpperCase(),
     name: name || "untitled",
     createdAt: new Date().toISOString(),
-    createdBy: actor(),
+    createdBy: await actor(),
     network: "off",
     share,
   };
@@ -199,9 +215,7 @@ export async function initRoom({
   await writeFile(paths.events, "", "utf8");
   await appendEvent(projectDir, {
     type: "system",
-    actor: actor(),
-    tool: tool(),
-    text: `Room ${meta.id} created. Files stay in ${paths.root}. Network is off.`,
+    text: `Room ${meta.id} created. Files stay in ${paths.root}. Network is off. Sync is among your devices only — not I-Ops cloud.`,
   });
   await ensureGitignore(projectDir, share);
   return { projectDir, meta, created: true };
@@ -230,11 +244,29 @@ export async function postNote(projectDir, { text, type = "note", extra = {} } =
   }
   return appendEvent(projectDir, {
     type,
-    actor: actor(),
-    tool: tool(),
     text: String(text).trim(),
     ...extra,
   });
 }
 
-export { actor, tool };
+export { actor, tool, deviceId, identity, loadIdentity };
+
+export async function exportRoomBundle(projectDir, outDir) {
+  const { cp } = await import("node:fs/promises");
+  const paths = roomPaths(projectDir);
+  await mkdir(outDir, { recursive: true });
+  await cp(paths.root, outDir, { recursive: true });
+  return outDir;
+}
+
+export async function importRoomBundle(bundleDir, projectDir = process.cwd()) {
+  const { cp } = await import("node:fs/promises");
+  const dest = roomPaths(projectDir).root;
+  if (await exists(dest)) {
+    throw new Error(`.room/ already exists at ${dest}`);
+  }
+  await mkdir(dirname(dest), { recursive: true });
+  await cp(bundleDir, dest, { recursive: true });
+  await refreshBoard(projectDir);
+  return { projectDir, meta: await readMeta(projectDir) };
+}

@@ -39,6 +39,14 @@ After publish:
 }
 ```
 
+## All rooms on this Mac
+
+```bash
+node src/cli.js index --open
+```
+
+Lists `.room/` folders under `~/Projects` (and a few other roots). It does **not** list ChatGPT, Grok, or Claude browser windows.
+
 ## Commands
 
 | Command | What |

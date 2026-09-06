@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -76,6 +76,24 @@ test("post, review, approve, diff, export", async () => {
   }
 });
 
+test("index finds rooms in sibling project folders", async () => {
+  const parent = await tmp();
+  try {
+    const a = join(parent, "alpha");
+    const b = join(parent, "beta");
+    await mkdir(a, { recursive: true });
+    await mkdir(b, { recursive: true });
+    await initRoom({ cwd: a, name: "alpha" });
+    await initRoom({ cwd: b, name: "beta" });
+    const { listRooms } = await import("../src/scan.js");
+    const rooms = await listRooms([parent]);
+    assert.equal(rooms.length, 2);
+    assert.deepEqual(rooms.map((r) => r.name).sort(), ["alpha", "beta"]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("cli whoami and status in a room", async () => {
   const dir = await tmp();
   try {
@@ -105,6 +123,90 @@ function runCli(cwd, argv) {
     const child = spawn(process.execPath, [cli, ...argv], {
       cwd,
       env: { ...process.env, ROOMS_ACTOR: "test" },
+    });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d) => {
+      out += d;
+    });
+    child.stderr.on("data", (d) => {
+      err += d;
+    });
+    child.on("close", (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error(err || out || `exit ${code}`));
+    });
+  });
+}
+
+test("two devices stamp distinct deviceId and both appear on the board", async () => {
+  const dir = await tmp();
+  const homeA = await tmp();
+  const homeB = await tmp();
+  try {
+    await initRoom({ cwd: dir, name: "pair" });
+    const outA = await runCliEnv(dir, ["post", "hello from A"], {
+      HOME: homeA,
+      ROOMS_ACTOR: "Ada",
+      ROOMS_TOOL: "cli",
+      ROOMS_DEVICE_ID: "devaaaa1",
+    });
+    const outB = await runCliEnv(dir, ["post", "hello from B"], {
+      HOME: homeB,
+      ROOMS_ACTOR: "Ben",
+      ROOMS_TOOL: "mcp",
+      ROOMS_DEVICE_ID: "devbbbb2",
+    });
+    assert.match(outA, /^[a-f0-9]+/);
+    assert.match(outB, /^[a-f0-9]+/);
+    const events = await readEvents(dir);
+    const notes = events.filter((e) => e.type === "note");
+    assert.equal(notes.length, 2);
+    assert.equal(notes[0].actor, "Ada");
+    assert.equal(notes[0].deviceId, "devaaaa1");
+    assert.equal(notes[1].actor, "Ben");
+    assert.equal(notes[1].deviceId, "devbbbb2");
+    const html = await readFile(roomPaths(dir).board, "utf8");
+    assert.match(html, /Ada/);
+    assert.match(html, /Ben/);
+    assert.match(html, /2 posters/);
+    assert.match(html, /cli/);
+    assert.match(html, /mcp/);
+    assert.match(html, /does not phone home/i);
+    assert.match(html, /Two people/);
+    assert.match(html, /Network off/);
+    assert.doesNotMatch(html, /Vinci|assurance|Control Room|harness|governed/i);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(homeA, { recursive: true, force: true });
+    await rm(homeB, { recursive: true, force: true });
+  }
+});
+
+test("whoami prints deviceId", async () => {
+  const dir = await tmp();
+  const home = await tmp();
+  try {
+    await initRoom({ cwd: dir, name: "id" });
+    const out = await runCliEnv(dir, ["whoami"], {
+      HOME: home,
+      ROOMS_ACTOR: "Casey",
+      ROOMS_DEVICE_ID: "devcasey",
+      ROOMS_TOOL: "cli",
+    });
+    assert.match(out, /actor\s+Casey/);
+    assert.match(out, /deviceId\s+devcasey/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+function runCliEnv(cwd, argv, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [cli, ...argv], {
+      cwd,
+      env: { ...process.env, ...env },
     });
     let out = "";
     let err = "";
