@@ -59,7 +59,7 @@ function renderEvents(events) {
       const text = escapeHtml(ev.text || "");
       const extra =
         ev.path != null
-          ? `<p class="meta-line">file: ${escapeHtml(ev.path)}</p>`
+          ? `<p class="meta-line">path: ${escapeHtml(ev.path)}</p>`
           : "";
       const diff =
         ev.diff != null && ev.diff !== ""

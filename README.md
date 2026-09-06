@@ -1,87 +1,106 @@
 # Rooms by I-Ops
 
-Local rooms for agent sessions. Two people (or one person across two tools) share a transcript **on disk**. Terminal + a static HTML board. No account. No model bill. Network off.
+Local rooms for agent sessions. Share a transcript **on disk**. Terminal + a static HTML board. No account. No model bill. Network off for individual use.
 
 Pin a version. Do not run `@latest`.
 
-## Install (from this repo, before npm)
+## Individual vs team
+
+| Mode | What it is | Smoke |
+|---|---|---|
+| **Individual** | One person. One (or more of *your*) device(s). Network off. `.room/` stays on your machine. | `npm run smoke:solo` |
+| **Team (2+)** | Same checkout / shared `.room/` (e.g. `--share` + git). Each person/tool posts with their own actor + deviceId. Sync among *your* devices later — not I-Ops cloud. | `npm run smoke:two-device` |
+
+Individual first: prove one poster can init → post → see the board. Team later: second actor/device on the same room.
+
+## What you see / what you don't
+
+**Teammates can see common project files** the normal way: the git checkout or shared folder. Rooms does **not** replace that.
+
+**Rooms shows what was posted** into `.room/events.jsonl` (and the regenerated `board.html`):
+
+- **By each user** — every event has `actor` (display name).
+- **By each tool** — every event has `tool` (`cli`, `mcp`, …).
+- **By each device** — every event has `deviceId`.
+- **Diffs** — `share-diff` stores `path` + diff body, stamped with actor/tool/deviceId. The board header shows actor · tool · device; a `path:` line names the file.
+
+**What does NOT auto-happen**
+
+- Rooms does **not** magically sync the whole repo.
+- It does **not** watch every save or `git commit`.
+- Unposted edits stay invisible to the room until someone `post`s a note or `share-diff`s a patch.
+- Network stays **off** for solo; team “own devices” sync is a later slice — still not I-Ops cloud.
+
+
+## CLI vs MCP
+
+**CLI** (Terminal):
 
 ```bash
 cd ~/Projects/iops-rooms
 node src/cli.js init --name "homework"
 node src/cli.js post "starting"
+node src/cli.js share-diff --path ./src/cli.js --note "look here"
 node src/cli.js status
 node src/cli.js open
 ```
 
-Teammate on the same git checkout:
+Or: `npm run rooms -- status`
 
-```bash
-node src/cli.js join THECODE
-```
 
-`--share` keeps `.room/` commitable so the class or feature team shares the board. Default is gitignore.
+**MCP** (Cursor): this repo `.cursor/mcp.json` already points at `src/mcp.js`. Reload MCP, then:
 
-## Cursor / Claude
+1. `create_room` (or join) — local `.room/`
+2. `post_note` — event stamped with actor/tool/deviceId
+3. Optional `share_diff` with `path` + `diff`
+4. Open `.room/board.html` (or CLI `open`) and confirm name, tool, device, and path on the card
 
-This repo already has `.cursor/mcp.json` pointing at `src/mcp.js`. Copy `skills/rooms/SKILL.md` into a user skill dir if you want it globally.
+After publish, pin a published package version in Cursor MCP (never `@latest`).
 
-After publish:
+Copy `skills/rooms/SKILL.md` into a user skill dir if you want it globally.
 
-```json
-{
-  "mcpServers": {
-    "iops-rooms": {
-      "command": "npx",
-      "args": ["-y", "iops-rooms@0.1.0", "mcp"]
-    }
-  }
-}
-```
+## Install
+
+From the repo root run init, post, status, and open with node src/cli.js (see CLI vs MCP above).
+
+Teammate on the same git checkout: node src/cli.js join THECODE
+
+`--share` keeps `.room/` commitable. Default is gitignore.
 
 ## All rooms on this Mac
 
-```bash
 node src/cli.js index --open
-```
 
-Lists `.room/` folders under `~/Projects` (and a few other roots). It does **not** list ChatGPT, Grok, or Claude browser windows.
+Lists `.room/` under ~/Projects. Does not list browser chat windows.
 
 ## Commands
 
 | Command | What |
 |---|---|
-| `rooms init [--name] [--code] [--share]` | Create `.room/` |
-| `rooms join <code>` | Same project, matching code |
-| `rooms status` / `whoami` | Paths and actor |
-| `rooms open` | Local HTML board |
-| `rooms post …` | Note |
-| `rooms share-diff --path FILE` | Diff on disk |
-| `rooms request-review` / `approve` | Audit |
-| `rooms wait` | Poll for a new local event |
-| `rooms export [out.md]` | Markdown |
-| `rooms mcp` | Stdio MCP |
+| rooms init / join | Create or join .room/ |
+| rooms status / whoami | Paths and actor |
+| rooms open | Local HTML board |
+| rooms post | Note |
+| rooms share-diff | Diff on disk (stamped actor/tool/device) |
+| rooms request-review / approve | Audit |
+| rooms wait / export | Poll, markdown export |
+
+## Smoke
+Same commands as the Individual vs team table above.
 
 ## Files
 
-```text
-.room/room.json
-.room/events.jsonl
-.room/board.html
-```
-
-Board template: `templates/board.html` (I-Ops tokens, no Google Fonts).
+.room/room.json events.jsonl board.html
+Board template: templates/board.html
 
 ## Tests
 
-```bash
-npm test
-```
+Run the package test script.
 
 ## Trust
 
-[SECURITY.md](./SECURITY.md). `src/` is short and has no HTTP client.
+See SECURITY.md. Source has no HTTP client.
 
 ## Not this release
 
-Hosted relay, seats, SSO, shipping our own model.
+Hosted relay, seats, SSO, own model. No auto-watch. No whole-tree sync.
