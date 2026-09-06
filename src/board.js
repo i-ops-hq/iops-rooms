@@ -24,7 +24,10 @@ function formatWhen(iso) {
 function shortDevice(id) {
   if (!id) return "";
   const s = String(id);
-  return s.length <= 8 ? s : s.slice(0, 8);
+  // Keep readable ids (tom-smoke). Only trim long hex blobs.
+  if (/^[a-f0-9]+$/i.test(s) && s.length > 12) return s.slice(0, 12);
+  if (s.length > 24) return s.slice(0, 24);
+  return s;
 }
 
 function posterStats(events) {
@@ -85,7 +88,6 @@ function renderEvents(events) {
 export async function writeBoard(boardPath, meta, events) {
   let template = await readFile(TEMPLATE, "utf8");
   const { actors, tools } = posterStats(events);
-  const posterCount = Math.max(actors.size, events.some((e) => e.type !== "system") ? actors.size : 0);
   // Count distinct non-system actors; if only system events, still 1 creator
   const distinctPosters = actors.size;
   const postersLabel = String(Math.max(distinctPosters, meta.createdBy ? 1 : 0));
@@ -95,18 +97,24 @@ export async function writeBoard(boardPath, meta, events) {
       : `${distinctPosters} posters on this board.`;
 
   const toolList = [...tools];
-  const toolsStrip =
-    distinctPosters >= 2 && toolList.length
-      ? `<div class="tools-strip" aria-label="tools that posted">${toolList
-          .map((t) => `<span class="tool-chip">${escapeHtml(t)}</span>`)
-          .join('<span class="dot-sep">·</span>')}</div>`
-      : "";
+  const posterNames = [...actors.keys()];
+  let strip = "";
+  if (toolList.length >= 2) {
+    strip = `<div class="tools-strip" aria-label="tools that posted">${toolList
+      .map((t) => `<span class="tool-chip">${escapeHtml(t)}</span>`)
+      .join('<span class="dot-sep">·</span>')}</div>`;
+  } else if (distinctPosters >= 2) {
+    strip = `<div class="tools-strip" aria-label="posters">${posterNames
+      .map((n) => `<span class="tool-chip">${escapeHtml(n)}</span>`)
+      .join('<span class="dot-sep">·</span>')}</div>`;
+  }
 
   const network = meta.network || "off";
-  const networkBlurb =
+  const networkLabel = network === "off" ? "off" : network;
+  const networkDetail =
     network === "off"
-      ? "Network off — files stay in this folder."
-      : "Syncs only among your team’s devices — not I-Ops cloud.";
+      ? "files stay in this folder"
+      : "syncs only among your team’s devices — not I-Ops cloud";
 
   const replacements = {
     "{{TITLE}}": escapeHtml(meta.name || "room"),
@@ -114,11 +122,11 @@ export async function writeBoard(boardPath, meta, events) {
     "{{CREATED}}": escapeHtml(meta.createdAt || ""),
     "{{BY}}": escapeHtml(meta.createdBy || ""),
     "{{COUNT}}": String(events.length),
-    "{{NETWORK}}": escapeHtml(network),
-    "{{NETWORK_BLURB}}": escapeHtml(networkBlurb),
+    "{{NETWORK}}": escapeHtml(networkLabel),
+    "{{NETWORK_DETAIL}}": escapeHtml(networkDetail),
     "{{POSTERS}}": escapeHtml(postersLabel),
     "{{POSTERS_BLURB}}": escapeHtml(postersBlurb),
-    "{{TOOLS_STRIP}}": toolsStrip,
+    "{{TOOLS_STRIP}}": strip,
     "{{EVENTS}}": renderEvents(events),
   };
   for (const [token, value] of Object.entries(replacements)) {
