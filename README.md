@@ -85,6 +85,21 @@ Lists `.room/` under ~/Projects. Does not list browser chat windows.
 | rooms request-review / approve | Audit |
 | rooms wait / export | Poll, markdown export |
 
+
+## Live local board
+
+Static `file://` board is still fine for a snapshot. For auto-update without re-opening:
+
+```bash
+cd ~/Projects/iops-rooms
+node src/cli.js live
+# leave that terminal running; browser opens http://127.0.0.1:7840/
+# other terminal:
+node src/cli.js post "hello live"
+```
+
+Binds **127.0.0.1 only**. No internet. No I-Ops phone-home. Multi-poster / devices-only copy unchanged.
+
 ## Smoke
 Same commands as the Individual vs team table above.
 

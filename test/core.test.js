@@ -112,8 +112,14 @@ test("source does not open the network", async () => {
   for (const f of files) {
     const src = await readFile(join(root, "src", f), "utf8");
     assert.doesNotMatch(src, /\bfetch\s*\(/);
-    assert.doesNotMatch(src, /from ["']node:http/);
     assert.doesNotMatch(src, /from ["']node:https/);
+    // live.js may use node:http bound to 127.0.0.1 only — never other src files
+    if (f === "live.js") {
+      assert.match(src, /127\.0\.0\.1/);
+      assert.doesNotMatch(src, /0\.0\.0\.0/);
+      continue;
+    }
+    assert.doesNotMatch(src, /from ["']node:http/);
     assert.doesNotMatch(src, /from ["']node:net/);
   }
 });

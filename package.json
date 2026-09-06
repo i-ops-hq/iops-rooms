@@ -24,6 +24,7 @@
     "rooms": "node src/cli.js",
     "mcp": "node src/mcp.js",
     "test": "node --test test/*.test.js",
+    "live": "node src/cli.js live",
     "smoke:solo": "node scripts/solo-smoke.mjs",
     "smoke:individual": "node scripts/solo-smoke.mjs",
     "smoke:two-device": "node scripts/two-device-smoke.mjs"

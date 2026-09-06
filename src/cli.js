@@ -27,6 +27,7 @@ Usage:
   rooms join <code> [--name <n>]
   rooms status
   rooms open
+  rooms live [--port 7840]
   rooms post <message>
   rooms share-diff [--path <file>] [--note <text>]
   rooms request-review [note]
@@ -198,6 +199,17 @@ async function main() {
       openPath(path);
       process.stdout.write(`opened ${path}\n`);
     }
+    return;
+  }
+
+
+  if (cmd === "live") {
+    const dir = await requireRoomDir();
+    const { startLiveBoard } = await import("./live.js");
+    const live = await startLiveBoard(dir, { port: argv.port });
+    openPath(live.url);
+    process.stdout.write(`live  ${live.url}\n(bind ${live.host} only — Ctrl+C to stop)\n`);
+    await new Promise(() => {});
     return;
   }
 

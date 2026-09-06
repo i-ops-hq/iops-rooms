@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { LIVE_CLIENT_SNIPPET } from "./live-client.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -131,6 +132,9 @@ export async function writeBoard(boardPath, meta, events) {
   };
   for (const [token, value] of Object.entries(replacements)) {
     template = template.replaceAll(token, value);
+  }
+  if (!template.includes("data-rooms-live")) {
+    template = template.replace("</body>", `${LIVE_CLIENT_SNIPPET}\n</body>`);
   }
   await writeFile(boardPath, template, "utf8");
 }
