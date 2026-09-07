@@ -201,6 +201,259 @@ function renderBranchPanel(git, events) {
 </section>`;
 }
 
+
+function initials(name) {
+  const parts = String(name || "?").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) {
+    const s = parts[0];
+    return (s.slice(0, 2) || "?").toUpperCase();
+  }
+  return ((parts[0][0] || "") + (parts[parts.length - 1][0] || "")).toUpperCase() || "?";
+}
+
+/** Light normalize of event.tool — Rooms stamps only, not IDE telemetry. */
+export function normalizeTool(tool) {
+  const raw = String(tool || "").trim().toLowerCase();
+  if (!raw) return "cli";
+  if (/(cursor|composer)/.test(raw)) return "cursor";
+  if (/claude/.test(raw)) return "claude";
+  if (/codex|openai/.test(raw)) return "codex";
+  if (raw.includes("mcp")) return "mcp";
+  if (/git[-_]?hook|hook/.test(raw)) return "git-hook";
+  if (/cli|terminal|shell/.test(raw)) return "cli";
+  return raw.slice(0, 24);
+}
+
+function actorHue(name) {
+  const s = String(name || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function parseAt(iso) {
+  const t = Date.parse(iso || "");
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Build branch lanes + per-(actor,branch) presence from Rooms events + local git.
+ * Positions are honest: only .room event stamps, not IDE session data.
+ */
+export function buildTimelineModel(events, git = {}) {
+  const nonSystem = (events || []).filter((e) => e && e.type !== "system");
+  const byBranch = new Map();
+  let tMin = Infinity;
+  let tMax = -Infinity;
+
+  for (const ev of nonSystem) {
+    const b = ev.branch || "(unknown)";
+    const t = parseAt(ev.at);
+    if (t != null) {
+      if (t < tMin) tMin = t;
+      if (t > tMax) tMax = t;
+    }
+    let lane = byBranch.get(b);
+    if (!lane) {
+      lane = {
+        name: b,
+        actors: new Map(),
+        eventCount: 0,
+        lastAt: "",
+        tools: new Set(),
+      };
+      byBranch.set(b, lane);
+    }
+    lane.eventCount += 1;
+    if (ev.tool) lane.tools.add(normalizeTool(ev.tool));
+    if (!lane.lastAt || (ev.at && ev.at > lane.lastAt)) lane.lastAt = ev.at || "";
+
+    const actorName = ev.actor || "unknown";
+    let person = lane.actors.get(actorName);
+    if (!person) {
+      person = {
+        actor: actorName,
+        tools: new Set(),
+        lastAt: "",
+        lastType: "",
+        lastText: "",
+        lastDiff: false,
+        devices: new Set(),
+        eventCount: 0,
+      };
+      lane.actors.set(actorName, person);
+    }
+    person.eventCount += 1;
+    if (ev.tool) person.tools.add(normalizeTool(ev.tool));
+    if (ev.deviceId) person.devices.add(ev.deviceId);
+    if (!person.lastAt || (ev.at && ev.at > person.lastAt)) {
+      person.lastAt = ev.at || "";
+      person.lastType = ev.type || "note";
+      person.lastText = String(ev.text || "").slice(0, 160);
+      person.lastDiff = Boolean(ev.diff);
+    }
+  }
+
+  const local = git.branches || [];
+  const named = [...new Set([...local, ...byBranch.keys()])].filter(
+    (n) => n !== "(unknown)",
+  );
+  named.sort((a, b) => {
+    const am = isMainBranch(a) ? 0 : 1;
+    const bm = isMainBranch(b) ? 0 : 1;
+    if (am !== bm) return am - bm;
+    const la = byBranch.get(a)?.lastAt || "";
+    const lb = byBranch.get(b)?.lastAt || "";
+    if (la !== lb) return lb > la ? 1 : lb < la ? -1 : 0;
+    return a.localeCompare(b);
+  });
+
+  if (!Number.isFinite(tMin) || !Number.isFinite(tMax)) {
+    const now = Date.now();
+    tMin = now - 3_600_000;
+    tMax = now;
+  }
+  if (tMax <= tMin) tMax = tMin + 60_000;
+
+  const lanes = named.map((name) => {
+    const info =
+      byBranch.get(name) ||
+      { name, actors: new Map(), eventCount: 0, lastAt: "", tools: new Set() };
+    const people = [...info.actors.values()].map((p) => {
+      const t = parseAt(p.lastAt);
+      const pct =
+        t == null ? 50 : Math.max(2, Math.min(98, ((t - tMin) / (tMax - tMin)) * 100));
+      return {
+        actor: p.actor,
+        initials: initials(p.actor),
+        tools: [...p.tools].sort(),
+        lastAt: p.lastAt,
+        lastType: p.lastType,
+        lastText: p.lastText,
+        lastDiff: p.lastDiff,
+        devices: [...p.devices],
+        eventCount: p.eventCount,
+        pct,
+        hue: actorHue(p.actor),
+      };
+    });
+    people.sort((a, b) => (a.lastAt || "").localeCompare(b.lastAt || ""));
+    return {
+      name,
+      isMain: isMainBranch(name),
+      isCurrent: name === git.current,
+      eventCount: info.eventCount,
+      tools: [...info.tools].sort(),
+      people,
+      hue: branchHue(name),
+    };
+  });
+
+  const unknown = byBranch.get("(unknown)");
+  return {
+    lanes,
+    unknownCount: unknown?.eventCount || 0,
+    tMin,
+    tMax,
+    head: git.head || "",
+    current: git.current || "",
+    hasPeople: lanes.some((l) => l.people.length > 0),
+  };
+}
+
+function renderTimeline(events, git) {
+  const model = buildTimelineModel(events, git);
+  if (!model.lanes.length && !model.unknownCount) {
+    return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
+  <div class="timeline-head">
+    <h2 class="timeline-heading">Timeline</h2>
+    <p class="timeline-note">No branch stamps yet. Posts with a git branch (or ROOMS_BRANCH) will appear as lanes here. Derived from room events — not IDE telemetry.</p>
+  </div>
+</section>`;
+  }
+
+  const headBit =
+    model.head && model.current
+      ? `Current checkout <strong>${escapeHtml(shortBranch(model.current, 28))}</strong> @ <span class="device">${escapeHtml(model.head)}</span> (local git only).`
+      : "Commit SHAs appear only for the current local checkout when git is available.";
+
+  const lanesHtml = model.lanes
+    .map((lane) => {
+      const mainAttr = lane.isMain ? ' data-main="1"' : "";
+      const curAttr = lane.isCurrent ? ' data-current="1"' : "";
+      const avatars = lane.people
+        .map((p) => {
+          const tools = p.tools.length ? p.tools.join(", ") : "cli";
+          const lastPost = p.lastText
+            ? `${p.lastType}: ${p.lastText}`
+            : "no post text";
+          const lastWhen = p.lastAt ? formatWhen(p.lastAt) : "—";
+          const commitLine =
+            lane.isCurrent && model.head
+              ? `Last known local HEAD: ${model.head}`
+              : "No commit SHA on this Rooms event (board uses room posts, not IDE git).";
+          const tip = [
+            `${p.actor} on ${lane.name}`,
+            `Agents/tools (from room posts): ${tools}`,
+            `Last activity: ${lastWhen}`,
+            `Last post: ${lastPost}${p.lastDiff ? " · includes share-diff" : ""}`,
+            commitLine,
+            "Source: .room/events.jsonl — not live IDE telemetry.",
+          ].join("\n");
+          const aria = `${p.actor} on ${lane.name}; tools ${tools}; last ${lastWhen}`;
+          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" title="${escapeHtml(tip)}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span></button>`;
+        })
+        .join("\n        ");
+      const empty =
+        !lane.people.length
+          ? `<span class="tl-lane-empty">no posters yet</span>`
+          : "";
+      return `<div class="tl-lane"${mainAttr}${curAttr} style="--branch-hue: ${lane.hue}" data-branch="${escapeHtml(lane.name)}">
+  <div class="tl-lane-label" title="${escapeHtml(lane.name)}">
+    <span class="branch-swatch" aria-hidden="true"></span>
+    <span class="tl-lane-name">${escapeHtml(shortBranch(lane.name, 22))}${lane.isMain ? ' <span class="branch-badge">default</span>' : ""}</span>
+    <span class="tl-lane-meta">${lane.eventCount} post${lane.eventCount === 1 ? "" : "s"}</span>
+  </div>
+  <div class="tl-lane-track" role="group" aria-label="${escapeHtml(lane.name)} lane">
+    <div class="tl-rail" aria-hidden="true"></div>
+    ${avatars}
+    ${empty}
+  </div>
+</div>`;
+    })
+    .join("\n");
+
+  const unk =
+    model.unknownCount > 0
+      ? `<p class="timeline-unknown">${model.unknownCount} older post${model.unknownCount === 1 ? "" : "s"} without a branch stamp are omitted from lanes.</p>`
+      : "";
+
+  const t0 = escapeHtml(formatWhen(new Date(model.tMin).toISOString()));
+  const t1 = escapeHtml(formatWhen(new Date(model.tMax).toISOString()));
+
+  return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
+  <div class="timeline-head">
+    <h2 class="timeline-heading">Timeline</h2>
+    <p class="timeline-note">Branches flow left→right in time. Initials float on the lane of their last room post. Hover an initial for agents/tools on that branch (from event <code>tool</code> stamps), last post / share-diff, and local HEAD when known. ${headBit}</p>
+  </div>
+  <div class="timeline-scroll">
+    <div class="timeline-canvas">
+      <div class="tl-axis" aria-hidden="true">
+        <span>${t0}</span>
+        <span class="tl-axis-mid">time →</span>
+        <span>${t1}</span>
+      </div>
+      <div class="tl-lanes">
+${lanesHtml}
+      </div>
+    </div>
+  </div>
+  ${unk}
+  <div class="tl-tooltip" id="tl-tooltip" role="tooltip" hidden></div>
+</section>`;
+}
+
 export async function writeBoard(boardPath, meta, events, opts = {}) {
   let template = await readFile(TEMPLATE, "utf8");
   const projectDir = opts.projectDir || process.cwd();
@@ -251,6 +504,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     "{{POSTERS_BLURB}}": escapeHtml(postersBlurb),
     "{{BRANCH}}": escapeHtml(branchLabel),
     "{{BRANCH_PANEL}}": renderBranchPanel(git, events),
+    "{{TIMELINE}}": renderTimeline(events, git),
     "{{TOOLS_STRIP}}": strip,
     "{{EVENTS}}": renderEvents(events),
   };

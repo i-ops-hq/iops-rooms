@@ -468,6 +468,178 @@
         color: var(--ink-2);
         box-shadow: 0 4px 18px rgba(0,0,0,0.06);
       }
+
+      /* —— Slice D: branch timeline canvas —— */
+      .timeline {
+        margin: 0 0 22px;
+        padding: 16px 18px 18px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: var(--shadow-sm);
+      }
+      .timeline-head { margin: 0 0 12px; }
+      .timeline-heading {
+        margin: 0 0 6px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .timeline-note {
+        margin: 0;
+        font-size: 13px;
+        color: var(--ink-3);
+        max-width: 72ch;
+      }
+      .timeline-note code {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--ink-2);
+      }
+      .timeline-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -4px;
+        padding: 4px;
+      }
+      .timeline-canvas {
+        min-width: 560px;
+      }
+      .tl-axis {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--ink-3);
+        margin: 0 0 8px;
+        padding-left: 148px;
+      }
+      .tl-axis-mid { letter-spacing: 0.04em; }
+      .tl-lanes { display: flex; flex-direction: column; gap: 10px; }
+      .tl-lane {
+        display: grid;
+        grid-template-columns: 140px minmax(280px, 1fr);
+        gap: 10px;
+        align-items: center;
+      }
+      .tl-lane-label {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        min-width: 0;
+      }
+      .tl-lane-name {
+        font-family: var(--font-mono);
+        font-weight: 600;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+      }
+      .tl-lane-meta { color: var(--ink-3); font-size: 11px; width: 100%; }
+      .tl-lane-track {
+        position: relative;
+        height: 44px;
+        border-radius: 12px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line-2);
+      }
+      .tl-lane[data-current="1"] .tl-lane-track {
+        outline: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line));
+      }
+      .tl-rail {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        top: 50%;
+        height: 3px;
+        border-radius: 999px;
+        transform: translateY(-50%);
+        background: hsl(var(--branch-hue, 210) 45% 52% / 0.55);
+      }
+      .tl-lane[data-main="1"] .tl-rail {
+        height: 4px;
+        background: hsl(145 45% 38%);
+        box-shadow: 0 0 0 2px color-mix(in srgb, hsl(145 45% 38%) 22%, transparent);
+      }
+      .tl-avatar {
+        position: absolute;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        border: 2px solid var(--card);
+        background: hsl(var(--actor-hue, 210) 55% 46%);
+        color: #fff;
+        font-family: var(--font-display);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        box-shadow: var(--shadow-sm);
+        z-index: 2;
+      }
+      .tl-avatar:hover,
+      .tl-avatar:focus-visible {
+        z-index: 3;
+        outline: 2px solid var(--blue);
+        outline-offset: 2px;
+        transform: translate(-50%, -50%) scale(1.08);
+      }
+      .tl-avatar-initials { pointer-events: none; }
+      .tl-lane-empty {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 11px;
+        color: var(--ink-3);
+      }
+      .timeline-unknown {
+        margin: 10px 0 0;
+        font-size: 12px;
+        color: var(--ink-3);
+      }
+      .tl-tooltip {
+        position: fixed;
+        z-index: 80;
+        max-width: min(340px, calc(100vw - 24px));
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: var(--card);
+        color: var(--ink);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow-md);
+        font-size: 13px;
+        line-height: 1.45;
+        pointer-events: none;
+      }
+      .tl-tooltip[hidden] { display: none !important; }
+      .tl-tooltip strong { display: block; font-family: var(--font-display); margin: 0 0 6px; }
+      .tl-tooltip .tl-tip-row { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; }
+      .tl-tooltip .tl-tip-meta {
+        margin: 8px 0 0;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--ink-3);
+      }
+      @media (max-width: 640px) {
+        .tl-lane {
+          grid-template-columns: 1fr;
+          gap: 6px;
+        }
+        .tl-axis { padding-left: 0; }
+        .timeline-canvas { min-width: 480px; }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         * {
           transition: none !important;
@@ -506,6 +678,7 @@
         <span class="code" style="font-size:13px">rooms live</span> serves <span class="code" style="font-size:13px">127.0.0.1</span> only and auto-updates open tabs — still no internet.
       </p>
       {{BRANCH_PANEL}}
+      {{TIMELINE}}
       {{TOOLS_STRIP}}
       <div class="legend">
         <span class="lg" data-tone="note"><span class="dot"></span>note</span>
@@ -516,5 +689,48 @@
       </div>
       {{EVENTS}}
     </main>
+  
+    <script data-rooms-timeline>
+    (function () {
+      var tip = document.getElementById("tl-tooltip");
+      if (!tip) return;
+      function hide() { tip.hidden = true; tip.innerHTML = ""; }
+      function show(btn, ev) {
+        var actor = btn.getAttribute("data-actor") || "";
+        var branch = btn.getAttribute("data-branch") || "";
+        var tools = btn.getAttribute("data-tools") || "cli";
+        var lastPost = btn.getAttribute("data-last-post") || "";
+        var lastAt = btn.getAttribute("data-last-at") || "";
+        var commit = btn.getAttribute("data-commit") || "";
+        var when = "";
+        try { when = lastAt ? new Date(lastAt).toLocaleString() : ""; } catch (e) { when = lastAt; }
+        tip.innerHTML =
+          "<strong>" + actor + " · " + branch + "</strong>" +
+          '<div class="tl-tip-row"><b>Agents/tools</b> (room stamps): ' + tools + "</div>" +
+          '<div class="tl-tip-row"><b>Last post</b>: ' + lastPost + "</div>" +
+          (when ? '<div class="tl-tip-row"><b>When</b>: ' + when + "</div>" : "") +
+          '<div class="tl-tip-row"><b>Commit</b>: ' + (commit ? ("local HEAD " + commit) : "not on this Rooms event") + "</div>" +
+          '<div class="tl-tip-meta">From .room/events.jsonl — not IDE telemetry</div>';
+        tip.hidden = false;
+        var x = (ev && ev.clientX != null) ? ev.clientX : 0;
+        var y = (ev && ev.clientY != null) ? ev.clientY : 0;
+        var pad = 14;
+        var tw = tip.offsetWidth || 280;
+        var th = tip.offsetHeight || 120;
+        var left = Math.min(window.innerWidth - tw - pad, Math.max(pad, x + 12));
+        var top = Math.min(window.innerHeight - th - pad, Math.max(pad, y + 16));
+        tip.style.left = left + "px";
+        tip.style.top = top + "px";
+      }
+      document.querySelectorAll(".tl-avatar").forEach(function (btn) {
+        btn.addEventListener("mouseenter", function (e) { show(btn, e); });
+        btn.addEventListener("mousemove", function (e) { if (!tip.hidden) show(btn, e); });
+        btn.addEventListener("mouseleave", hide);
+        btn.addEventListener("focus", function (e) { show(btn, e); });
+        btn.addEventListener("blur", hide);
+      });
+    })();
+    </script>
+
   </body>
 </html>
