@@ -288,7 +288,9 @@ Run the package test script.
 
 ## Trust
 
-See SECURITY.md. Source has no HTTP client.
+See SECURITY.md. **No HTTP client for room traffic or telemetry** — the room never leaves your
+machine. The only network calls in `src/` are the optional `rooms auth github` / `rooms auth
+gitlab` device flows, which mint a **local** identity and upload no room events.
 
 ## Not this release
 
