@@ -285,9 +285,21 @@ test("live binds localhost, serves the board, and stops when killed", async () =
       });
       assert.match(url, /^http:\/\/127\.0\.0\.1:/, "must bind loopback, never 0.0.0.0");
 
-      const res = await fetch(url);
-      assert.equal(res.status, 200);
-      const html = await res.text();
+      // The url is printed as soon as listen() resolves, but on Windows the first connection can
+      // still be refused or reset for a moment after that. Retry briefly rather than assert on a
+      // race — a flaky test that fails one run in five teaches people to re-run instead of read.
+      let html = "";
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        try {
+          const res = await fetch(url);
+          assert.equal(res.status, 200);
+          html = await res.text();
+          break;
+        } catch (err) {
+          if (attempt === 11) throw err;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
       assert.match(html, /before live/, "the served board carries the room's events");
     } finally {
       child.kill();

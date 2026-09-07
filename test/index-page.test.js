@@ -18,13 +18,18 @@ import { syncHint } from "../src/sync-hint.js";
 
 async function withHome(fn) {
   const home = await mkdtemp(join(tmpdir(), "iops-rooms-home-"));
-  const prev = process.env.HOME;
+  // os.homedir() reads USERPROFILE on Windows and HOME elsewhere. Setting one leaves the other
+  // platform writing into the REAL home and passing for the wrong reason.
+  const prev = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
   process.env.HOME = home;
+  process.env.USERPROFILE = home;
   try {
     await fn(home);
   } finally {
-    if (prev === undefined) delete process.env.HOME;
-    else process.env.HOME = prev;
+    for (const k of ["HOME", "USERPROFILE"]) {
+      if (prev[k] === undefined) delete process.env[k];
+      else process.env[k] = prev[k];
+    }
     await rm(home, { recursive: true, force: true });
   }
 }
