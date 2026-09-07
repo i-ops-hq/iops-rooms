@@ -14,8 +14,10 @@ test("renameRoom updates display name and board hero", async () => {
     assert.equal(next.name, "Rooms");
     assert.equal(next.id, "YMMBFL");
     const html = await readFile(roomPaths(dir).board, "utf8");
-    assert.match(html, />Rooms</);
+    assert.match(html, /Rooms · Rooms/);
+    assert.match(html, /<title>Rooms · Rooms<\/title>/);
     assert.doesNotMatch(html, />dogfood</);
+    assert.doesNotMatch(html, /Rooms · dogfood/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
