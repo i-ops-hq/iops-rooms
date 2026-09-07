@@ -50,11 +50,15 @@ Usage:
   rooms hooks uninstall
   rooms mcp
   rooms mcp install
+  rooms auth github
+  rooms auth status
+  rooms auth logout
   rooms help
 
 One .room/ per project. Other AI windows are not scanned.
 Cursor/Claude Code only show up if the Rooms MCP is installed and they post.
 Hooks are local opt-in only — never auto-installed; not IDE telemetry.
+Auth mints a local verified GitHub identity only — does not upload room events.
 `;
 
 function args(argv) {
@@ -339,7 +343,14 @@ async function main() {
     const dir = await requireRoomDir().catch(() => process.cwd());
     const { resolveBranch } = await import("./git-info.js");
     const b = await resolveBranch(dir);
-    process.stdout.write(`actor     ${a}\ntool      ${t}\ndeviceId  ${d}\nbranch    ${b || "—"}\n`);
+    const { authStatus } = await import("./identity.js");
+    const s = await authStatus();
+    const gh = s.verified
+      ? `@${s.github.login} (verified)`
+      : "— (unverified)";
+    process.stdout.write(
+      `actor     ${a}\ntool      ${t}\ndeviceId  ${d}\nbranch    ${b || "—"}\ngithub    ${gh}\n`,
+    );
     return;
   }
 
@@ -374,6 +385,11 @@ async function main() {
     const dir = await requireRoomDir();
     const result = await mergeRoomBundle(bundle, dir);
     process.stdout.write(`merged  +${result.added} events  (total ids ${result.total})  room ${result.meta.id}\n`);
+    if (result.warnBadGithub) {
+      process.stderr.write(
+        `warn  ${result.warnBadGithub} event(s) claimed github login without a valid signature (imported anyway — see SECURITY.md)\n`,
+      );
+    }
     return;
   }
 
@@ -383,6 +399,63 @@ async function main() {
     process.stdout.write(`${h.status}  ${h.message}\n`);
     for (const step of h.steps) process.stdout.write(`- ${step}\n`);
     return;
+  }
+
+
+  if (cmd === "auth") {
+    const sub = rest[0] || "status";
+    const {
+      authGithubDeviceFlow,
+      authStatus,
+      clearVerifiedIdentity,
+      roomsHomeDir,
+    } = await import("./identity.js");
+    if (sub === "github") {
+      const clientId = argv["client-id"] || process.env.ROOMS_GITHUB_CLIENT_ID;
+      process.stdout.write(
+        "GitHub device flow — local identity only (no room upload).\n",
+      );
+      const result = await authGithubDeviceFlow({
+        clientId,
+        openUrl: (url) => openPath(url),
+        onUserCode: ({ userCode, verificationUri }) => {
+          process.stdout.write(
+            `Open ${verificationUri} and enter code: ${userCode}\n`,
+          );
+        },
+      });
+      process.stdout.write(
+        `verified  @${result.user.login}\n` +
+          `stored    ${roomsHomeDir()}/identity.json + device.key (0600)\n` +
+          `(solo can stay unsigned; team leads opt into verified mode)\n`,
+      );
+      return;
+    }
+    if (sub === "status") {
+      const s = await authStatus();
+      process.stdout.write(
+        [
+          `home      ${s.home}`,
+          `deviceId  ${s.deviceId}`,
+          `actor     ${s.displayName}`,
+          s.verified
+            ? `github    @${s.github.login}  (verified)`
+            : `github    —  (unverified)`,
+          s.createdAt ? `since     ${s.createdAt}` : null,
+          s.envOverride ? `note      env override → posts stamped unverified` : null,
+          "",
+        ]
+          .filter((line) => line != null)
+          .join("\n"),
+      );
+      return;
+    }
+    if (sub === "logout") {
+      await clearVerifiedIdentity();
+      process.stdout.write(`cleared verified identity under ${roomsHomeDir()}\n`);
+      return;
+    }
+    throw new Error("usage: rooms auth github | rooms auth status | rooms auth logout");
   }
 
   if (cmd === "doctor") {

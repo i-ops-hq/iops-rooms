@@ -4,7 +4,11 @@ import { homedir } from "node:os";
 import { constants } from "node:fs";
 import { eventId, roomCode } from "./ids.js";
 import { writeBoard } from "./board.js";
-import { loadIdentity } from "./identity.js";
+import {
+  loadIdentity,
+  stampEventIdentity,
+  verifyEventIdentity,
+} from "./identity.js";
 import { resolveBranch } from "./git-info.js";
 
 export const ROOM_DIR_NAME = ".room";
@@ -191,7 +195,7 @@ export async function appendEvent(projectDir, event) {
   const idn = await identity();
   const branch = event.branch || (await resolveBranch(projectDir)) || "";
   // Reserved stamps (id, at) AFTER spread so callers cannot override them.
-  const record = {
+  let record = {
     ...event,
     deviceId: event.deviceId || idn.deviceId,
     actor: event.actor || idn.displayName,
@@ -200,6 +204,8 @@ export async function appendEvent(projectDir, event) {
     id: eventId(),
     at: new Date().toISOString(),
   };
+  // Verified GitHub identity stamps + ed25519 sig (local only; env overrides = unverified).
+  record = await stampEventIdentity(record, idn);
   await appendFile(paths.events, `${JSON.stringify(record)}\n`, "utf8");
   const meta = await readMeta(projectDir);
   const events = await readEvents(projectDir);
@@ -317,7 +323,7 @@ export async function postNote(projectDir, { text, type = "note", extra = {} } =
   });
 }
 
-export { actor, tool, deviceId, identity, loadIdentity };
+export { actor, tool, deviceId, identity, loadIdentity, stampEventIdentity, verifyEventIdentity };
 
 export async function exportRoomBundle(projectDir, outDir) {
   // Allowlist only: room.json + events.jsonl as regular files (never opaque tree cp).
@@ -364,13 +370,25 @@ export async function mergeRoomBundle(bundleDir, projectDir = process.cwd()) {
   const seen = new Set(existing.map((e) => e.id));
   const incoming = parseEventsJsonl(eventsRaw, { label: incomingEventsPath }).events;
   let added = 0;
+  let warnBadGithub = 0;
   for (const ev of incoming) {
     if (!ev?.id || seen.has(ev.id)) continue;
+    // Warn-only: claimed github login without a valid ed25519 sig (do not hard-reject yet).
+    const claim = ev?.github?.login || ev?.githubLogin;
+    if (claim) {
+      const v = verifyEventIdentity(ev);
+      if (!v.ok) {
+        warnBadGithub += 1;
+        console.error(
+          `[rooms] warn: event ${ev.id} claims github @${claim} but sig check failed (${v.reason}) — imported anyway`,
+        );
+      }
+    }
     await appendFile(local.events, `${JSON.stringify(ev)}\n`, "utf8");
     seen.add(ev.id);
     added += 1;
   }
   await refreshBoard(projectDir);
-  return { added, total: seen.size, meta: localMeta };
+  return { added, total: seen.size, meta: localMeta, warnBadGithub };
 }
 

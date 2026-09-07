@@ -133,7 +133,12 @@ export async function runDoctor({
     const a = await actor();
     const t = await tool();
     const d = await deviceId();
-    identityDetail = `actor=${a}  tool=${t}  deviceId=${d}`;
+    const { authStatus } = await import("./identity.js");
+    const s = await authStatus();
+    const gh = s.verified
+      ? `github=@${s.github.login} (verified)`
+      : "github=— (unverified; optional: rooms auth github)";
+    identityDetail = `actor=${a}  tool=${t}  deviceId=${d}  ${gh}`;
     checks.push({ id: "identity", ok: true, hard: false, detail: identityDetail });
   } catch (err) {
     checks.push({

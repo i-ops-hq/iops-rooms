@@ -1,0 +1,262 @@
+import { mkdtemp, rm, readFile, stat, appendFile, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  installFixtureIdentity,
+  clearVerifiedIdentity,
+  authStatus,
+  roomsHomeDir,
+  identityFilePath,
+  privateKeyPath,
+  stampEventIdentity,
+  verifyEventIdentity,
+  canonicalSignPayload,
+  signCanonical,
+  verifyCanonical,
+  readPrivateKeyPem,
+  loadIdentity,
+  authGithubDeviceFlow,
+} from "../src/identity.js";
+import { initRoom, postNote, mergeRoomBundle, roomPaths, readEvents } from "../src/store.js";
+
+async function withRoomsHome(fn) {
+  const home = await mkdtemp(join(tmpdir(), "iops-rooms-id-"));
+  const prev = process.env.ROOMS_HOME;
+  const prevActor = process.env.ROOMS_ACTOR;
+  const prevDevice = process.env.ROOMS_DEVICE_ID;
+  process.env.ROOMS_HOME = home;
+  delete process.env.ROOMS_ACTOR;
+  delete process.env.ROOMS_DEVICE_ID;
+  delete process.env.ROOMS_DISPLAY_NAME;
+  try {
+    await fn(home);
+  } finally {
+    if (prev === undefined) delete process.env.ROOMS_HOME;
+    else process.env.ROOMS_HOME = prev;
+    if (prevActor === undefined) delete process.env.ROOMS_ACTOR;
+    else process.env.ROOMS_ACTOR = prevActor;
+    if (prevDevice === undefined) delete process.env.ROOMS_DEVICE_ID;
+    else process.env.ROOMS_DEVICE_ID = prevDevice;
+    await rm(home, { recursive: true, force: true });
+  }
+}
+
+test("fixture identity store + private key mode 0600", async () => {
+  await withRoomsHome(async () => {
+    const id = await installFixtureIdentity({ login: "ashwinth", id: 99, email: "a@example.com" });
+    assert.equal(id.github.login, "ashwinth");
+    assert.ok(id.publicKey.includes("BEGIN PUBLIC KEY"));
+    const raw = JSON.parse(await readFile(identityFilePath(), "utf8"));
+    assert.equal(raw.github.login, "ashwinth");
+    const st = await stat(privateKeyPath());
+    // mode bits: expect owner read/write only when platform supports it
+    assert.equal(st.mode & 0o777, 0o600);
+    const status = await authStatus();
+    assert.equal(status.verified, true);
+    assert.equal(status.github.login, "ashwinth");
+    await clearVerifiedIdentity();
+    const after = await authStatus();
+    assert.equal(after.verified, false);
+  });
+});
+
+test("signature round-trip over canonical payload", async () => {
+  await withRoomsHome(async () => {
+    await installFixtureIdentity({ login: "signer" });
+    const pem = await readPrivateKeyPem();
+    const payload = canonicalSignPayload({
+      actor: "signer",
+      deviceId: "abcd",
+      id: "evt1",
+      type: "note",
+      text: "hello",
+      githubLogin: "signer",
+    });
+    const sig = signCanonical(pem, payload);
+    const id = JSON.parse(await readFile(identityFilePath(), "utf8"));
+    assert.equal(verifyCanonical(id.publicKey, payload, sig), true);
+    assert.equal(verifyCanonical(id.publicKey, payload + "x", sig), false);
+  });
+});
+
+test("stampEventIdentity + verifyEventIdentity", async () => {
+  await withRoomsHome(async () => {
+    await installFixtureIdentity({ login: "poster" });
+    const idn = await loadIdentity();
+    const stamped = await stampEventIdentity(
+      {
+        actor: idn.displayName,
+        deviceId: idn.deviceId,
+        id: "e1",
+        type: "note",
+        text: "hi",
+        at: new Date().toISOString(),
+      },
+      idn,
+    );
+    assert.equal(stamped.identity.mode, "verified");
+    assert.equal(stamped.github.login, "poster");
+    assert.ok(stamped.sig);
+    assert.equal(verifyEventIdentity(stamped).ok, true);
+
+    const forged = { ...stamped, text: "tampered" };
+    assert.equal(verifyEventIdentity(forged).ok, false);
+  });
+});
+
+test("env override posts are unmarked verified", async () => {
+  await withRoomsHome(async () => {
+    await installFixtureIdentity({ login: "real" });
+    process.env.ROOMS_ACTOR = "smoke-actor";
+    process.env.ROOMS_DEVICE_ID = "smoke-dev";
+    const idn = await loadIdentity();
+    assert.equal(idn.envOverride, true);
+    const stamped = await stampEventIdentity(
+      {
+        actor: idn.displayName,
+        deviceId: idn.deviceId,
+        id: "e2",
+        type: "note",
+        text: "smoke",
+      },
+      idn,
+    );
+    assert.equal(stamped.identity.mode, "unverified");
+    assert.equal(stamped.identity.reason, "env_override");
+    assert.equal(stamped.github, undefined);
+  });
+});
+
+test("board shows verified badge when stamped", async () => {
+  await withRoomsHome(async (home) => {
+    await installFixtureIdentity({ login: "badge-user" });
+    const dir = await mkdtemp(join(tmpdir(), "iops-rooms-badge-"));
+    try {
+      await initRoom({ cwd: dir, name: "badge-room" });
+      await postNote(dir, { text: "verified post" });
+      const html = await readFile(roomPaths(dir).board, "utf8");
+      assert.match(html, /data-verify="verified"/);
+      assert.match(html, />verified</);
+      const events = await readEvents(dir);
+      const note = events.find((e) => e.type === "note");
+      assert.equal(note.github.login, "badge-user");
+      assert.equal(verifyEventIdentity(note).ok, true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("sync-merge warns on claimed github without valid sig (warn-only)", async () => {
+  await withRoomsHome(async () => {
+    const a = await mkdtemp(join(tmpdir(), "iops-rooms-ma-"));
+    const b = await mkdtemp(join(tmpdir(), "iops-rooms-mb-"));
+    const bundle = await mkdtemp(join(tmpdir(), "iops-rooms-mbundle-"));
+    try {
+      await initRoom({ cwd: a, name: "ma", code: "VRIFY1" });
+      // Craft a forged event claiming github without sig into A's log, then export.
+      const forged = {
+        id: "forged-github-1",
+        at: new Date().toISOString(),
+        type: "note",
+        text: "spoof",
+        actor: "attacker",
+        deviceId: "evil",
+        tool: "cli",
+        branch: "",
+        github: { login: "not-really", id: 1 },
+      };
+      await appendFile(roomPaths(a).events, `${JSON.stringify(forged)}\n`, "utf8");
+      const { exportRoomBundle } = await import("../src/store.js");
+      await exportRoomBundle(a, bundle);
+
+      await initRoom({ cwd: b, name: "mb", code: "VRIFY1" });
+      const errs = [];
+      const orig = console.error;
+      console.error = (...args) => errs.push(args.join(" "));
+      let result;
+      try {
+        result = await mergeRoomBundle(bundle, b);
+      } finally {
+        console.error = orig;
+      }
+      assert.ok(result.added >= 1);
+      assert.ok(result.warnBadGithub >= 1);
+      assert.ok(errs.some((e) => /claims github/.test(e)));
+      const events = await readEvents(b);
+      assert.ok(events.some((e) => e.id === "forged-github-1"));
+    } finally {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+      await rm(bundle, { recursive: true, force: true });
+    }
+  });
+});
+
+test("device flow uses injectable fetch; no network in tests", async () => {
+  await withRoomsHome(async () => {
+    const calls = [];
+    const fetchImpl = async (url, opts = {}) => {
+      calls.push({ url: String(url), method: opts.method || "GET" });
+      if (String(url).includes("/login/device/code")) {
+        return {
+          ok: true,
+          async json() {
+            return {
+              device_code: "dc",
+              user_code: "ABCD-1234",
+              verification_uri: "https://github.com/login/device",
+              interval: 0.01,
+              expires_in: 60,
+            };
+          },
+          async text() {
+            return "";
+          },
+        };
+      }
+      if (String(url).includes("/login/oauth/access_token")) {
+        return {
+          ok: true,
+          async json() {
+            return { access_token: "tok", token_type: "bearer", scope: "read:user" };
+          },
+        };
+      }
+      if (String(url).includes("api.github.com/user")) {
+        return {
+          ok: true,
+          async json() {
+            return { login: "flow-user", id: 7, email: null };
+          },
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const seen = [];
+    const result = await authGithubDeviceFlow({
+      clientId: "test-client",
+      fetchImpl,
+      pollIntervalMs: 1,
+      onUserCode: (info) => seen.push(info.userCode),
+    });
+    assert.equal(result.user.login, "flow-user");
+    assert.deepEqual(seen, ["ABCD-1234"]);
+    assert.ok(calls.some((c) => c.url.includes("device/code")));
+    const status = await authStatus();
+    assert.equal(status.verified, true);
+    assert.equal(status.github.login, "flow-user");
+  });
+});
+
+test("auth github without client id fails honestly", async () => {
+  await withRoomsHome(async () => {
+    delete process.env.ROOMS_GITHUB_CLIENT_ID;
+    await assert.rejects(
+      () => authGithubDeviceFlow({ clientId: "", fetchImpl: async () => ({}) }),
+      /ROOMS_GITHUB_CLIENT_ID/,
+    );
+  });
+});
