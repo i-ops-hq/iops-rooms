@@ -43,7 +43,7 @@ Goal: agents **post as they work** via MCP — not only manual CLI notes.
 
 Exact phrase you can paste to an agent:
 
-> Run `npx -y iops-rooms@0.3.2 mcp install` in this project
+> Run `npx -y iops-rooms@0.3.1 mcp install` in this project
 
 Or, if the CLI is already on your PATH: `rooms mcp install`.
 
@@ -68,7 +68,7 @@ Manual JSON (same as install writes):
   "mcpServers": {
     "iops-rooms": {
       "command": "npx",
-      "args": ["-y", "iops-rooms@0.3.2", "mcp"]
+      "args": ["-y", "iops-rooms@0.3.1", "mcp"]
     }
   }
 }
@@ -116,15 +116,15 @@ Copy `skills/rooms/SKILL.md` into a user skill dir if you want it globally.
 Published on npm (MIT). Pin the version — do not use `@latest`.
 
 ```bash
-npm i -g iops-rooms@0.3.2
+npm i -g iops-rooms@0.3.1
 # or one-shot:
-npx -y iops-rooms@0.3.2 help
-npx -y iops-rooms@0.3.2 init --name homework
-npx -y iops-rooms@0.3.2 post "starting"
-npx -y iops-rooms@0.3.2 live
+npx -y iops-rooms@0.3.1 help
+npx -y iops-rooms@0.3.1 init --name homework
+npx -y iops-rooms@0.3.1 post "starting"
+npx -y iops-rooms@0.3.1 live
 
-# Explicit form (required on 0.3.0; fine on 0.3.2+):
-# npx -y -p iops-rooms@0.3.2 rooms help
+# Explicit form (required on 0.3.0; fine on 0.3.1+):
+# npx -y -p iops-rooms@0.3.1 rooms help
 ```
 
 From a git checkout of this repo you can still run `node src/cli.js …` (see CLI vs MCP above).
