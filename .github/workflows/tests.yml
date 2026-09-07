@@ -75,7 +75,11 @@ jobs:
 
           # A real room from the installed copy, not from the checkout.
           mkdir room && cd room
-          git init -q . && git commit -q --allow-empty -m ci
+          # A runner has no git identity, and Rooms stamps the branch onto every event, so the
+          # room needs a real repo with a real commit. Passed with -c rather than configured
+          # globally, so the job does not depend on runner state it did not set up.
+          git init -q .
+          git -c user.email=ci@example.invalid -c user.name=ci commit -q --allow-empty -m ci
           ../node_modules/.bin/rooms init --name ci > /dev/null
           ../node_modules/.bin/rooms post "from the packed tarball" > /dev/null
           ../node_modules/.bin/rooms status
