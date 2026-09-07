@@ -36,7 +36,7 @@ Usage:
   rooms doctor
   rooms rename <name>
   rooms open
-  rooms live [--port 7840]
+  rooms live [--port 7840]        (ROOMS_NO_OPEN=1 to skip launching a browser)
   rooms branches
   rooms scm-status
   rooms sync-hint
@@ -92,6 +92,11 @@ function args(argv) {
 }
 
 function openPath(path) {
+  // A headless box has nothing to open with, and an office VM — the deployment this is meant for —
+  // often has no browser at all. `rooms live` would spawn xdg-open and get an error nobody reads.
+  // ROOMS_NO_OPEN skips the launch; the caller still prints the path, which is also what makes
+  // `open` and `live` testable.
+  if (process.env.ROOMS_NO_OPEN) return;
   const cmd = platform() === "darwin" ? "open" : platform() === "win32" ? "start" : "xdg-open";
   const child =
     platform() === "win32"
