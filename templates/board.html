@@ -321,6 +321,60 @@
         margin: 10px 0 0;
         max-width: 52ch;
       }
+
+      .branch {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--accent, #3d6bf3);
+        background: color-mix(in srgb, var(--accent, #3d6bf3) 12%, transparent);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .branch-panel {
+        margin: 0 0 22px;
+        padding: 16px 18px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+      }
+      .branch-heading {
+        margin: 0 0 8px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .branch-current { margin: 0 0 6px; font-size: 14px; color: var(--ink-2); }
+      .branch-note { margin: 0 0 12px; font-size: 13px; color: var(--ink-3); max-width: 62ch; }
+      .branch-list { display: flex; flex-direction: column; gap: 8px; }
+      .branch-row {
+        display: grid;
+        grid-template-columns: minmax(8ch, 1fr) minmax(12ch, 1.4fr) minmax(12ch, 1.2fr);
+        gap: 10px;
+        align-items: baseline;
+        font-size: 13px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: var(--bg-soft, transparent);
+      }
+      .branch-row[data-current="1"] {
+        outline: 1px solid color-mix(in srgb, var(--accent, #3d6bf3) 35%, var(--line));
+      }
+      .branch-name { font-family: var(--font-mono); font-weight: 600; }
+      .branch-meta, .branch-last { color: var(--ink-3); font-size: 12px; }
+      .live-chip {
+        position: fixed;
+        top: 14px;
+        right: 14px;
+        z-index: 50;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.02em;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        color: var(--ink-2);
+        box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+      }
       @media (prefers-reduced-motion: reduce) {
         * {
           transition: none !important;
@@ -341,6 +395,7 @@
           <div class="fact"><b>{{POSTERS}}</b><span>posters</span></div>
           <div class="fact"><b>{{COUNT}}</b><span>events</span></div>
           <div class="fact"><b>{{NETWORK}}</b><span>network — {{NETWORK_DETAIL}}</span></div>
+          <div class="fact"><b>{{BRANCH}}</b><span>branch</span></div>
           <div class="fact"><b>.room</b><span>on disk</span></div>
         </div>
         <p class="posters-blurb">{{POSTERS_BLURB}}</p>
@@ -356,6 +411,7 @@
         Static <span class="code" style="font-size:13px">file://</span> stays offline.
         <span class="code" style="font-size:13px">rooms live</span> serves <span class="code" style="font-size:13px">127.0.0.1</span> only and auto-updates open tabs — still no internet.
       </p>
+      {{BRANCH_PANEL}}
       {{TOOLS_STRIP}}
       <div class="legend">
         <span class="lg" data-tone="note"><span class="dot"></span>note</span>

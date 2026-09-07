@@ -86,6 +86,31 @@ Lists `.room/` under ~/Projects. Does not list browser chat windows.
 | rooms wait / export | Poll, markdown export |
 
 
+
+## Branch awareness (slice 2)
+
+Posts stamp the current git branch (`git rev-parse` or `ROOMS_BRANCH` for smoke).
+The board shows:
+
+- Current branch in the hero facts
+- A **Branches** panel: local branches, post counts, last poster activity
+- Per-card branch chip next to actor/tool/device
+
+```bash
+node src/cli.js branches
+node src/cli.js whoami
+node src/cli.js live   # leave open — branch UI refreshes with posts
+```
+
+Honest limit: **local git first**. Remotes/PRs are optional via `rooms scm-status` (uses `gh` when present; degrades cleanly if missing).
+
+## Team sync + SCM (sketch)
+
+```bash
+node src/cli.js sync-hint    # how teammates share .room/ on devices they control
+node src/cli.js scm-status   # read-only GitHub via gh — not hosted multiplayer
+```
+
 ## Live local board
 
 Static `file://` board is still fine for a snapshot. For auto-update without re-opening:

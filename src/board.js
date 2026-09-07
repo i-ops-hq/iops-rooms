@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { LIVE_CLIENT_SNIPPET } from "./live-client.js";
+import { readGitSnapshot } from "./git-info.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,6 +57,7 @@ function renderEvents(events) {
       const actor = escapeHtml(ev.actor || "unknown");
       const tool = escapeHtml(ev.tool || "");
       const device = escapeHtml(shortDevice(ev.deviceId));
+      const branch = escapeHtml(ev.branch || "");
       const when = escapeHtml(formatWhen(ev.at));
       const text = escapeHtml(ev.text || "");
       const extra =
@@ -69,12 +71,16 @@ function renderEvents(events) {
       const deviceBit = device
         ? `<span class="device" title="device ${escapeHtml(ev.deviceId || "")}">${device}</span>`
         : "";
-      return `<article class="event" data-type="${kind}" data-tone="${kind}">
+      const branchBit = branch
+        ? `<span class="branch" title="git branch">${branch}</span>`
+        : "";
+      return `<article class="event" data-type="${kind}" data-tone="${kind}" data-branch="${branch}">
   <header>
     <span class="dot"></span>
     <span class="actor">${actor}</span>
     <span class="tool">${tool}</span>
     ${deviceBit}
+    ${branchBit}
     <span class="kind">${kind}</span>
     <time datetime="${escapeHtml(ev.at || "")}">${when}</time>
   </header>
@@ -86,8 +92,58 @@ function renderEvents(events) {
     .join("\n");
 }
 
-export async function writeBoard(boardPath, meta, events) {
+function renderBranchPanel(git, events) {
+  const byBranch = new Map();
+  for (const ev of events) {
+    if (ev.type === "system") continue;
+    const b = ev.branch || "(unknown)";
+    const prev = byBranch.get(b) || { count: 0, actors: new Set(), lastAt: "", lastActor: "" };
+    prev.count += 1;
+    if (ev.actor) prev.actors.add(ev.actor);
+    if (!prev.lastAt || (ev.at && ev.at > prev.lastAt)) {
+      prev.lastAt = ev.at || "";
+      prev.lastActor = ev.actor || "";
+    }
+    byBranch.set(b, prev);
+  }
+  const local = git.branches || [];
+  const names = [...new Set([...local, ...byBranch.keys()])].filter((n) => n !== "(unknown)" || byBranch.has(n));
+  if (!names.length && !git.current) {
+    return `<section class="branch-panel" aria-label="branches">
+  <h2 class="branch-heading">Branches</h2>
+  <p class="branch-note">${escapeHtml(git.note || "No local git branches yet.")}</p>
+</section>`;
+  }
+  const rows = names
+    .map((name) => {
+      const info = byBranch.get(name) || { count: 0, actors: new Set(), lastAt: "", lastActor: "" };
+      const actors = [...info.actors].join(", ") || "—";
+      const current = name === git.current ? ' data-current="1"' : "";
+      const last = info.lastAt
+        ? `${escapeHtml(info.lastActor || "?")} · ${escapeHtml(formatWhen(info.lastAt))}`
+        : "no room posts yet";
+      return `<div class="branch-row"${current}>
+  <span class="branch-name">${escapeHtml(name)}</span>
+  <span class="branch-meta">${info.count} post${info.count === 1 ? "" : "s"} · ${escapeHtml(actors)}</span>
+  <span class="branch-last">${last}</span>
+</div>`;
+    })
+    .join("\n");
+  const cur = git.current
+    ? `<p class="branch-current">Current checkout: <strong>${escapeHtml(git.current)}</strong>${git.head ? ` <span class="device">@ ${escapeHtml(git.head)}</span>` : ""}</p>`
+    : "";
+  return `<section class="branch-panel" aria-label="branches">
+  <h2 class="branch-heading">Branches</h2>
+  ${cur}
+  <p class="branch-note">${escapeHtml(git.note || "Local git + room posts. Remotes/PRs come later.")}</p>
+  <div class="branch-list">${rows}</div>
+</section>`;
+}
+
+export async function writeBoard(boardPath, meta, events, opts = {}) {
   let template = await readFile(TEMPLATE, "utf8");
+  const projectDir = opts.projectDir || process.cwd();
+  const git = await readGitSnapshot(projectDir);
   const { actors, tools } = posterStats(events);
   // Count distinct non-system actors; if only system events, still 1 creator
   const distinctPosters = actors.size;
@@ -117,6 +173,7 @@ export async function writeBoard(boardPath, meta, events) {
       ? "files stay in this folder"
       : "syncs only among your team’s devices — not I-Ops cloud";
 
+  const branchLabel = git.current || "—";
   const replacements = {
     "{{TITLE}}": escapeHtml(meta.name || "room"),
     "{{CODE}}": escapeHtml(meta.id || ""),
@@ -127,6 +184,8 @@ export async function writeBoard(boardPath, meta, events) {
     "{{NETWORK_DETAIL}}": escapeHtml(networkDetail),
     "{{POSTERS}}": escapeHtml(postersLabel),
     "{{POSTERS_BLURB}}": escapeHtml(postersBlurb),
+    "{{BRANCH}}": escapeHtml(branchLabel),
+    "{{BRANCH_PANEL}}": renderBranchPanel(git, events),
     "{{TOOLS_STRIP}}": strip,
     "{{EVENTS}}": renderEvents(events),
   };

@@ -5,6 +5,7 @@ import { constants } from "node:fs";
 import { eventId, roomCode } from "./ids.js";
 import { writeBoard } from "./board.js";
 import { loadIdentity } from "./identity.js";
+import { resolveBranch } from "./git-info.js";
 
 export const ROOM_DIR_NAME = ".room";
 const META = "room.json";
@@ -135,6 +136,7 @@ export async function readEvents(projectDir) {
 export async function appendEvent(projectDir, event) {
   const paths = roomPaths(projectDir);
   const idn = await identity();
+  const branch = event.branch || (await resolveBranch(projectDir)) || "";
   const record = {
     id: eventId(),
     at: new Date().toISOString(),
@@ -142,11 +144,12 @@ export async function appendEvent(projectDir, event) {
     deviceId: event.deviceId || idn.deviceId,
     actor: event.actor || idn.displayName,
     tool: event.tool || idn.tool,
+    branch: branch || event.branch || "",
   };
   await appendFile(paths.events, `${JSON.stringify(record)}\n`, "utf8");
   const meta = await readMeta(projectDir);
   const events = await readEvents(projectDir);
-  await writeBoard(paths.board, meta, events);
+  await writeBoard(paths.board, meta, events, { projectDir });
   return record;
 }
 
@@ -154,7 +157,7 @@ export async function refreshBoard(projectDir) {
   const paths = roomPaths(projectDir);
   const meta = await readMeta(projectDir);
   const events = await readEvents(projectDir);
-  await writeBoard(paths.board, meta, events);
+  await writeBoard(paths.board, meta, events, { projectDir });
   return paths.board;
 }
 

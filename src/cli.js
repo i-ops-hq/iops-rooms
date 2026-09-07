@@ -28,6 +28,9 @@ Usage:
   rooms status
   rooms open
   rooms live [--port 7840]
+  rooms branches
+  rooms scm-status
+  rooms sync-hint
   rooms post <message>
   rooms share-diff [--path <file>] [--note <text>]
   rooms request-review [note]
@@ -275,7 +278,49 @@ async function main() {
     const a = await actor();
     const t = await tool();
     const d = await deviceId();
-    process.stdout.write(`actor     ${a}\ntool      ${t}\ndeviceId  ${d}\n`);
+    const dir = await requireRoomDir().catch(() => process.cwd());
+    const { resolveBranch } = await import("./git-info.js");
+    const b = await resolveBranch(dir);
+    process.stdout.write(`actor     ${a}\ntool      ${t}\ndeviceId  ${d}\nbranch    ${b || "—"}\n`);
+    return;
+  }
+
+  if (cmd === "branches") {
+    const dir = await requireRoomDir();
+    const { readGitSnapshot } = await import("./git-info.js");
+    const git = await readGitSnapshot(dir);
+    const events = await readEvents(dir);
+    process.stdout.write(`current  ${git.current || "—"}\n`);
+    if (git.head) process.stdout.write(`head     ${git.head}\n`);
+    process.stdout.write(`note     ${git.note}\n`);
+    for (const name of git.branches) {
+      const n = events.filter((e) => e.type !== "system" && (e.branch || "") === name).length;
+      const mark = name === git.current ? "*" : " ";
+      process.stdout.write(`${mark} ${name}  (${n} posts)\n`);
+    }
+    return;
+  }
+
+  if (cmd === "scm-status") {
+    const dir = await requireRoomDir();
+    const { scmStatus } = await import("./scm.js");
+    const s = await scmStatus(dir);
+    process.stdout.write(`${s.ok ? "ok" : "degraded"}  ${s.provider}\n${s.message}\n`);
+    if (s.ok && s.repo?.nameWithOwner) {
+      process.stdout.write(`repo     ${s.repo.nameWithOwner}\n`);
+      process.stdout.write(`default  ${s.repo.defaultBranchRef?.name || "?"}\n`);
+      for (const pr of s.openPrs || []) {
+        process.stdout.write(`pr #${pr.number}  ${pr.headRefName}  ${pr.title}\n`);
+      }
+    }
+    return;
+  }
+
+  if (cmd === "sync-hint") {
+    const { syncHint } = await import("./sync-hint.js");
+    const h = syncHint();
+    process.stdout.write(`${h.status}  ${h.message}\n`);
+    for (const step of h.steps) process.stdout.write(`- ${step}\n`);
     return;
   }
 

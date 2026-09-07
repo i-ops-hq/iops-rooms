@@ -21,6 +21,7 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 - Speak MCP over **stdio only**
 - Render a static HTML file from `templates/board.html`
 - Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes
+- Optional: read local `git` for branch stamps; optional read-only `gh` for `scm-status` (never uploads the room)
 - Optional: export/import a `.room/` folder for git-friendly handoff (still offline)
 
 ## Sync story
