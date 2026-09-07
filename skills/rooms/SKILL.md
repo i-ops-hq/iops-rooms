@@ -19,20 +19,20 @@ You post to a **local** room on this machine. The live board (`rooms live` → h
 
 ## Setup (once per project)
 
-1. Ensure MCP is configured (this repo already has `.cursor/mcp.json` → `src/mcp.js`).
+1. Prefer one-command install: `npx -y iops-rooms@0.2.0 mcp install` (or `rooms mcp install`). Merges `.cursor/mcp.json` and copies this skill to `.cursor/skills/rooms/SKILL.md`.
 2. Reload MCP / restart the agent host.
 3. If no `.room/` yet: `create_room` with name `Rooms` (or the feature name).
 4. Tell the human to run `rooms live` and leave the tab open.
 5. If the board looks empty or something feels broken: run MCP tool `doctor` (or `rooms doctor`).
 
-For **other projects**, add MCP:
+This repo’s checkout already has `.cursor/mcp.json` → `src/mcp.js`. For **other projects**, `mcp install` writes:
 
 ```json
 {
   "mcpServers": {
     "iops-rooms": {
       "command": "npx",
-      "args": ["-y", "iops-rooms@0.1.1", "mcp"]
+      "args": ["-y", "iops-rooms@0.2.0", "mcp"]
     }
   }
 }
