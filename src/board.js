@@ -71,6 +71,7 @@ function posterStats(events) {
       deviceIds: new Set(),
       tools: new Set(),
       verified: false,
+      unverified: false,
       githubLogin: null,
     };
     if (ev.deviceId) prev.deviceIds.add(ev.deviceId);
@@ -78,9 +79,11 @@ function posterStats(events) {
     const badge = eventVerifiedBadge(ev);
     if (badge.kind === "verified") {
       prev.verified = true;
+      prev.unverified = false;
       prev.githubLogin = badge.login || prev.githubLogin;
-    } else if (!prev.verified && badge.login) {
-      prev.githubLogin = badge.login;
+    } else if (badge.kind === "unverified" && !prev.verified) {
+      prev.unverified = true;
+      if (badge.login) prev.githubLogin = badge.login;
     }
     actors.set(name, prev);
     if (ev.tool) tools.add(ev.tool);
@@ -92,17 +95,34 @@ function renderVerifyBadge(ev) {
   const badge = eventVerifiedBadge(ev);
   if (badge.kind === "verified") {
     const tip = badge.login
-      ? `GitHub @${badge.login} — local ed25519 signature ok`
-      : "local ed25519 signature ok";
+      ? `Signed locally as @${badge.login} — not a live GitHub check.`
+      : "Signed locally — not a live GitHub check.";
     return `<span class="verify-badge" data-verify="verified" title="${escapeHtml(tip)}">verified</span>`;
   }
   if (badge.kind === "unverified") {
     const tip = badge.login
       ? `claims @${badge.login} without a valid signature`
-      : "unsigned / env override";
+      : "env override / missing local signature";
     return `<span class="verify-badge" data-verify="unverified" title="${escapeHtml(tip)}">unverified</span>`;
   }
+  // kind === "none" — quiet unsigned solo; no chip
   return "";
+}
+
+function renderPosterVerifyChip(info) {
+  if (info?.verified) {
+    return `<span class="verify-badge" data-verify="verified">verified</span>`;
+  }
+  if (info?.unverified || info?.githubLogin) {
+    return `<span class="verify-badge" data-verify="unverified">unverified</span>`;
+  }
+  return "";
+}
+
+function posterVerifyKind(info) {
+  if (info?.verified) return "verified";
+  if (info?.unverified || info?.githubLogin) return "unverified";
+  return "none";
 }
 
 function renderEmptyBanner() {
@@ -315,6 +335,7 @@ export function buildTimelineModel(events, git = {}) {
         devices: new Set(),
         eventCount: 0,
         verified: false,
+        unverified: false,
         githubLogin: null,
       };
       lane.actors.set(actorName, person);
@@ -326,9 +347,11 @@ export function buildTimelineModel(events, git = {}) {
       const badge = eventVerifiedBadge(ev);
       if (badge.kind === "verified") {
         person.verified = true;
+        person.unverified = false;
         person.githubLogin = badge.login || person.githubLogin;
-      } else if (!person.verified && badge.login) {
-        person.githubLogin = badge.login;
+      } else if (badge.kind === "unverified" && !person.verified) {
+        person.unverified = true;
+        if (badge.login) person.githubLogin = badge.login;
       }
     }
     if (!person.lastAt || (ev.at && ev.at > person.lastAt)) {
@@ -379,6 +402,7 @@ export function buildTimelineModel(events, git = {}) {
         devices: [...p.devices],
         eventCount: p.eventCount,
         verified: Boolean(p.verified),
+        unverified: Boolean(p.unverified),
         githubLogin: p.githubLogin || null,
         pct,
         hue: actorHue(p.actor),
@@ -436,8 +460,9 @@ function renderTimeline(events, git) {
             : "no post text";
           // No title= on the button — native browser tip would stack with .tl-tooltip.
           const aria = `${p.actor} on ${lane.name}`;
-          const verify = p.verified ? "verified" : p.githubLogin ? "unverified" : "none";
-          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span>${p.verified ? '<span class="tl-verify" data-verify="verified" title="verified">✓</span>' : ""}</button>`;
+          const verify = posterVerifyKind(p);
+          // No title= on .tl-verify — custom .tl-tooltip owns hover; native title stacks.
+          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
         })
         .join("\n        ");
       const empty =
@@ -515,19 +540,17 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     strip = `<div class="tools-strip" aria-label="posters">${posterNames
       .map((n) => {
         const info = actors.get(n);
-        const v = info?.verified
-          ? `<span class="verify-badge" data-verify="verified">verified</span>`
-          : `<span class="verify-badge" data-verify="unverified">unverified</span>`;
-        return `<span class="tool-chip">${escapeHtml(n)} ${v}</span>`;
+        const v = renderPosterVerifyChip(info);
+        const chip = v ? `${escapeHtml(n)} ${v}` : escapeHtml(n);
+        return `<span class="tool-chip">${chip}</span>`;
       })
       .join('<span class="dot-sep">·</span>')}</div>`;
   } else if (distinctPosters === 1) {
     const n = posterNames[0];
     const info = actors.get(n);
-    const v = info?.verified
-      ? `<span class="verify-badge" data-verify="verified">verified</span>`
-      : `<span class="verify-badge" data-verify="unverified">unverified</span>`;
-    strip = `<div class="tools-strip" aria-label="posters"><span class="tool-chip">${escapeHtml(n)} ${v}</span></div>`;
+    const v = renderPosterVerifyChip(info);
+    const chip = v ? `${escapeHtml(n)} ${v}` : escapeHtml(n);
+    strip = `<div class="tools-strip" aria-label="posters"><span class="tool-chip">${chip}</span></div>`;
   }
 
   const network = meta.network || "off";

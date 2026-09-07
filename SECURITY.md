@@ -72,7 +72,7 @@ Team leads may opt into **verified mode**. Solo can stay unsigned.
 - `rooms auth github` uses GitHub **device flow**. Set `ROOMS_GITHUB_CLIENT_ID` to an OAuth App client id. Auth only mints a **local** identity; it does not upload room events to I-Ops or GitHub.
 - Posts/MCP attach `github.login` + `publicKey` + `sig` over a canonical payload (actor, deviceId, id, type, text hash, github login) when a verified identity is present.
 - Env overrides (`ROOMS_ACTOR` / `ROOMS_DEVICE_ID`) still work for smoke and are stamped **unverified**.
-- Board badges: **verified** (sig ok) vs **unverified** (unsigned, env override, or claimed login without valid sig).
+- Board badges: **verified** (sig ok) · **unverified** amber only for env override or a claimed GitHub login without a valid sig · **quiet/none** for unsigned solo (no amber by default).
 
 ### sync-merge / import — warn-only
 

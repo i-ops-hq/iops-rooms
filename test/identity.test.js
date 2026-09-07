@@ -12,6 +12,7 @@ import {
   privateKeyPath,
   stampEventIdentity,
   verifyEventIdentity,
+  eventVerifiedBadge,
   canonicalSignPayload,
   signCanonical,
   verifyCanonical,
@@ -20,6 +21,7 @@ import {
   authGithubDeviceFlow,
 } from "../src/identity.js";
 import { initRoom, postNote, mergeRoomBundle, roomPaths, readEvents } from "../src/store.js";
+import { writeBoard } from "../src/board.js";
 
 async function withRoomsHome(fn) {
   const home = await mkdtemp(join(tmpdir(), "iops-rooms-id-"));
@@ -258,5 +260,100 @@ test("auth github without client id fails honestly", async () => {
       () => authGithubDeviceFlow({ clientId: "", fetchImpl: async () => ({}) }),
       /ROOMS_GITHUB_CLIENT_ID/,
     );
+  });
+});
+
+
+test("solo unsigned stamps quiet — no amber unverified badge", async () => {
+  await withRoomsHome(async () => {
+    const dir = await mkdtemp(join(tmpdir(), "iops-rooms-solo-badge-"));
+    try {
+      await initRoom({ cwd: dir, name: "solo-room" });
+      await postNote(dir, { text: "plain solo post" });
+      const events = await readEvents(dir);
+      const note = events.find((e) => e.type === "note");
+      assert.ok(note);
+      assert.equal(note.identity?.mode, "unsigned");
+      assert.equal(note.identity?.reason, "solo");
+      assert.equal(eventVerifiedBadge(note).kind, "none");
+      const html = await readFile(roomPaths(dir).board, "utf8");
+      // CSS still mentions unverified selectors — assert on event/chip markup only.
+      assert.match(html, /class="event"[^>]*data-verify="none"/);
+      assert.doesNotMatch(html, /class="event"[^>]*data-verify="unverified"/);
+      assert.doesNotMatch(html, /class="verify-badge"[^>]*data-verify="unverified"/);
+      assert.doesNotMatch(html, /class="verify-badge"[^>]*>unverified</);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("claimed github without sig shows amber unverified", async () => {
+  await withRoomsHome(async () => {
+    const dir = await mkdtemp(join(tmpdir(), "iops-rooms-claim-badge-"));
+    try {
+      await initRoom({ cwd: dir, name: "claim-room" });
+      const forged = {
+        id: "claim-no-sig-1",
+        at: new Date().toISOString(),
+        type: "note",
+        text: "spoof claim",
+        actor: "attacker",
+        deviceId: "evil",
+        tool: "cli",
+        branch: "main",
+        github: { login: "not-really", id: 1 },
+      };
+      assert.equal(eventVerifiedBadge(forged).kind, "unverified");
+      await appendFile(roomPaths(dir).events, `${JSON.stringify(forged)}\n`, "utf8");
+      const events = await readEvents(dir);
+      const meta = JSON.parse(await readFile(roomPaths(dir).meta, "utf8"));
+      await writeBoard(roomPaths(dir).board, meta, events, { projectDir: dir });
+      const html = await readFile(roomPaths(dir).board, "utf8");
+      assert.match(html, /data-verify="unverified"/);
+      assert.match(html, />unverified</);
+      assert.match(html, /Signed locally as @|claims @not-really without a valid signature/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("verified hover tip is honest about local-only check", async () => {
+  await withRoomsHome(async () => {
+    await installFixtureIdentity({ login: "tip-user" });
+    const dir = await mkdtemp(join(tmpdir(), "iops-rooms-tip-"));
+    try {
+      await initRoom({ cwd: dir, name: "tip-room" });
+      await postNote(dir, { text: "signed tip" });
+      const html = await readFile(roomPaths(dir).board, "utf8");
+      assert.match(html, /Signed locally as @tip-user — not a live GitHub check\./);
+      assert.doesNotMatch(html, /local ed25519 signature ok/);
+      // timeline ✓ chip must not use native title (double-tip)
+      assert.doesNotMatch(html, /class="tl-verify"[^>]*title=/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("env override still amber unverified on board", async () => {
+  await withRoomsHome(async () => {
+    process.env.ROOMS_ACTOR = "smoke-actor";
+    process.env.ROOMS_DEVICE_ID = "smoke-dev";
+    const dir = await mkdtemp(join(tmpdir(), "iops-rooms-env-badge-"));
+    try {
+      await initRoom({ cwd: dir, name: "env-room" });
+      await postNote(dir, { text: "env smoke" });
+      const events = await readEvents(dir);
+      const note = events.find((e) => e.type === "note");
+      assert.equal(note.identity.mode, "unverified");
+      assert.equal(note.identity.reason, "env_override");
+      assert.equal(eventVerifiedBadge(note).kind, "unverified");
+      const html = await readFile(roomPaths(dir).board, "utf8");
+      assert.match(html, /data-verify="unverified"/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

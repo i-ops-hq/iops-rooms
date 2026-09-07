@@ -185,7 +185,7 @@ rooms post "…"       # stamps github login + ed25519 sig when verified
 rooms auth logout
 ```
 
-Auth mints a **local** verified identity. It does **not** upload `.room/` events. Env overrides for smoke (`ROOMS_ACTOR` / `ROOMS_DEVICE_ID`) stay **unverified**. See SECURITY.md for warn-only sync-merge and residual spoofability.
+Auth mints a **local** verified identity. It does **not** upload `.room/` events. Unsigned solo posts stay quiet on the board (no amber badge). Env overrides for smoke (`ROOMS_ACTOR` / `ROOMS_DEVICE_ID`) and claimed-login-without-sig show **unverified**. See SECURITY.md for warn-only sync-merge and residual spoofability.
 
 ## Team device sync (dogfood)
 

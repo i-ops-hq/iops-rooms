@@ -252,7 +252,8 @@ export async function stampEventIdentity(record, idn) {
 
   const verified = idn?.verified || (await loadVerifiedIdentity());
   if (!verified?.github?.login || !verified?.publicKey) {
-    if (!out.identity) out.identity = { mode: "unverified", reason: "solo" };
+    // Solo / unsigned: stay quiet on the board — do not stamp amber "unverified".
+    if (!out.identity) out.identity = { mode: "unsigned", reason: "solo" };
     return out;
   }
 
@@ -315,10 +316,14 @@ export function verifyEventIdentity(ev) {
 export function eventVerifiedBadge(ev) {
   const v = verifyEventIdentity(ev);
   if (v.ok) return { kind: "verified", login: v.login, label: "verified" };
+  // Amber only when the event claims a GitHub login without a valid sig.
   if (v.login) return { kind: "unverified", login: v.login, label: "unverified" };
-  if (ev?.identity?.mode === "unverified") {
+  // Env override (and failed local key) are warn-worthy without a github claim.
+  const reason = ev?.identity?.reason;
+  if (reason === "env_override" || reason === "missing_device_key") {
     return { kind: "unverified", login: null, label: "unverified" };
   }
+  // Solo / unsigned / no claim → quiet (no badge).
   return { kind: "none", login: null, label: null };
 }
 
