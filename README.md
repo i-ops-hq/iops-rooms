@@ -177,6 +177,10 @@ Honest limit: **local git first**. Remotes/PRs are optional via `rooms scm-statu
 
 Hover an initial on the branch timeline for a compact tip: agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook, plus unknown), post·diff counts for that actor on that branch, last activity, and local HEAD when the lane is the current checkout. Icons are inline SVG — no CDN. Everything comes from `.room/events.jsonl` tool stamps, not live IDE telemetry. A light **Agents** strip lists tools seen in the room.
 
+### Active / idle dots (honest)
+
+Green = **active**, gray = **idle**. A tool/actor is active when their last non-system post or share-diff in `.room/events.jsonl` falls within a window (default **10 minutes**). Otherwise idle. Hover tips show copy like `active · last 2m ago` or `idle · last 3h ago`. Override the window with env `ROOMS_ACTIVE_MS` (milliseconds). Rooms does **not** scrape the IDE or invent presence without events.
+
 ## Verified GitHub / GitLab identity (optional)
 
 Solo can stay unsigned. Team leads can opt into verified mode — local only.

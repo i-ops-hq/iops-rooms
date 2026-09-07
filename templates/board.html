@@ -422,6 +422,36 @@
       .agent-chip[data-tool="cli"] { color: var(--ink-2); }
       .agent-chip[data-tool="git-hook"] { color: #c44b6a; }
       .agent-chip[data-tool="unknown"] { color: var(--ink-3); }
+
+      .agent-presence,
+      .tl-presence {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        flex: 0 0 auto;
+        background: #9aa3ad;
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--card) 55%, transparent);
+      }
+      .agent-chip[data-presence="active"] .agent-presence,
+      .tl-presence[data-presence="active"] {
+        background: #2f9e5b;
+        box-shadow: 0 0 0 2px color-mix(in srgb, #2f9e5b 30%, transparent);
+      }
+      .agent-chip[data-presence="idle"] .agent-presence,
+      .tl-presence[data-presence="idle"] {
+        background: #9aa3ad;
+      }
+      .tl-presence {
+        position: absolute;
+        left: -1px;
+        bottom: -1px;
+        width: 8px;
+        height: 8px;
+        border: 1.5px solid var(--card);
+        z-index: 3;
+      }
+      .tl-tooltip .agent-presence { width: 6px; height: 6px; }
+
       .network-blurb,
       .posters-blurb {
         font-size: 14px;
@@ -804,11 +834,34 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
       }
-      function chip(id) {
+      function chip(id, presenceState, presenceLabel) {
         var key = ICONS[id] ? id : "unknown";
         var label = LABELS[key] || key;
-        return '<span class="agent-chip" data-tool="' + esc(key) + '" title="' + esc(label) + '">' +
-          ICONS[key] + '<span class="agent-chip-label">' + esc(label) + "</span></span>";
+        var state = presenceState === "active" ? "active" : "idle";
+        var tip = presenceLabel ? (label + " · " + presenceLabel) : label;
+        return '<span class="agent-chip" data-tool="' + esc(key) + '" data-presence="' + state + '" title="' + esc(tip) + '">' +
+          ICONS[key] + '<span class="agent-presence" aria-hidden="true"></span><span class="agent-chip-label">' + esc(label) + "</span></span>";
+      }
+      function parseToolPresence(raw) {
+        var map = {};
+        String(raw || "").split("|").forEach(function (bit) {
+          var s = bit.trim();
+          if (!s) return;
+          var eq = s.indexOf("=");
+          if (eq < 0) return;
+          var tool = s.slice(0, eq);
+          var rest = s.slice(eq + 1);
+          var colon = rest.indexOf(":");
+          if (colon < 0) {
+            map[tool] = { state: rest === "active" ? "active" : "idle", label: rest };
+          } else {
+            map[tool] = {
+              state: rest.slice(0, colon) === "active" ? "active" : "idle",
+              label: rest.slice(colon + 1)
+            };
+          }
+        });
+        return map;
       }
       function hide() { tip.hidden = true; tip.innerHTML = ""; }
       function show(btn, ev) {
@@ -817,6 +870,8 @@
         var toolsRaw = btn.getAttribute("data-tools") || "cli";
         var tools = toolsRaw.split(/[,]+/).map(function (t) { return t.trim(); }).filter(Boolean);
         if (!tools.length) tools = ["cli"];
+        var presenceMap = parseToolPresence(btn.getAttribute("data-tool-presence") || "");
+        var actorPresence = btn.getAttribute("data-presence-label") || "";
         var posts = btn.getAttribute("data-posts") || "0";
         var diffs = btn.getAttribute("data-diffs") || "0";
         var lastPost = btn.getAttribute("data-last-post") || "";
@@ -824,7 +879,10 @@
         var commit = btn.getAttribute("data-commit") || "";
         var when = "";
         try { when = lastAt ? new Date(lastAt).toLocaleString() : ""; } catch (e) { when = lastAt; }
-        var icons = tools.map(chip).join("");
+        var icons = tools.map(function (tid) {
+          var pr = presenceMap[tid] || { state: "idle", label: "idle · never" };
+          return chip(tid, pr.state, pr.label);
+        }).join("");
         var counts = posts + " post" + (posts === "1" ? "" : "s") + " · " + diffs + " diff" + (diffs === "1" ? "" : "s");
         var headBit = commit
           ? ("HEAD " + esc(commit) + " · " + esc(branch))
@@ -832,6 +890,7 @@
         tip.innerHTML =
           "<strong>" + esc(actor) + " · " + esc(branch) + "</strong>" +
           '<div class="tl-tip-icons" aria-label="agents">' + icons + "</div>" +
+          (actorPresence ? ('<div class="tl-tip-row"><b>Presence</b> ' + esc(actorPresence) + "</div>") : "") +
           '<div class="tl-tip-row"><b>On branch</b> ' + esc(counts) + "</div>" +
           '<div class="tl-tip-row"><b>Last</b> ' + esc(lastPost) + (when ? " · " + esc(when) : "") + "</div>" +
           '<div class="tl-tip-row"><b>Git</b> ' + headBit + "</div>" +
