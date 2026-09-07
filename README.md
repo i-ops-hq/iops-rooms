@@ -173,6 +173,10 @@ node src/cli.js live   # leave open — branch UI refreshes with posts
 
 Honest limit: **local git first**. Remotes/PRs are optional via `rooms scm-status` (uses `gh` when present; degrades cleanly if missing).
 
+## Agent icons on the timeline
+
+Hover an initial on the branch timeline for a compact tip: agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook, plus unknown), post·diff counts for that actor on that branch, last activity, and local HEAD when the lane is the current checkout. Icons are inline SVG — no CDN. Everything comes from `.room/events.jsonl` tool stamps, not live IDE telemetry. A light **Agents** strip lists tools seen in the room.
+
 ## Verified GitHub identity (optional)
 
 Solo can stay unsigned. Team leads can opt into verified mode — local only.

@@ -275,7 +275,74 @@ export function normalizeTool(tool) {
   if (raw.includes("mcp")) return "mcp";
   if (/git[-_]?hook|hook/.test(raw)) return "git-hook";
   if (/cli|terminal|shell/.test(raw)) return "cli";
-  return raw.slice(0, 24);
+  return "unknown";
+}
+
+/** Canonical agent/tool ids shown on the board. */
+export const TOOL_IDS = ["cursor", "claude", "codex", "mcp", "cli", "git-hook", "unknown"];
+
+export function toolLabel(tool) {
+  switch (normalizeTool(tool)) {
+    case "cursor":
+      return "Cursor";
+    case "claude":
+      return "Claude Code";
+    case "codex":
+      return "Codex";
+    case "mcp":
+      return "MCP";
+    case "cli":
+      return "CLI";
+    case "git-hook":
+      return "git-hook";
+    default:
+      return "unknown";
+  }
+}
+
+/** Compact self-contained SVG icons (no CDN). currentColor fill/stroke. */
+export function toolIconSvg(tool) {
+  const id = normalizeTool(tool);
+  const common = 'viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"';
+  switch (id) {
+    case "cursor":
+      return `<svg ${common}><path fill="currentColor" d="M3.2 2.1 12.6 7.4c.5.3.3 1.1-.3 1.2L8.4 9.3l1.7 4.2c.2.5-.4.9-.8.6L3 8.4c-.5-.4-.3-1.2.2-1.3l.2-.05Z"/></svg>`;
+    case "claude":
+      return `<svg ${common}><path fill="currentColor" d="M8 1.5 9.7 5.8 14.5 6.2 10.8 9.2 12.1 14 8 11.5 3.9 14 5.2 9.2 1.5 6.2 6.3 5.8Z"/></svg>`;
+    case "codex":
+      return `<svg ${common}><circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg>`;
+    case "mcp":
+      return `<svg ${common}><circle cx="4" cy="8" r="2" fill="currentColor"/><circle cx="12" cy="4.5" r="2" fill="currentColor"/><circle cx="12" cy="11.5" r="2" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.7 7.2 10.2 5.2M5.7 8.8 10.2 10.8"/></svg>`;
+    case "cli":
+      return `<svg ${common}><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.5 7 8l-3.5 3.5M8.5 12.5h4"/></svg>`;
+    case "git-hook":
+      return `<svg ${common}><circle cx="5" cy="4" r="1.7" fill="currentColor"/><circle cx="11" cy="8" r="1.7" fill="currentColor"/><circle cx="5" cy="12" r="1.7" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5 5.7v4.6M5 8h4.2"/></svg>`;
+    default:
+      return `<svg ${common}><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="11" text-anchor="middle" font-size="8" font-family="system-ui,sans-serif" fill="currentColor">?</text></svg>`;
+  }
+}
+
+function renderToolChip(tool) {
+  const id = normalizeTool(tool);
+  const label = toolLabel(id);
+  return `<span class="agent-chip" data-tool="${escapeHtml(id)}" title="${escapeHtml(label)}">${toolIconSvg(id)}<span class="agent-chip-label">${escapeHtml(label)}</span></span>`;
+}
+
+function renderAgentsStrip(events) {
+  const tools = new Set();
+  for (const ev of events || []) {
+    if (!ev || ev.type === "system") continue;
+    tools.add(normalizeTool(ev.tool));
+  }
+  const list = [...tools].sort((a, b) => {
+    const ia = TOOL_IDS.indexOf(a);
+    const ib = TOOL_IDS.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+  if (!list.length) return "";
+  return `<div class="agents-strip" aria-label="agents seen in room"><span class="agents-strip-label">Agents</span>${list
+    .map((t) => renderToolChip(t))
+    .join("")}</div>`;
 }
 
 function actorHue(name) {
@@ -334,6 +401,8 @@ export function buildTimelineModel(events, git = {}) {
         lastDiff: false,
         devices: new Set(),
         eventCount: 0,
+        postCount: 0,
+        diffCount: 0,
         verified: false,
         unverified: false,
         githubLogin: null,
@@ -341,6 +410,8 @@ export function buildTimelineModel(events, git = {}) {
       lane.actors.set(actorName, person);
     }
     person.eventCount += 1;
+    if (ev.type === "diff" || (ev.diff != null && ev.diff !== "")) person.diffCount += 1;
+    else person.postCount += 1;
     if (ev.tool) person.tools.add(normalizeTool(ev.tool));
     if (ev.deviceId) person.devices.add(ev.deviceId);
     {
@@ -401,6 +472,8 @@ export function buildTimelineModel(events, git = {}) {
         lastDiff: p.lastDiff,
         devices: [...p.devices],
         eventCount: p.eventCount,
+        postCount: p.postCount || 0,
+        diffCount: p.diffCount || 0,
         verified: Boolean(p.verified),
         unverified: Boolean(p.unverified),
         githubLogin: p.githubLogin || null,
@@ -454,15 +527,16 @@ function renderTimeline(events, git) {
       const curAttr = lane.isCurrent ? ' data-current="1"' : "";
       const avatars = lane.people
         .map((p) => {
-          const tools = p.tools.length ? p.tools.join(", ") : "cli";
+          const tools = p.tools.length ? p.tools.join(",") : "cli";
           const lastPost = p.lastText
             ? `${p.lastType}: ${p.lastText}`
             : "no post text";
           // No title= on the button — native browser tip would stack with .tl-tooltip.
           const aria = `${p.actor} on ${lane.name}`;
           const verify = posterVerifyKind(p);
+          // Tip icons are rendered client-side from data-tools; keep avatar chrome light.
           // No title= on .tl-verify — custom .tl-tooltip owns hover; native title stacks.
-          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
+          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-posts="${p.postCount}" data-diffs="${p.diffCount}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
         })
         .join("\n        ");
       const empty =
@@ -495,7 +569,7 @@ function renderTimeline(events, git) {
   return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
     <h2 class="timeline-heading">Timeline</h2>
-    <p class="timeline-note">Branches flow left→right in time. Initials float on the lane of their last room post. Hover an initial for agents/tools on that branch (from event <code>tool</code> stamps), last post / share-diff, and local HEAD when known. ${headBit}</p>
+    <p class="timeline-note">Branches flow left→right in time. Initials float on the lane of their last room post. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
   </div>
   <div class="timeline-scroll">
     <div class="timeline-canvas">
@@ -518,7 +592,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   let template = await readFile(TEMPLATE, "utf8");
   const projectDir = opts.projectDir || process.cwd();
   const git = await readGitSnapshot(projectDir);
-  const { actors, tools } = posterStats(events);
+  const { actors } = posterStats(events);
   // Non-system actors only — empty/system-only rooms show 0, not a fake "1 poster"
   const distinctPosters = actors.size;
   const postersLabel = String(distinctPosters);
@@ -529,15 +603,11 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
         ? "1 poster on this board."
         : `${distinctPosters} posters on this board.`;
 
-  const toolList = [...tools];
   const posterNames = [...actors.keys()];
-  let strip = "";
-  if (toolList.length >= 2) {
-    strip = `<div class="tools-strip" aria-label="tools that posted">${toolList
-      .map((t) => `<span class="tool-chip">${escapeHtml(t)}</span>`)
-      .join('<span class="dot-sep">·</span>')}</div>`;
-  } else if (distinctPosters >= 2) {
-    strip = `<div class="tools-strip" aria-label="posters">${posterNames
+  const agentsStrip = renderAgentsStrip(events);
+  let posterStrip = "";
+  if (distinctPosters >= 2) {
+    posterStrip = `<div class="tools-strip" aria-label="posters">${posterNames
       .map((n) => {
         const info = actors.get(n);
         const v = renderPosterVerifyChip(info);
@@ -550,8 +620,9 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     const info = actors.get(n);
     const v = renderPosterVerifyChip(info);
     const chip = v ? `${escapeHtml(n)} ${v}` : escapeHtml(n);
-    strip = `<div class="tools-strip" aria-label="posters"><span class="tool-chip">${chip}</span></div>`;
+    posterStrip = `<div class="tools-strip" aria-label="posters"><span class="tool-chip">${chip}</span></div>`;
   }
+  const strip = `${agentsStrip}${posterStrip}`;
 
   const network = meta.network || "off";
   const networkLabel = network === "off" ? "off" : network;

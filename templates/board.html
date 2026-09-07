@@ -385,6 +385,43 @@
         color: var(--ink-3);
         padding: 0 2px;
       }
+      .agents-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin: 0 0 14px;
+        font-size: 12px;
+        color: var(--ink-2);
+      }
+      .agents-strip-label {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        margin-right: 2px;
+      }
+      .agent-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--r-pill);
+        padding: 4px 10px 4px 8px;
+        color: var(--ink);
+        line-height: 1;
+      }
+      .agent-chip svg { display: block; flex: 0 0 auto; }
+      .agent-chip-label { font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+      .agent-chip[data-tool="cursor"] { color: #3d6bf3; }
+      .agent-chip[data-tool="claude"] { color: #c2643a; }
+      .agent-chip[data-tool="codex"] { color: #1a7f64; }
+      .agent-chip[data-tool="mcp"] { color: #7a5af8; }
+      .agent-chip[data-tool="cli"] { color: var(--ink-2); }
+      .agent-chip[data-tool="git-hook"] { color: #c44b6a; }
+      .agent-chip[data-tool="unknown"] { color: var(--ink-3); }
       .network-blurb,
       .posters-blurb {
         font-size: 14px;
@@ -660,7 +697,19 @@
       }
       .tl-tooltip[hidden] { display: none !important; }
       .tl-tooltip strong { display: block; font-family: var(--font-display); margin: 0 0 6px; }
-      .tl-tooltip .tl-tip-row { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; }
+      .tl-tooltip .tl-tip-icons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 2px 0 6px;
+      }
+      .tl-tooltip .tl-tip-icons .agent-chip {
+        padding: 3px 8px 3px 6px;
+        font-size: 11px;
+      }
+      .tl-tooltip .tl-tip-icons .agent-chip-label { font-size: 11px; }
+      .tl-tooltip .tl-tip-row { margin: 3px 0 0; color: var(--ink-2); font-size: 12px; }
+      .tl-tooltip .tl-tip-row b { color: var(--ink); font-weight: 600; }
       .tl-tooltip .tl-tip-meta {
         margin: 8px 0 0;
         font-family: var(--font-mono);
@@ -730,23 +779,63 @@
     (function () {
       var tip = document.getElementById("tl-tooltip");
       if (!tip) return;
+      var LABELS = {
+        cursor: "Cursor",
+        claude: "Claude Code",
+        codex: "Codex",
+        mcp: "MCP",
+        cli: "CLI",
+        "git-hook": "git-hook",
+        unknown: "unknown"
+      };
+      var ICONS = {
+        cursor: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3.2 2.1 12.6 7.4c.5.3.3 1.1-.3 1.2L8.4 9.3l1.7 4.2c.2.5-.4.9-.8.6L3 8.4c-.5-.4-.3-1.2.2-1.3l.2-.05Z"/></svg>',
+        claude: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 1.5 9.7 5.8 14.5 6.2 10.8 9.2 12.1 14 8 11.5 3.9 14 5.2 9.2 1.5 6.2 6.3 5.8Z"/></svg>',
+        codex: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg>',
+        mcp: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="4" cy="8" r="2" fill="currentColor"/><circle cx="12" cy="4.5" r="2" fill="currentColor"/><circle cx="12" cy="11.5" r="2" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.7 7.2 10.2 5.2M5.7 8.8 10.2 10.8"/></svg>',
+        cli: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.5 7 8l-3.5 3.5M8.5 12.5h4"/></svg>',
+        "git-hook": '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="5" cy="4" r="1.7" fill="currentColor"/><circle cx="11" cy="8" r="1.7" fill="currentColor"/><circle cx="5" cy="12" r="1.7" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5 5.7v4.6M5 8h4.2"/></svg>',
+        unknown: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="11" text-anchor="middle" font-size="8" font-family="system-ui,sans-serif" fill="currentColor">?</text></svg>'
+      };
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function chip(id) {
+        var key = ICONS[id] ? id : "unknown";
+        var label = LABELS[key] || key;
+        return '<span class="agent-chip" data-tool="' + esc(key) + '" title="' + esc(label) + '">' +
+          ICONS[key] + '<span class="agent-chip-label">' + esc(label) + "</span></span>";
+      }
       function hide() { tip.hidden = true; tip.innerHTML = ""; }
       function show(btn, ev) {
         var actor = btn.getAttribute("data-actor") || "";
         var branch = btn.getAttribute("data-branch") || "";
-        var tools = btn.getAttribute("data-tools") || "cli";
+        var toolsRaw = btn.getAttribute("data-tools") || "cli";
+        var tools = toolsRaw.split(/[,]+/).map(function (t) { return t.trim(); }).filter(Boolean);
+        if (!tools.length) tools = ["cli"];
+        var posts = btn.getAttribute("data-posts") || "0";
+        var diffs = btn.getAttribute("data-diffs") || "0";
         var lastPost = btn.getAttribute("data-last-post") || "";
         var lastAt = btn.getAttribute("data-last-at") || "";
         var commit = btn.getAttribute("data-commit") || "";
         var when = "";
         try { when = lastAt ? new Date(lastAt).toLocaleString() : ""; } catch (e) { when = lastAt; }
+        var icons = tools.map(chip).join("");
+        var counts = posts + " post" + (posts === "1" ? "" : "s") + " · " + diffs + " diff" + (diffs === "1" ? "" : "s");
+        var headBit = commit
+          ? ("HEAD " + esc(commit) + " · " + esc(branch))
+          : ("branch " + esc(branch) + " · HEAD only on current checkout");
         tip.innerHTML =
-          "<strong>" + actor + " · " + branch + "</strong>" +
-          '<div class="tl-tip-row"><b>Agents/tools</b> (room stamps): ' + tools + "</div>" +
-          '<div class="tl-tip-row"><b>Last post</b>: ' + lastPost + "</div>" +
-          (when ? '<div class="tl-tip-row"><b>When</b>: ' + when + "</div>" : "") +
-          '<div class="tl-tip-row"><b>Commit</b>: ' + (commit ? ("local HEAD " + commit) : "not on this Rooms event") + "</div>" +
-          '<div class="tl-tip-meta">From .room/events.jsonl — not IDE telemetry</div>';
+          "<strong>" + esc(actor) + " · " + esc(branch) + "</strong>" +
+          '<div class="tl-tip-icons" aria-label="agents">' + icons + "</div>" +
+          '<div class="tl-tip-row"><b>On branch</b> ' + esc(counts) + "</div>" +
+          '<div class="tl-tip-row"><b>Last</b> ' + esc(lastPost) + (when ? " · " + esc(when) : "") + "</div>" +
+          '<div class="tl-tip-row"><b>Git</b> ' + headBit + "</div>" +
+          '<div class="tl-tip-meta">From .room/events.jsonl — not live IDE</div>';
         tip.hidden = false;
         var x = (ev && ev.clientX != null) ? ev.clientX : 0;
         var y = (ev && ev.clientY != null) ? ev.clientY : 0;
