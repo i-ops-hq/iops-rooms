@@ -619,6 +619,50 @@
       }
       .tl-axis-mid { letter-spacing: 0.04em; }
 
+      /* ---- built by ---------------------------------------------------------------- */
+      .built-by { margin: 22px 0; }
+      .bb-heading { font-family: var(--font-display); font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+      .bb-note { color: var(--ink-3); font-size: 12px; margin: 0 0 12px; line-height: 1.5; }
+      .bb-agent-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+      .bb-agent {
+        display: inline-flex; align-items: center; gap: 7px;
+        font-family: var(--font-mono); font-size: 12px;
+        border: 1px solid var(--line); border-radius: var(--r-pill);
+        padding: 5px 12px 5px 9px; background: var(--card);
+      }
+      .bb-agent b { font-weight: 700; }
+      .bb-lines { color: var(--ink-3); font-size: 11px; }
+      .bb-swatch { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+      .bb-agent[data-family="claude"] .bb-swatch { background: var(--violet); }
+      .bb-agent[data-family="cursor"] .bb-swatch { background: var(--blue); }
+      .bb-agent[data-family="codex"] .bb-swatch { background: var(--green); }
+      .bb-agent[data-family="copilot"] .bb-swatch { background: var(--amber); }
+      .bb-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+      .bb-person {
+        display: grid; grid-template-columns: minmax(160px, 1.2fr) minmax(200px, 1fr) minmax(140px, 1fr);
+        gap: 10px; align-items: center;
+        border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--card);
+      }
+      .bb-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .bb-name { font-weight: 600; font-size: 13px; }
+      .bb-email { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+        overflow: hidden; text-overflow: ellipsis; }
+      .bb-stats { display: flex; flex-wrap: wrap; gap: 10px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-2); }
+      .bb-ins { color: var(--green); }
+      .bb-del { color: #c0392b; }
+      .bb-agents { display: flex; flex-wrap: wrap; gap: 5px; }
+      .bb-mini {
+        font-family: var(--font-mono); font-size: 10px; padding: 2px 7px;
+        border-radius: var(--r-pill); border: 1px solid var(--line); color: var(--ink-2);
+      }
+      .bb-mini[data-family="claude"] { border-color: var(--violet); color: var(--violet); }
+      .bb-mini[data-family="cursor"] { border-color: var(--blue); color: var(--blue); }
+      .bb-warn {
+        font-size: 12px; color: var(--ink-2); background: var(--bg-soft);
+        border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 12px 0 0; line-height: 1.55;
+      }
+      @media (max-width: 720px) { .bb-person { grid-template-columns: 1fr; } }
+
       /* ---- branch graph -------------------------------------------------------------
          Main is a rail across the whole span; every other branch splits off at its first
          post and rejoins at its last. A dot per post, and a light travelling each wire.
@@ -876,6 +920,7 @@
       </p>
       {{BRANCH_PANEL}}
       {{TIMELINE}}
+      {{BUILT_BY}}
       {{TOOLS_STRIP}}
       <div class="legend">
         <span class="lg" data-tone="note"><span class="dot"></span>note</span>

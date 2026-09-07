@@ -265,7 +265,17 @@ export async function refreshBoard(projectDir) {
   const paths = roomPaths(projectDir);
   const meta = await readMeta(projectDir);
   const events = await readEvents(projectDir);
-  await writeBoard(paths.board, meta, events, { projectDir });
+  // Git history is the project's own record and exists before Rooms is installed, so the board can
+  // answer "who built this" on the very first run. Failure is not fatal: a folder that is not a
+  // checkout still has a room, and the panel simply does not render.
+  let history = null;
+  try {
+    const { readHistoryGraph } = await import("./git-history.js");
+    history = await readHistoryGraph(projectDir);
+  } catch {
+    history = null;
+  }
+  await writeBoard(paths.board, meta, events, { projectDir, history });
   return paths.board;
 }
 

@@ -574,6 +574,86 @@ export function renderBranchGraph(model) {
 </figure>`;
 }
 
+/** Compact +/- pair. Line counts get large fast, and a wall of digits stops being readable. */
+function shortNum(n) {
+  const v = Number(n) || 0;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(v >= 10_000 ? 0 : 1)}k`;
+  return String(v);
+}
+
+/**
+ * Who built this project, read from git history rather than from room posts.
+ *
+ * The agent split comes from `Co-Authored-By` trailers, which Claude Code and Cursor already write
+ * — so a repo has this history before it ever hears of Rooms. A commit with no trailer is shown as
+ * the person's own, not as an unknown.
+ */
+export function renderBuiltBy(history) {
+  if (!history || !history.ok || !history.contributors?.length) return "";
+  const { agents, plain } = history.agents;
+  const totalShown = history.trunk.length + history.branches.reduce((n, b) => n + b.commits.length, 0);
+
+  const agentChips = agents
+    .map(
+      (a) =>
+        `<span class="bb-agent" data-family="${escapeHtml(a.id)}"><span class="bb-swatch" aria-hidden="true"></span>${escapeHtml(a.label)} <b>${a.commits}</b><span class="bb-lines">+${shortNum(a.insertions)} −${shortNum(a.deletions)}</span></span>`,
+    )
+    .join("");
+  const plainChip = plain
+    ? `<span class="bb-agent" data-family="human"><span class="bb-swatch" aria-hidden="true"></span>no agent recorded <b>${plain}</b></span>`
+    : "";
+
+  const people = history.contributors
+    .map((p) => {
+      const agentBits = p.agents.length
+        ? p.agents
+            .map((a) => `<span class="bb-mini" data-family="${escapeHtml(a.id)}">${escapeHtml(a.label)} ${a.commits}</span>`)
+            .join("")
+        : `<span class="bb-mini" data-family="human">no agent recorded</span>`;
+      const top = p.topAgent
+        ? `${escapeHtml(p.topAgent.label)} on ${p.topAgentPct}% of their attributed commits`
+        : "no agent recorded on any commit";
+      return `<li class="bb-person">
+  <div class="bb-who">
+    <span class="bb-name">${escapeHtml(p.name)}</span>
+    <span class="bb-email">${escapeHtml(p.email)}</span>
+  </div>
+  <div class="bb-stats">
+    <span><b>${p.commits - p.merges}</b> commits</span>
+    ${p.merges ? `<span title="git records no line changes for a merge">${p.merges} merge${p.merges === 1 ? "" : "s"}</span>` : ""}
+    <span class="bb-ins">+${shortNum(p.insertions)}</span>
+    <span class="bb-del">−${shortNum(p.deletions)}</span>
+    <span>${p.files} file touches</span>
+  </div>
+  <div class="bb-agents" title="${escapeHtml(top)}">${agentBits}</div>
+</li>`;
+    })
+    .join("");
+
+  // Two addresses under one name are usually one person and sometimes are not. Flagged, never
+  // merged on a guess — .mailmap is git's own answer and the reader is the one who should write it.
+  const split = (history.splitIdentities || [])
+    .map(
+      (s) =>
+        `<p class="bb-warn"><strong>${escapeHtml(s.name)}</strong> commits under ${s.emails.length} addresses — ${s.emails.map((e) => `<code>${escapeHtml(e)}</code>`).join(" and ")}. They are listed separately. A <code>.mailmap</code> merges them; guessing could merge two different people.</p>`,
+    )
+    .join("");
+
+  const truncated = history.truncated
+    ? `<p class="bb-note">Reading the newest ${totalShown} of ${history.total} commits. The rest are not counted in these figures.</p>`
+    : "";
+
+  return `<section class="built-by" aria-label="who built this project">
+  <h2 class="bb-heading">Built by</h2>
+  <p class="bb-note">From <strong>${history.total}</strong> commit${history.total === 1 ? "" : "s"} of git history — attribution comes from <code>Co-Authored-By</code> trailers the agents write themselves. Nothing is read from Cursor's or Claude's private state.</p>
+  <div class="bb-agent-row">${agentChips}${plainChip}</div>
+  <ul class="bb-people">${people}</ul>
+  ${split}
+  ${truncated}
+</section>`;
+}
+
 export function buildTimelineModel(events, git = {}, opts = {}) {
   const nonSystem = (events || []).filter((e) => e && e.type !== "system");
   const byBranch = new Map();
@@ -911,6 +991,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     "{{BRANCH}}": escapeHtml(branchLabel),
     "{{BRANCH_PANEL}}": renderBranchPanel(git, events),
     "{{TIMELINE}}": renderTimeline(events, git, presenceOpts),
+    "{{BUILT_BY}}": renderBuiltBy(opts.history),
     "{{TOOLS_STRIP}}": strip,
     "{{EVENTS}}": renderEvents(events),
   };
