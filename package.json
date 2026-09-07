@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "bin": {
-    "rooms": "./src/cli.js"
+    "rooms": "src/cli.js"
   },
   "exports": {
     ".": "./src/store.js"
@@ -38,7 +38,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/AshPlayer-1415/iops-rooms.git"
+    "url": "git+https://github.com/AshPlayer-1415/iops-rooms.git"
   },
   "bugs": {
     "url": "https://github.com/AshPlayer-1415/iops-rooms/issues"
