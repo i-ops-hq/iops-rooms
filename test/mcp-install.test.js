@@ -42,17 +42,17 @@ test("mergeMcpConfig keeps unrelated servers", () => {
       "iops-rooms": { command: "old", args: [] },
     },
   };
-  const { config, created } = mergeMcpConfig(existing, mcpServerEntry("0.3.0"));
+  const { config, created } = mergeMcpConfig(existing, mcpServerEntry("0.3.1"));
   assert.equal(created, false);
   assert.deepEqual(config.mcpServers.other, { command: "echo", args: ["hi"] });
   assert.deepEqual(config.mcpServers["iops-rooms"], {
     command: "npx",
-    args: ["-y", "iops-rooms@0.3.0", "mcp"],
+    args: ["-y", "iops-rooms@0.3.1", "mcp"],
   });
 });
 
 test("mergeMcpConfig creates mcpServers when missing", () => {
-  const { config, created } = mergeMcpConfig({}, mcpServerEntry("0.3.0"));
+  const { config, created } = mergeMcpConfig({}, mcpServerEntry("0.3.1"));
   assert.equal(created, true);
   assert.equal(config.mcpServers["iops-rooms"].command, "npx");
 });
@@ -61,9 +61,9 @@ test("installMcp writes mcp.json pinned to package version and copies skill", as
   const dir = await tmp();
   try {
     const ver = await resolvePinnedVersion();
-    assert.equal(ver, "0.3.0");
+    assert.equal(ver, "0.3.1");
     const result = await installMcp({ cwd: dir });
-    assert.equal(result.version, "0.3.0");
+    assert.equal(result.version, "0.3.1");
     assert.equal(result.fileExisted, false);
     assert.equal(result.serverCreated, true);
     assert.equal(result.skill.copied, true);
@@ -71,7 +71,7 @@ test("installMcp writes mcp.json pinned to package version and copies skill", as
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.deepEqual(body.mcpServers["iops-rooms"], {
       command: "npx",
-      args: ["-y", "iops-rooms@0.3.0", "mcp"],
+      args: ["-y", "iops-rooms@0.3.1", "mcp"],
     });
     const skill = await readFile(join(dir, ".cursor", "skills", "rooms", "SKILL.md"), "utf8");
     assert.match(skill, /Rooms by I-Ops/);

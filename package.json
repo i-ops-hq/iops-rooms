@@ -1,11 +1,12 @@
 {
   "name": "iops-rooms",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Rooms by I-Ops — local, inspectable shared rooms for agent sessions",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "rooms": "src/cli.js"
+    "rooms": "./src/cli.js",
+    "iops-rooms": "./src/cli.js"
   },
   "exports": {
     ".": "./src/store.js"
