@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { basename } from "node:path";
 
 const execFileAsync = promisify(execFile);
 
@@ -59,4 +60,23 @@ export async function resolveBranch(projectDir) {
   if (envBranch) return envBranch;
   const snap = await readGitSnapshot(projectDir);
   return snap.current || "";
+}
+
+/**
+ * Best-effort repo leaf name from origin URL or git toplevel basename.
+ * Never throws — empty string when not a git checkout.
+ */
+export async function resolveGitRepoName(projectDir) {
+  const url = await git(projectDir, ["remote", "get-url", "origin"]);
+  if (url) {
+    let leaf = url.trim().replace(/\.git$/i, "");
+    leaf = leaf.split(/[/:]/).filter(Boolean).pop() || "";
+    if (leaf && leaf !== "." && leaf !== "..") return leaf;
+  }
+  const top = await git(projectDir, ["rev-parse", "--show-toplevel"]);
+  if (top) {
+    const leaf = basename(top);
+    if (leaf && leaf !== "." && leaf !== "..") return leaf;
+  }
+  return "";
 }

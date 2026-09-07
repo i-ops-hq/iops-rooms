@@ -26,6 +26,7 @@ const HELP = `Rooms by I-Ops — local shared rooms for agent sessions
 
 Usage:
   rooms init [--name <n>] [--code <id>] [--share] [--mcp]
+             (name defaults to folder / git repo when omitted)
   rooms join <code> [--name <n>]
   rooms status
   rooms doctor
@@ -49,7 +50,7 @@ Usage:
   rooms hooks install [--force]
   rooms hooks uninstall
   rooms mcp
-  rooms mcp install
+  rooms mcp install   # Cursor + Claude Code + Codex (project-local)
   rooms auth github
   rooms auth gitlab
   rooms auth status
@@ -164,25 +165,26 @@ async function main() {
     if (sub === "install") {
       const { installMcp } = await import("./mcp-install.js");
       const result = await installMcp({ cwd: process.cwd() });
-      const verb = result.fileExisted
-        ? result.serverCreated
-          ? "merged"
-          : "updated"
-        : "wrote";
+      const clients = result.clients || {};
+      const label = (c) => {
+        if (!c) return "skipped";
+        if (!c.fileExisted) return "wrote";
+        return c.serverCreated ? "merged" : "updated";
+      };
       process.stdout.write(
-        `${verb}  ${result.mcpPath}\n` +
+        `cursor  ${label(clients.cursor)}  ${clients.cursor?.path || result.mcpPath}\n` +
+          `claude  ${label(clients.claude)}  ${clients.claude?.path || ""}\n` +
+          `codex   ${label(clients.codex)}  ${clients.codex?.path || ""}\n` +
           `server  ${result.serverKey}  npx -y iops-rooms@${result.version} mcp\n`,
       );
-      if (result.skill?.copied) {
-        process.stdout.write(`skill   ${result.skill.path}\n`);
-      } else if (result.skill?.note) {
-        process.stdout.write(`skill   skipped (${result.skill.note})\n`);
-      }
+      if (result.skills?.cursor?.copied) process.stdout.write(`skill   cursor  ${result.skills.cursor.path}\n`);
+      if (result.skills?.claude?.copied) process.stdout.write(`skill   claude  ${result.skills.claude.path}\n`);
+      if (result.skills?.codex?.note) process.stdout.write(`skill   codex   ${result.skills.codex.note}\n`);
       process.stdout.write(
         `(${result.note})\n` +
-          `Honest: Cursor picks up .cursor/mcp.json after MCP reload; ` +
-          `.cursor/skills/ is the project skill layout when Cursor skills are enabled. ` +
-          `Claude Code / Codex may need a user skill dir — see README.\n`,
+          `Honest: Cursor → .cursor/mcp.json + .cursor/skills/; ` +
+          `Claude Code → .mcp.json + .claude/skills/; ` +
+          `Codex → .codex/config.toml (trusted project; no SKILL.md). Local only — see README.\n`,
       );
       return;
     }
@@ -195,8 +197,9 @@ async function main() {
   }
 
   if (cmd === "init") {
+    const { normalizeRoomNameOpt } = await import("./store.js");
     const { projectDir, meta, created } = await initRoom({
-      name: argv.name,
+      name: normalizeRoomNameOpt(argv.name),
       code: argv.code,
       share: Boolean(argv.share),
     });
@@ -210,20 +213,22 @@ async function main() {
       const { installMcp } = await import("./mcp-install.js");
       const result = await installMcp({ cwd: projectDir });
       process.stdout.write(
-        `mcp     ${result.mcpPath} (iops-rooms@${result.version})\n`,
+        `mcp     cursor  ${result.clients?.cursor?.path || result.mcpPath}\n` +
+          `mcp     claude  ${result.clients?.claude?.path || ""}\n` +
+          `mcp     codex   ${result.clients?.codex?.path || ""} (iops-rooms@${result.version})\n`,
       );
-      if (result.skill?.copied) {
-        process.stdout.write(`skill   ${result.skill.path}\n`);
-      }
+      if (result.skills?.cursor?.copied) process.stdout.write(`skill   cursor  ${result.skills.cursor.path}\n`);
+      if (result.skills?.claude?.copied) process.stdout.write(`skill   claude  ${result.skills.claude.path}\n`);
     }
     return;
   }
 
   if (cmd === "join") {
     const code = rest[0] || argv.code;
+    const { normalizeRoomNameOpt } = await import("./store.js");
     const { projectDir, meta, created } = await joinRoom({
       code,
-      name: argv.name,
+      name: normalizeRoomNameOpt(argv.name),
     });
     const { board } = roomPaths(projectDir);
     process.stdout.write(

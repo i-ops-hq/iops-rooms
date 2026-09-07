@@ -1,6 +1,6 @@
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -10,6 +10,7 @@ import { runDoctor } from "../src/doctor.js";
 import {
   installMcp,
   mergeMcpConfig,
+  mergeCodexConfigToml,
   mcpServerEntry,
   resolvePinnedVersion,
 } from "../src/mcp-install.js";
@@ -57,7 +58,16 @@ test("mergeMcpConfig creates mcpServers when missing", () => {
   assert.equal(config.mcpServers["iops-rooms"].command, "npx");
 });
 
-test("installMcp writes mcp.json pinned to package version and copies skill", async () => {
+test("mergeCodexConfigToml upserts stdio block", () => {
+  const first = mergeCodexConfigToml("", mcpServerEntry("0.3.1"));
+  assert.match(first.text, /\[mcp_servers\.iops-rooms\]/);
+  assert.match(first.text, /iops-rooms@0\.3\.1/);
+  const second = mergeCodexConfigToml(first.text + "\n[other]\nx = 1\n", mcpServerEntry("0.3.1"));
+  assert.equal((second.text.match(/\[mcp_servers\.iops-rooms\]/g) || []).length, 1);
+  assert.match(second.text, /\[other\]/);
+});
+
+test("installMcp writes Cursor + Claude + Codex and copies skills", async () => {
   const dir = await tmp();
   try {
     const ver = await resolvePinnedVersion();
@@ -67,14 +77,23 @@ test("installMcp writes mcp.json pinned to package version and copies skill", as
     assert.equal(result.fileExisted, false);
     assert.equal(result.serverCreated, true);
     assert.equal(result.skill.copied, true);
+    assert.equal(result.clients.cursor.serverCreated, true);
+    assert.equal(result.clients.claude.serverCreated, true);
+    assert.equal(result.clients.codex.serverCreated, true);
 
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.deepEqual(body.mcpServers["iops-rooms"], {
       command: "npx",
       args: ["-y", "iops-rooms@0.3.1", "mcp"],
     });
+    const claude = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf8"));
+    assert.deepEqual(claude.mcpServers["iops-rooms"], body.mcpServers["iops-rooms"]);
+    const codex = await readFile(join(dir, ".codex", "config.toml"), "utf8");
+    assert.match(codex, /\[mcp_servers\.iops-rooms\]/);
     const skill = await readFile(join(dir, ".cursor", "skills", "rooms", "SKILL.md"), "utf8");
     assert.match(skill, /Rooms by I-Ops/);
+    const cskill = await readFile(join(dir, ".claude", "skills", "rooms", "SKILL.md"), "utf8");
+    assert.match(cskill, /Rooms by I-Ops/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -108,7 +127,9 @@ test("cli: rooms mcp install creates mcp.json", async () => {
   try {
     const out = await runCli(dir, ["mcp", "install"]);
     assert.equal(out.code, 0, out.stderr);
-    assert.match(out.stdout, /wrote|merged|updated/);
+    assert.match(out.stdout, /cursor/);
+    assert.match(out.stdout, /claude/);
+    assert.match(out.stdout, /codex/);
     assert.match(out.stdout, /iops-rooms@0\.3\.1/);
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.equal(body.mcpServers["iops-rooms"].command, "npx");
@@ -126,8 +147,24 @@ test("cli: rooms init --mcp installs MCP after init", async () => {
     assert.match(out.stdout, /mcp\s+/);
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.ok(body.mcpServers["iops-rooms"]);
+    assert.ok(JSON.parse(await readFile(join(dir, ".mcp.json"), "utf8")).mcpServers["iops-rooms"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("init without --name uses folder basename", async () => {
+  const parent = await tmp();
+  const dir = join(parent, "my-cool-project");
+  await mkdir(dir, { recursive: true });
+  try {
+    const { meta } = await initRoom({ cwd: dir });
+    assert.equal(meta.name, "my-cool-project");
+    const out = await runCli(dir, ["init"]);
+    assert.equal(out.code, 0, out.stderr);
+    assert.match(out.stdout, /already/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
   }
 });
 

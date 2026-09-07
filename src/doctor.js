@@ -49,6 +49,8 @@ function probePort(host, port, timeoutMs = 400) {
 async function checkMcpHint(cwd) {
   const candidates = [
     join(cwd, ".cursor", "mcp.json"),
+    join(cwd, ".mcp.json"),
+    join(cwd, ".codex", "config.toml"),
     join(cwd, ".vscode", "mcp.json"),
   ];
   for (const path of candidates) {
@@ -63,12 +65,13 @@ async function checkMcpHint(cwd) {
       return { ok: false, path, detail: "unreadable" };
     }
   }
-  return { ok: false, path: null, detail: "no .cursor/mcp.json (or .vscode) found" };
+  return { ok: false, path: null, detail: "no .cursor/mcp.json, .mcp.json, or .codex/config.toml found" };
 }
 
 async function checkSkillHint(cwd) {
   const candidates = [
     join(cwd, ".cursor", "skills", "rooms", "SKILL.md"),
+    join(cwd, ".claude", "skills", "rooms", "SKILL.md"),
     join(PKG_ROOT, "skills", "rooms", "SKILL.md"),
     join(cwd, "skills", "rooms", "SKILL.md"),
   ];
