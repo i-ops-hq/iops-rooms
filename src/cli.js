@@ -329,6 +329,24 @@ async function main() {
     return;
   }
 
+  if (cmd === "export-room") {
+    const dir = await requireRoomDir();
+    const out = rest[0] || "room-bundle";
+    const dest = await exportRoomBundle(dir, out);
+    process.stdout.write(`exported  ${dest}\n`);
+    return;
+  }
+
+  if (cmd === "import-room") {
+    const bundle = rest[0];
+    if (!bundle) throw new Error("usage: rooms import-room <bundle-dir>");
+    const result = await importRoomBundle(bundle, process.cwd());
+    process.stdout.write(
+      `imported  room ${result.meta.id}  ${result.meta.name}\nboard   ${result.projectDir}/.room/board.html\n`,
+    );
+    return;
+  }
+
   if (cmd === "export") {
     await exportMd(rest[0]);
     return;
