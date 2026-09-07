@@ -39,9 +39,29 @@ Individual first: prove one poster can init → post → see the board. Team lat
 
 Goal: agents **post as they work** via MCP — not only manual CLI notes.
 
-**This repo:** `.cursor/mcp.json` already runs `node src/mcp.js`. Copy `skills/rooms/SKILL.md` into the agent skill path. Reload MCP, run `rooms live`, leave the tab open.
+### One-command MCP install (tell an agent)
 
-**Other projects (npx):**
+Exact phrase you can paste to an agent:
+
+> Run `npx -y iops-rooms@0.2.0 mcp install` in this project
+
+Or, if the CLI is already on your PATH: `rooms mcp install`.
+
+That writes/merges `.cursor/mcp.json` (keeps unrelated MCP servers) and copies `skills/rooms/SKILL.md` → `.cursor/skills/rooms/SKILL.md`. Logs stay local in `.room/` — nothing is uploaded.
+
+Also: `rooms init --name "…" --mcp` inits the room then installs MCP in one step.
+
+**Hosts (light):**
+
+| Host | After install |
+|---|---|
+| **Cursor** | Reload MCP / restart agent. Project MCP comes from `.cursor/mcp.json`. Project skills under `.cursor/skills/` when Cursor skills are enabled. |
+| **Claude Code** | Point MCP at the same `npx … mcp` entry (or project mcp.json if your Claude setup reads it). Copy/link the skill into your Claude skill dir if you want the skill globally. |
+| **Codex** | Same MCP stdio command; skill path is host-specific — use the packaged `skills/rooms/SKILL.md` or the copied `.cursor/skills/` copy. |
+
+**This repo (dev):** `.cursor/mcp.json` already runs `node src/mcp.js` (local checkout). Other projects get the pinned npx entry from `mcp install`.
+
+Manual JSON (same as install writes):
 
 ```json
 {
@@ -131,6 +151,8 @@ Lists `.room/` under ~/Projects. Does not list browser chat windows.
 | rooms wait / export | Poll, markdown export |
 | rooms doctor | Diagnose empty / unhealthy rooms |
 | rooms hooks install / uninstall | Opt-in local git auto-post |
+| rooms mcp install | Write/merge `.cursor/mcp.json` + copy skill |
+| rooms init --mcp | Init room then MCP install |
 
 
 
@@ -204,7 +226,7 @@ Checks `.room/`, event counts, identity (actor / tool / deviceId), MCP config hi
 - Exit **2** — room exists but board is empty (WARN + next actions)
 - Exit **1** — no `.room/` (or hard failure)
 
-Empty boards usually mean nothing was posted yet — enable MCP, `rooms post "…"`, `rooms share-diff`, or `rooms hooks install`.
+Empty boards usually mean nothing was posted yet — `rooms mcp install`, `rooms post "…"`, `rooms share-diff`, or `rooms hooks install`.
 
 ## Git hooks (opt-in, local only)
 

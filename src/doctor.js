@@ -68,6 +68,7 @@ async function checkMcpHint(cwd) {
 
 async function checkSkillHint(cwd) {
   const candidates = [
+    join(cwd, ".cursor", "skills", "rooms", "SKILL.md"),
     join(PKG_ROOT, "skills", "rooms", "SKILL.md"),
     join(cwd, "skills", "rooms", "SKILL.md"),
   ];
@@ -108,7 +109,7 @@ export async function runDoctor({
   if (!roomOk) {
     severity = "fail";
     nextActions.push('rooms init --name "…"');
-    nextActions.push("Enable MCP (see .cursor/mcp.json) so agents can post_note");
+    nextActions.push("rooms mcp install   # one-command MCP + skill into .cursor/");
     nextActions.push('rooms post "…"');
     return summarize({ checks, severity, nextActions, projectDir: null, meta: null, events: [] });
   }
@@ -172,16 +173,17 @@ export async function runDoctor({
 
   if (empty) {
     severity = "warn";
-    nextActions.push("Enable MCP so Cursor/Claude can post_note / share_diff");
+    if (!mcp.ok) {
+      nextActions.push("rooms mcp install   # enable MCP so Cursor/Claude can post_note / share_diff");
+    }
     nextActions.push('rooms post "…"');
     nextActions.push("rooms share-diff --path <file> --note \"…\"");
     nextActions.push("rooms hooks install   # opt-in local git auto-post (not IDE telemetry)");
-    if (!mcp.ok) nextActions.push("Add .cursor/mcp.json mentioning iops-rooms (see README)");
     if (!liveOk) nextActions.push("rooms live   # optional live board on 127.0.0.1");
   } else {
     severity = "ok";
     if (!mcp.ok) {
-      nextActions.push("Optional: enable MCP so agents post without the CLI");
+      nextActions.push("Optional: rooms mcp install so agents post without the CLI");
     }
     if (!liveOk) {
       nextActions.push("Optional: rooms live for auto-updating board");

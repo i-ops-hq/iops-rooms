@@ -25,7 +25,7 @@ import {
 const HELP = `Rooms by I-Ops — local shared rooms for agent sessions
 
 Usage:
-  rooms init [--name <n>] [--code <id>] [--share]
+  rooms init [--name <n>] [--code <id>] [--share] [--mcp]
   rooms join <code> [--name <n>]
   rooms status
   rooms doctor
@@ -49,6 +49,7 @@ Usage:
   rooms hooks install [--force]
   rooms hooks uninstall
   rooms mcp
+  rooms mcp install
   rooms help
 
 One .room/ per project. Other AI windows are not scanned.
@@ -154,6 +155,35 @@ async function main() {
   }
 
   if (cmd === "mcp") {
+    const sub = rest[0];
+    if (sub === "install") {
+      const { installMcp } = await import("./mcp-install.js");
+      const result = await installMcp({ cwd: process.cwd() });
+      const verb = result.fileExisted
+        ? result.serverCreated
+          ? "merged"
+          : "updated"
+        : "wrote";
+      process.stdout.write(
+        `${verb}  ${result.mcpPath}\n` +
+          `server  ${result.serverKey}  npx -y iops-rooms@${result.version} mcp\n`,
+      );
+      if (result.skill?.copied) {
+        process.stdout.write(`skill   ${result.skill.path}\n`);
+      } else if (result.skill?.note) {
+        process.stdout.write(`skill   skipped (${result.skill.note})\n`);
+      }
+      process.stdout.write(
+        `(${result.note})\n` +
+          `Honest: Cursor picks up .cursor/mcp.json after MCP reload; ` +
+          `.cursor/skills/ is the project skill layout when Cursor skills are enabled. ` +
+          `Claude Code / Codex may need a user skill dir — see README.\n`,
+      );
+      return;
+    }
+    if (sub && sub !== "install") {
+      throw new Error("usage: rooms mcp | rooms mcp install");
+    }
     process.env.ROOMS_TOOL = process.env.ROOMS_TOOL || "mcp";
     await import("./mcp.js");
     return;
@@ -171,6 +201,16 @@ async function main() {
         ? `created ${meta.id}  ${meta.name}\nboard   ${board}\n`
         : `already ${meta.id}  ${meta.name}\nboard   ${board}\n`,
     );
+    if (argv.mcp) {
+      const { installMcp } = await import("./mcp-install.js");
+      const result = await installMcp({ cwd: projectDir });
+      process.stdout.write(
+        `mcp     ${result.mcpPath} (iops-rooms@${result.version})\n`,
+      );
+      if (result.skill?.copied) {
+        process.stdout.write(`skill   ${result.skill.path}\n`);
+      }
+    }
     return;
   }
 
