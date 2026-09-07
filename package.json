@@ -1,7 +1,7 @@
 {
   "name": "iops-rooms",
   "version": "0.1.1",
-  "description": "Rooms by I-Ops — local, inspectable shared rooms for agent sessions",
+  "description": "Rooms by I-Ops \u2014 local, inspectable shared rooms for agent sessions",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -38,11 +38,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AshPlayer-1415/iops-rooms.git"
+    "url": "git+https://github.com/i-ops-hq/iops-rooms.git"
   },
   "bugs": {
-    "url": "https://github.com/AshPlayer-1415/iops-rooms/issues"
+    "url": "https://github.com/i-ops-hq/iops-rooms/issues"
   },
-  "homepage": "https://github.com/AshPlayer-1415/iops-rooms#readme",
-  "mcpName": "io.github.AshPlayer-1415/iops-rooms"
+  "homepage": "https://github.com/i-ops-hq/iops-rooms#readme",
+  "mcpName": "io.github.i-ops-hq/iops-rooms"
 }
