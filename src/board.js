@@ -457,6 +457,123 @@ function parseAt(iso) {
  * Build branch lanes + per-(actor,branch) presence from Rooms events + local git.
  * Positions are honest: only .room event stamps, not IDE session data.
  */
+/** Branch graph geometry. Kept as constants so the SVG and the CSS agree on one set of numbers. */
+const GRAPH = { w: 1000, pad: 26, top: 30, gap: 34, maxLanes: 8, r: 3.4, glow: 8 };
+
+/** x for a 0-100 time position, inset so a dot at either end is not clipped. */
+function graphX(pct) {
+  return GRAPH.pad + (Math.max(0, Math.min(100, pct)) / 100) * (GRAPH.w - GRAPH.pad * 2);
+}
+
+/**
+ * A branch leaves main, runs its own line, and rejoins. Orthogonal with rounded corners rather
+ * than a free bezier — the same reasoning as the runtime architecture diagram: free curves between
+ * many nodes read as spaghetti, right angles with a radius read as a circuit.
+ */
+function branchPath(x1, x2, yMain, yLane) {
+  const r = Math.min(12, Math.max(4, (x2 - x1) / 4));
+  const dy = yLane > yMain ? 1 : -1;
+  const a = x1 + r;
+  const b = x2 - r;
+  if (b <= a) {
+    // Too short to route: a single spur down and back, so a one-post branch still reads as one.
+    const mid = (x1 + x2) / 2;
+    return `M${x1} ${yMain} Q${mid} ${yMain} ${mid} ${yLane} Q${mid} ${yMain} ${x2} ${yMain}`;
+  }
+  return (
+    `M${x1} ${yMain}` +
+    ` Q${a} ${yMain} ${a} ${yMain + r * dy}` +
+    ` L${a} ${yLane - r * dy}` +
+    ` Q${a} ${yLane} ${a + r} ${yLane}` +
+    ` L${b - r} ${yLane}` +
+    ` Q${b} ${yLane} ${b} ${yLane - r * dy}` +
+    ` L${b} ${yMain + r * dy}` +
+    ` Q${b} ${yMain} ${x2} ${yMain}`
+  );
+}
+
+/** One commit: a soft halo plus a solid core. Two circles rather than an SVG blur filter — same
+ *  look, no filter cost, and it still reads when the page is printed. */
+function graphDot(x, y, pt, hue) {
+  const kind = pt.isDiff ? "diff" : pt.type === "approved" ? "approved" : pt.type === "review_requested" ? "review" : "note";
+  const when = formatWhen(pt.at);
+  const tip = `${pt.actor}${pt.tool ? ` · ${pt.tool}` : ""} · ${kind}${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`;
+  return (
+    `<g class="bg-dot" data-kind="${escapeHtml(kind)}" style="--h: ${hue}">` +
+    `<title>${escapeHtml(tip)}</title>` +
+    `<circle class="bg-halo" cx="${x.toFixed(1)}" cy="${y}" r="${GRAPH.glow}"></circle>` +
+    `<circle class="bg-core" cx="${x.toFixed(1)}" cy="${y}" r="${GRAPH.r}"></circle>` +
+    `</g>`
+  );
+}
+
+/**
+ * The branch graph: main as a rail across the whole span, every other branch splitting off at its
+ * first post and rejoining at its last, a glowing dot per post, and a light travelling each wire.
+ *
+ * Positions come from the same 0-100 time axis the lane avatars use, so a dot and its avatar sit
+ * at the same x. Nothing here is invented: a branch with no posts has no line to draw.
+ */
+export function renderBranchGraph(model) {
+  const withPosts = (model.lanes || []).filter((l) => (l.points || []).length > 0);
+  if (!withPosts.length) return "";
+
+  const main = withPosts.find((l) => l.isMain) || null;
+  const others = withPosts.filter((l) => l !== main);
+  const shown = others.slice(0, GRAPH.maxLanes);
+  const dropped = others.length - shown.length;
+
+  const yMain = GRAPH.top;
+  const height = GRAPH.top + (shown.length + 1) * GRAPH.gap;
+
+  const mainRail =
+    `<g class="bg-branch" data-main="1" style="--h: ${main ? main.hue : 150}">` +
+    `<path class="bg-track" d="M${GRAPH.pad} ${yMain} L${GRAPH.w - GRAPH.pad} ${yMain}"></path>` +
+    `<path class="bg-pulse" d="M${GRAPH.pad} ${yMain} L${GRAPH.w - GRAPH.pad} ${yMain}"></path>` +
+    `</g>`;
+
+  const branches = shown
+    .map((lane, i) => {
+      const yLane = yMain + (i + 1) * GRAPH.gap;
+      const x1 = graphX(lane.firstPct);
+      const x2 = graphX(lane.lastPct);
+      const d = branchPath(x1, x2, yMain, yLane);
+      const cur = lane.isCurrent ? ' data-current="1"' : "";
+      return (
+        `<g class="bg-branch"${cur} style="--h: ${lane.hue}; --delay: ${(i * 0.5).toFixed(2)}s">` +
+        `<title>${escapeHtml(lane.name)} · ${lane.eventCount} post${lane.eventCount === 1 ? "" : "s"}</title>` +
+        `<path class="bg-track" d="${d}"></path>` +
+        `<path class="bg-pulse" d="${d}"></path>` +
+        `<text class="bg-label" x="${GRAPH.pad}" y="${yLane - 8}">${escapeHtml(shortBranch(lane.name, 26))}</text>` +
+        lane.points.map((pt) => graphDot(graphX(pt.pct), yLane, pt, lane.hue)).join("") +
+        `</g>`
+      );
+    })
+    .join("");
+
+  const mainDots = main
+    ? `<g class="bg-branch" data-main="1" style="--h: ${main.hue}">` +
+      `<text class="bg-label bg-label-main" x="${GRAPH.pad}" y="${yMain - 12}">${escapeHtml(shortBranch(main.name, 26))}</text>` +
+      main.points.map((pt) => graphDot(graphX(pt.pct), yMain, pt, main.hue)).join("") +
+      `</g>`
+    : "";
+
+  // A dropped branch is a branch the reader cannot see. Say so rather than quietly drawing eight.
+  const more = dropped > 0
+    ? `<p class="bg-more">${dropped} more branch${dropped === 1 ? "" : "es"} not drawn — the list below has all of them.</p>`
+    : "";
+
+  return `<figure class="branch-graph">
+  <svg viewBox="0 0 ${GRAPH.w} ${height}" preserveAspectRatio="xMidYMid meet" role="img"
+       aria-label="Branch graph: ${withPosts.length} branch${withPosts.length === 1 ? "" : "es"} over time, one dot per post">
+    ${mainRail}
+    ${branches}
+    ${mainDots}
+  </svg>
+  ${more}
+</figure>`;
+}
+
 export function buildTimelineModel(events, git = {}, opts = {}) {
   const nonSystem = (events || []).filter((e) => e && e.type !== "system");
   const byBranch = new Map();
@@ -478,10 +595,20 @@ export function buildTimelineModel(events, git = {}, opts = {}) {
         eventCount: 0,
         lastAt: "",
         tools: new Set(),
+        points: [],
       };
       byBranch.set(b, lane);
     }
     lane.eventCount += 1;
+    lane.points.push({
+      t,
+      at: ev.at || "",
+      actor: ev.actor || "unknown",
+      tool: ev.tool ? normalizeTool(ev.tool) : "",
+      type: ev.type || "note",
+      isDiff: ev.type === "diff" || (ev.diff != null && ev.diff !== ""),
+      text: String(ev.text || "").slice(0, 120),
+    });
     if (ev.tool) lane.tools.add(normalizeTool(ev.tool));
     if (!lane.lastAt || (ev.at && ev.at > lane.lastAt)) lane.lastAt = ev.at || "";
 
@@ -582,6 +709,16 @@ export function buildTimelineModel(events, git = {}, opts = {}) {
       };
     });
     people.sort((a, b) => (a.lastAt || "").localeCompare(b.lastAt || ""));
+
+    const span = tMax - tMin;
+    const points = (info.points || [])
+      .map((pt) => ({
+        ...pt,
+        // Same 0-100 axis the avatars sit on, so a dot and its avatar line up.
+        pct: pt.t == null || !(span > 0) ? 50 : Math.max(1, Math.min(99, ((pt.t - tMin) / span) * 100)),
+      }))
+      .sort((a, b) => a.pct - b.pct);
+
     return {
       name,
       isMain: isMainBranch(name),
@@ -589,6 +726,9 @@ export function buildTimelineModel(events, git = {}, opts = {}) {
       eventCount: info.eventCount,
       tools: [...info.tools].sort(),
       people,
+      points,
+      firstPct: points.length ? points[0].pct : null,
+      lastPct: points.length ? points[points.length - 1].pct : null,
       hue: branchHue(name),
     };
   });
@@ -698,6 +838,7 @@ function renderTimeline(events, git, opts = {}) {
         <span class="tl-axis-mid">time →</span>
         <span>${t1}</span>
       </div>
+${renderBranchGraph(model)}
       <div class="tl-lanes">
 ${lanesHtml}
       </div>

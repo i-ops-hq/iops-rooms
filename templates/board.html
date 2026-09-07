@@ -618,6 +618,88 @@
         padding-left: 148px;
       }
       .tl-axis-mid { letter-spacing: 0.04em; }
+
+      /* ---- branch graph -------------------------------------------------------------
+         Main is a rail across the whole span; every other branch splits off at its first
+         post and rejoins at its last. A dot per post, and a light travelling each wire.
+
+         The wire-and-travelling-light treatment is lifted from the I-Ops runtime
+         architecture diagram: a dim static track, plus the SAME path drawn again with a
+         short dash and an animated dash offset, so one segment reads as a light moving
+         along a connector. Two circles make the glow rather than an SVG blur filter —
+         same look, no filter cost, and it survives printing. */
+      .branch-graph { margin: 4px 0 14px; }
+      .branch-graph svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        overflow: visible;
+      }
+      .bg-track {
+        fill: none;
+        stroke: hsl(var(--h, 210) 45% 55%);
+        stroke-width: 1.4;
+        opacity: 0.32;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vector-effect: non-scaling-stroke;
+      }
+      .bg-pulse {
+        fill: none;
+        stroke: hsl(var(--h, 210) 70% 52%);
+        stroke-width: 2.1;
+        opacity: 0.9;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vector-effect: non-scaling-stroke;
+        stroke-dasharray: 26 2000;
+        animation: bg-travel 4.2s linear infinite;
+        animation-delay: var(--delay, 0s);
+      }
+      @keyframes bg-travel {
+        from { stroke-dashoffset: 2026; }
+        to { stroke-dashoffset: 0; }
+      }
+      .bg-branch[data-main="1"] .bg-track { stroke: var(--green); opacity: 0.4; }
+      .bg-branch[data-main="1"] .bg-pulse { stroke: var(--green); }
+      .bg-branch[data-current="1"] .bg-track { opacity: 0.6; stroke-width: 1.8; }
+
+      .bg-halo {
+        fill: hsl(var(--h, 210) 70% 52%);
+        opacity: 0.16;
+      }
+      .bg-core {
+        fill: hsl(var(--h, 210) 65% 46%);
+        stroke: var(--bg);
+        stroke-width: 1.4;
+      }
+      .bg-branch[data-main="1"] .bg-halo { fill: var(--green); }
+      .bg-branch[data-main="1"] .bg-core { fill: var(--green); }
+      /* A diff is a heavier event than a note, and the dot says so without a legend. */
+      .bg-dot[data-kind="diff"] .bg-core { fill: var(--violet); }
+      .bg-dot[data-kind="diff"] .bg-halo { fill: var(--violet); }
+      .bg-dot[data-kind="approved"] .bg-core { fill: var(--green); }
+      .bg-dot[data-kind="review"] .bg-core { fill: var(--amber); }
+      .bg-dot[data-kind="review"] .bg-halo { fill: var(--amber); }
+      .bg-dot { cursor: default; }
+      .bg-dot:hover .bg-halo { opacity: 0.34; }
+
+      .bg-label {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        fill: var(--ink-3);
+        letter-spacing: 0.02em;
+      }
+      .bg-label-main { fill: var(--green); }
+      .bg-more {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--ink-3);
+        margin: 6px 0 0;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bg-pulse { animation: none; stroke-dasharray: none; opacity: 0.45; }
+      }
       .tl-lanes { display: flex; flex-direction: column; gap: 10px; }
       .tl-lane {
         display: grid;
