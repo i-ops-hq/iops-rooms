@@ -115,6 +115,7 @@ test("board HTML includes timeline lane markers and initials", async () => {
     assert.match(html, /data-branch="master"/);
     assert.match(html, /data-branch="board-timeline-viz"/);
     assert.match(html, /class="tl-avatar"/);
+    assert.doesNotMatch(html, /class="tl-avatar"[^>]*\stitle=/);
     assert.match(html, />AS</); // Ashwinth initials
     assert.match(html, />ST</); // Steve initials
     assert.match(html, /Agents\/tools/);

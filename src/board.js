@@ -388,21 +388,9 @@ function renderTimeline(events, git) {
           const lastPost = p.lastText
             ? `${p.lastType}: ${p.lastText}`
             : "no post text";
-          const lastWhen = p.lastAt ? formatWhen(p.lastAt) : "—";
-          const commitLine =
-            lane.isCurrent && model.head
-              ? `Last known local HEAD: ${model.head}`
-              : "No commit SHA on this Rooms event (board uses room posts, not IDE git).";
-          const tip = [
-            `${p.actor} on ${lane.name}`,
-            `Agents/tools (from room posts): ${tools}`,
-            `Last activity: ${lastWhen}`,
-            `Last post: ${lastPost}${p.lastDiff ? " · includes share-diff" : ""}`,
-            commitLine,
-            "Source: .room/events.jsonl — not live IDE telemetry.",
-          ].join("\n");
-          const aria = `${p.actor} on ${lane.name}; tools ${tools}; last ${lastWhen}`;
-          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" title="${escapeHtml(tip)}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span></button>`;
+          // No title= on the button — native browser tip would stack with .tl-tooltip.
+          const aria = `${p.actor} on ${lane.name}`;
+          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span></button>`;
         })
         .join("\n        ");
       const empty =
