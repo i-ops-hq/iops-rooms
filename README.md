@@ -48,7 +48,7 @@ Goal: agents **post as they work** via MCP — not only manual CLI notes.
   "mcpServers": {
     "iops-rooms": {
       "command": "npx",
-      "args": ["-y", "iops-rooms@0.1.1", "mcp"]
+      "args": ["-y", "iops-rooms@0.2.0", "mcp"]
     }
   }
 }
@@ -96,12 +96,12 @@ Copy `skills/rooms/SKILL.md` into a user skill dir if you want it globally.
 Published on npm (MIT). Pin the version — do not use `@latest`.
 
 ```bash
-npm i -g iops-rooms@0.1.1
+npm i -g iops-rooms@0.2.0
 # or one-shot:
-npx -y iops-rooms@0.1.1 help
-npx -y iops-rooms@0.1.1 init --name homework
-npx -y iops-rooms@0.1.1 post "starting"
-npx -y iops-rooms@0.1.1 live
+npx -y iops-rooms@0.2.0 help
+npx -y iops-rooms@0.2.0 init --name homework
+npx -y iops-rooms@0.2.0 post "starting"
+npx -y iops-rooms@0.2.0 live
 ```
 
 From a git checkout of this repo you can still run `node src/cli.js …` (see CLI vs MCP above).
