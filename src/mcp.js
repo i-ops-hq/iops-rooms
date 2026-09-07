@@ -99,6 +99,17 @@ const TOOLS = [
     },
   },
   {
+    name: "doctor",
+    description:
+      "Diagnose the local room: .room/ present?, event count, identity, MCP/skill hints, live port. Explains empty boards and next actions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        port: { type: "number", description: "Live board port to probe (default 7840)" },
+      },
+    },
+  },
+  {
     name: "wait_for_peer",
     description:
       "Wait until a new event appears after since (ISO time), or timeout_ms (default 15000).",
@@ -203,6 +214,14 @@ async function callTool(name, args = {}) {
       const slice = events.slice(-limit);
       return textResult(JSON.stringify(slice, null, 2));
     }
+    case "doctor": {
+      const { runDoctor } = await import("./doctor.js");
+      const report = await runDoctor({
+        cwd: process.cwd(),
+        livePort: args.port,
+      });
+      return textResult(report.format());
+    }
     case "wait_for_peer":
       return waitForPeer(args);
     default:
@@ -217,7 +236,7 @@ async function handle(msg) {
     return ok(id, {
       protocolVersion: params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "iops-rooms", version: "0.1.0" },
+      serverInfo: { name: "iops-rooms", version: "0.1.1" },
     });
   }
   if (method === "notifications/initialized" || method === "initialized") {

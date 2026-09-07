@@ -119,6 +119,14 @@ test("source does not open the network", async () => {
       assert.doesNotMatch(src, /0\.0\.0\.0/);
       continue;
     }
+    // doctor.js may probe 127.0.0.1 via node:net (soft check only)
+    if (f === "doctor.js") {
+      assert.match(src, /127\.0\.0\.1/);
+      assert.doesNotMatch(src, /0\.0\.0\.0/);
+      assert.doesNotMatch(src, /from ["']node:http/);
+      assert.doesNotMatch(src, /\bfetch\s*\(/);
+      continue;
+    }
     assert.doesNotMatch(src, /from ["']node:http/);
     assert.doesNotMatch(src, /from ["']node:net/);
   }

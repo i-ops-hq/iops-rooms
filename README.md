@@ -27,9 +27,11 @@ Individual first: prove one poster can init → post → see the board. Team lat
 **What does NOT auto-happen**
 
 - Rooms does **not** magically sync the whole repo.
-- It does **not** watch every save or `git commit`.
-- Unposted edits stay invisible to the room until someone `post`s a note or `share-diff`s a patch.
+- It does **not** watch every save by default.
+- Git commits auto-post **only** if you opt in with `rooms hooks install` (local hooks — not IDE telemetry).
+- Unposted edits stay invisible to the room until someone `post`s a note, `share-diff`s a patch, or an installed hook fires.
 - Network stays **off** for solo; team “own devices” sync is a later slice — still not I-Ops cloud.
+- Still **not** full IDE telemetry — agents only appear when MCP is enabled and they post.
 
 
 
@@ -46,7 +48,7 @@ Goal: agents **post as they work** via MCP — not only manual CLI notes.
   "mcpServers": {
     "iops-rooms": {
       "command": "npx",
-      "args": ["-y", "iops-rooms@0.1.0", "mcp"]
+      "args": ["-y", "iops-rooms@0.1.1", "mcp"]
     }
   }
 }
@@ -93,12 +95,12 @@ Copy `skills/rooms/SKILL.md` into a user skill dir if you want it globally.
 Published on npm (MIT). Pin the version — do not use `@latest`.
 
 ```bash
-npm i -g iops-rooms@0.1.0
+npm i -g iops-rooms@0.1.1
 # or one-shot:
-npx -y iops-rooms@0.1.0 help
-npx -y iops-rooms@0.1.0 init --name homework
-npx -y iops-rooms@0.1.0 post "starting"
-npx -y iops-rooms@0.1.0 live
+npx -y iops-rooms@0.1.1 help
+npx -y iops-rooms@0.1.1 init --name homework
+npx -y iops-rooms@0.1.1 post "starting"
+npx -y iops-rooms@0.1.1 live
 ```
 
 From a git checkout of this repo you can still run `node src/cli.js …` (see CLI vs MCP above).
@@ -126,6 +128,8 @@ Lists `.room/` under ~/Projects. Does not list browser chat windows.
 | rooms share-diff | Diff on disk (stamped actor/tool/device) |
 | rooms request-review / approve | Audit |
 | rooms wait / export | Poll, markdown export |
+| rooms doctor | Diagnose empty / unhealthy rooms |
+| rooms hooks install / uninstall | Opt-in local git auto-post |
 
 
 
@@ -183,7 +187,41 @@ node src/cli.js post "hello live"
 
 Binds **127.0.0.1 only**. No internet. No I-Ops phone-home. Multi-poster / devices-only copy unchanged.
 
+## Doctor (empty boards)
+
+If the board looks empty, diagnose:
+
+```bash
+node src/cli.js doctor
+# or after install:
+rooms doctor
+```
+
+Checks `.room/`, event counts, identity (actor / tool / deviceId), MCP config hints (`.cursor/mcp.json`), skill path, and optionally whether `127.0.0.1:7840` is up.
+
+- Exit **0** — healthy (has non-system posts)
+- Exit **2** — room exists but board is empty (WARN + next actions)
+- Exit **1** — no `.room/` (or hard failure)
+
+Empty boards usually mean nothing was posted yet — enable MCP, `rooms post "…"`, `rooms share-diff`, or `rooms hooks install`.
+
+## Git hooks (opt-in, local only)
+
+Never auto-installed. Local git hooks only — **not** IDE telemetry, not I-Ops cloud.
+
+```bash
+rooms hooks install          # post-commit + post-checkout
+rooms hooks install --force  # overwrite foreign hooks (backs them up)
+rooms hooks uninstall
+```
+
+- **post-commit** — short note: commit subject + short hash + `git show --stat` summary (secrets-looking paths redacted)
+- **post-checkout** — short note when the branch changes
+
+Hooks call this package's `src/cli.js` via an absolute Node path baked into the hook script. Tool stamp: `git-hook`.
+
 ## Smoke
+
 Same commands as the Individual vs team table above.
 
 ## Files
@@ -201,4 +239,4 @@ See SECURITY.md. Source has no HTTP client.
 
 ## Not this release
 
-Hosted relay, seats, SSO, own model. No auto-watch. No whole-tree sync.
+Hosted relay, seats, SSO, own model. No whole-tree sync. No full IDE telemetry — hooks are opt-in git only.

@@ -28,6 +28,7 @@ Usage:
   rooms init [--name <n>] [--code <id>] [--share]
   rooms join <code> [--name <n>]
   rooms status
+  rooms doctor
   rooms rename <name>
   rooms open
   rooms live [--port 7840]
@@ -45,11 +46,14 @@ Usage:
   rooms import-room <dir>
   rooms whoami
   rooms index [--open]
+  rooms hooks install [--force]
+  rooms hooks uninstall
   rooms mcp
   rooms help
 
 One .room/ per project. Other AI windows are not scanned.
 Cursor/Claude Code only show up if the Rooms MCP is installed and they post.
+Hooks are local opt-in only — never auto-installed; not IDE telemetry.
 `;
 
 function args(argv) {
@@ -339,6 +343,45 @@ async function main() {
     process.stdout.write(`${h.status}  ${h.message}\n`);
     for (const step of h.steps) process.stdout.write(`- ${step}\n`);
     return;
+  }
+
+  if (cmd === "doctor") {
+    const { runDoctor } = await import("./doctor.js");
+    const report = await runDoctor({
+      cwd: process.cwd(),
+      livePort: argv.port || undefined,
+    });
+    process.stdout.write(report.format());
+    process.exitCode = report.exitCode;
+    return;
+  }
+
+  if (cmd === "hooks") {
+    const sub = rest[0] || "";
+    const { installHooks, uninstallHooks } = await import("./hooks.js");
+    if (sub === "install") {
+      const result = await installHooks({
+        cwd: process.cwd(),
+        force: Boolean(argv.force),
+      });
+      process.stdout.write(
+        `installed hooks in ${result.hooksDir}\n` +
+          result.written.map((p) => `  ${p}\n`).join("") +
+          `node  ${result.nodeBin}\ncli   ${result.cliPath}\n` +
+          `(local opt-in only — not IDE telemetry; uninstall: rooms hooks uninstall)\n`,
+      );
+      return;
+    }
+    if (sub === "uninstall") {
+      const result = await uninstallHooks({ cwd: process.cwd() });
+      process.stdout.write(
+        result.removed.length
+          ? `removed:\n${result.removed.map((p) => `  ${p}`).join("\n")}\n`
+          : "no Rooms hooks to remove\n",
+      );
+      return;
+    }
+    throw new Error("usage: rooms hooks install [--force] | rooms hooks uninstall");
   }
 
   if (cmd === "export-room") {
