@@ -243,14 +243,16 @@ test("index scans and writes a page without touching the real home", async () =>
     const home = await mkdtemp(join(tmpdir(), "iops-rooms-idxhome-"));
     try {
       // Listing is the default; writing the page is gated behind --open, as the README shows.
-      const listed = await run(dir, ["index"], { HOME: home });
+      // os.homedir() reads USERPROFILE on Windows and HOME elsewhere — set both, or the
+      // test writes into the real home on one platform and passes for the wrong reason.
+      const listed = await run(dir, ["index"], { HOME: home, USERPROFILE: home });
       assert.equal(listed.code, 0, listed.err);
       await assert.rejects(
         () => readFile(join(home, ".iops-rooms", "index.html"), "utf8"),
         "plain `index` lists without writing a page",
       );
 
-      const r = await run(dir, ["index", "--open"], { HOME: home });
+      const r = await run(dir, ["index", "--open"], { HOME: home, USERPROFILE: home });
       assert.equal(r.code, 0, r.err);
       const page = await readFile(join(home, ".iops-rooms", "index.html"), "utf8");
       assert.ok(page.length > 100, "a page was written");
