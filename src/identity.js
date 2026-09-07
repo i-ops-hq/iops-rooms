@@ -105,17 +105,29 @@ export function identitySync() {
 }
 
 /**
- * Verified GitHub identity (local only). Does not upload room events.
+ * Verified SCM identity (local only). Does not upload room events.
  * Layout under ~/.iops-rooms/ (or $ROOMS_HOME):
- *   identity.json  — login, id, email, createdAt, publicKey, deviceId
+ *   identity.json  — github and/or gitlab claim, createdAt, publicKey, deviceId
  *   device.key     — ed25519 private key (mode 0600)
  */
 export async function loadVerifiedIdentity() {
   try {
     const raw = await readFile(identityFilePath(), "utf8");
     const data = JSON.parse(raw);
-    if (!data?.github?.login || !data?.publicKey) return null;
+    if (!data?.publicKey) return null;
+    const hasGithub = Boolean(data?.github?.login);
+    const hasGitlab = Boolean(data?.gitlab?.username);
+    if (!hasGithub && !hasGitlab) return null;
     return data;
+  } catch {
+    return null;
+  }
+}
+
+async function loadVerifiedIdentityRaw() {
+  try {
+    const raw = await readFile(identityFilePath(), "utf8");
+    return JSON.parse(raw);
   } catch {
     return null;
   }
@@ -152,29 +164,64 @@ async function writePrivateKey(pem) {
 
 /**
  * Install a local verified identity (used by device-flow success + test fixtures).
- * Does not hit the network.
+ * Does not hit the network. Preserves the other provider when adding github/gitlab.
+ * Reuses existing ed25519 keypair when present so dual-provider stamps stay coherent.
  */
 export async function saveVerifiedIdentity({
-  login,
+  login = null,
+  gitlabUsername = null,
   id,
   email = null,
   deviceId = null,
   createdAt = null,
+  provider = null,
 } = {}) {
-  if (!login) throw new Error("verified identity needs github login");
+  const prov =
+    provider ||
+    (gitlabUsername && !login ? "gitlab" : login ? "github" : null);
+  if (prov === "github" && !login) throw new Error("verified identity needs github login");
+  if (prov === "gitlab" && !gitlabUsername && !login) {
+    throw new Error("verified identity needs gitlab username");
+  }
+  if (!prov) throw new Error("verified identity needs github login or gitlab username");
+
   const idn = await loadIdentity();
-  const pair = generateEd25519Pair();
-  await writePrivateKey(pair.privateKeyPem);
+  const existing = await loadVerifiedIdentityRaw();
+  let publicKeyPem;
+  let privateKeyPem;
+  if (existing?.publicKey && (await exists(privateKeyPath()))) {
+    publicKeyPem = existing.publicKey;
+    privateKeyPem = await readPrivateKeyPem();
+  } else {
+    const pair = generateEd25519Pair();
+    publicKeyPem = pair.publicKeyPem;
+    privateKeyPem = pair.privateKeyPem;
+    await writePrivateKey(privateKeyPem);
+  }
+
   const record = {
-    github: {
+    deviceId: deviceId || existing?.deviceId || idn.deviceId,
+    publicKey: publicKeyPem,
+    createdAt: createdAt || existing?.createdAt || new Date().toISOString(),
+  };
+  if (existing?.github?.login) record.github = { ...existing.github };
+  if (existing?.gitlab?.username) record.gitlab = { ...existing.gitlab };
+
+  if (prov === "github") {
+    record.github = {
       login: String(login),
       id: id != null ? Number(id) || String(id) : null,
       email: email || null,
-    },
-    deviceId: deviceId || idn.deviceId,
-    publicKey: pair.publicKeyPem,
-    createdAt: createdAt || new Date().toISOString(),
-  };
+    };
+  } else {
+    const username = String(gitlabUsername || login);
+    record.gitlab = {
+      username,
+      id: id != null ? Number(id) || String(id) : null,
+      email: email || null,
+    };
+  }
+
   await mkdir(roomsHomeDir(), { recursive: true });
   await writeFile(identityFilePath(), `${JSON.stringify(record, null, 2)}\n`, "utf8");
   return record;
@@ -182,7 +229,18 @@ export async function saveVerifiedIdentity({
 
 /** Test helper: mint a signed-ready fixture identity without GitHub. */
 export async function installFixtureIdentity(opts = {}) {
+  if (opts.provider === "gitlab" || opts.gitlabUsername) {
+    return saveVerifiedIdentity({
+      provider: "gitlab",
+      gitlabUsername: opts.gitlabUsername || opts.login || "fixture-gitlab",
+      id: opts.id ?? 4242,
+      email: opts.email ?? "fixture@example.com",
+      deviceId: opts.deviceId,
+      createdAt: opts.createdAt,
+    });
+  }
   return saveVerifiedIdentity({
+    provider: "github",
     login: opts.login || "fixture-user",
     id: opts.id ?? 4242,
     email: opts.email ?? "fixture@example.com",
@@ -195,7 +253,11 @@ export async function readPrivateKeyPem() {
   return readFile(privateKeyPath(), "utf8");
 }
 
-/** Canonical bytes for signing: stable field order, text hashed. */
+/**
+ * Canonical bytes for signing: stable field order, text hashed.
+ * GitHub-only stays 7 lines (legacy). GitLab-only uses gitlab:<username>.
+ * Dual-provider stamps append both.
+ */
 export function canonicalSignPayload({
   actor,
   deviceId,
@@ -203,19 +265,25 @@ export function canonicalSignPayload({
   type,
   text,
   githubLogin,
+  gitlabUsername,
 }) {
   const textHash = createHash("sha256")
     .update(String(text || ""), "utf8")
     .digest("hex");
-  return [
+  const base = [
     "v1",
     String(actor || ""),
     String(deviceId || ""),
     String(id || ""),
     String(type || ""),
     textHash,
-    String(githubLogin || ""),
-  ].join("\n");
+  ];
+  const gh = githubLogin ? String(githubLogin) : "";
+  const gl = gitlabUsername ? String(gitlabUsername) : "";
+  if (gh && !gl) return [...base, gh].join("\n");
+  if (gl && !gh) return [...base, `gitlab:${gl}`].join("\n");
+  if (gh && gl) return [...base, gh, `gitlab:${gl}`].join("\n");
+  return base.join("\n");
 }
 
 export function signCanonical(privateKeyPem, payload) {
@@ -251,7 +319,9 @@ export async function stampEventIdentity(record, idn) {
   }
 
   const verified = idn?.verified || (await loadVerifiedIdentity());
-  if (!verified?.github?.login || !verified?.publicKey) {
+  const githubLogin = verified?.github?.login || null;
+  const gitlabUsername = verified?.gitlab?.username || null;
+  if (!verified?.publicKey || (!githubLogin && !gitlabUsername)) {
     // Solo / unsigned: stay quiet on the board — do not stamp amber "unverified".
     if (!out.identity) out.identity = { mode: "unsigned", reason: "solo" };
     return out;
@@ -270,11 +340,18 @@ export async function stampEventIdentity(record, idn) {
     return out;
   }
 
-  const githubLogin = verified.github.login;
-  out.github = {
-    login: githubLogin,
-    id: verified.github.id,
-  };
+  if (githubLogin) {
+    out.github = {
+      login: githubLogin,
+      id: verified.github.id,
+    };
+  }
+  if (gitlabUsername) {
+    out.gitlab = {
+      username: gitlabUsername,
+      id: verified.gitlab.id,
+    };
+  }
   out.publicKey = verified.publicKey;
   const payload = canonicalSignPayload({
     actor: out.actor,
@@ -283,23 +360,43 @@ export async function stampEventIdentity(record, idn) {
     type: out.type,
     text: out.text,
     githubLogin,
+    gitlabUsername,
   });
   out.sig = signCanonical(privatePem, payload);
-  out.identity = { mode: "verified", github: githubLogin };
+  out.identity = {
+    mode: "verified",
+    ...(githubLogin ? { github: githubLogin } : {}),
+    ...(gitlabUsername ? { gitlab: gitlabUsername } : {}),
+  };
   return out;
 }
 
 /**
- * Verify an event's github claim + signature.
- * Returns { ok, reason, login }.
+ * Verify an event's github/gitlab claim + signature.
+ * Returns { ok, reason, login, provider, githubLogin, gitlabUsername }.
  */
 export function verifyEventIdentity(ev) {
-  const login = ev?.github?.login || ev?.githubLogin || null;
-  if (!login) {
-    return { ok: false, reason: "no_github_claim", login: null };
+  const githubLogin = ev?.github?.login || ev?.githubLogin || null;
+  const gitlabUsername = ev?.gitlab?.username || ev?.gitlabUsername || null;
+  if (!githubLogin && !gitlabUsername) {
+    return {
+      ok: false,
+      reason: "no_github_claim",
+      login: null,
+      provider: null,
+      githubLogin: null,
+      gitlabUsername: null,
+    };
   }
   if (!ev?.sig || !ev?.publicKey) {
-    return { ok: false, reason: "missing_sig", login };
+    return {
+      ok: false,
+      reason: "missing_sig",
+      login: githubLogin || gitlabUsername,
+      provider: githubLogin ? "github" : "gitlab",
+      githubLogin,
+      gitlabUsername,
+    };
   }
   const payload = canonicalSignPayload({
     actor: ev.actor,
@@ -307,36 +404,63 @@ export function verifyEventIdentity(ev) {
     id: ev.id,
     type: ev.type,
     text: ev.text,
-    githubLogin: login,
+    githubLogin,
+    gitlabUsername,
   });
   const ok = verifyCanonical(ev.publicKey, payload, ev.sig);
-  return { ok, reason: ok ? "ok" : "bad_sig", login };
+  const provider =
+    githubLogin && gitlabUsername ? "both" : githubLogin ? "github" : "gitlab";
+  return {
+    ok,
+    reason: ok ? "ok" : "bad_sig",
+    login: githubLogin || gitlabUsername,
+    provider,
+    githubLogin,
+    gitlabUsername,
+  };
 }
 
 export function eventVerifiedBadge(ev) {
   const v = verifyEventIdentity(ev);
-  if (v.ok) return { kind: "verified", login: v.login, label: "verified" };
-  // Amber only when the event claims a GitHub login without a valid sig.
-  if (v.login) return { kind: "unverified", login: v.login, label: "unverified" };
+  if (v.ok) {
+    return {
+      kind: "verified",
+      login: v.login,
+      label: "verified",
+      provider: v.provider,
+    };
+  }
+  // Amber only when the event claims a GitHub/GitLab login without a valid sig.
+  if (v.login) {
+    return {
+      kind: "unverified",
+      login: v.login,
+      label: "unverified",
+      provider: v.provider,
+    };
+  }
   // Env override (and failed local key) are warn-worthy without a github claim.
   const reason = ev?.identity?.reason;
   if (reason === "env_override" || reason === "missing_device_key") {
-    return { kind: "unverified", login: null, label: "unverified" };
+    return { kind: "unverified", login: null, label: "unverified", provider: null };
   }
   // Solo / unsigned / no claim → quiet (no badge).
-  return { kind: "none", login: null, label: null };
+  return { kind: "none", login: null, label: null, provider: null };
 }
 
 export async function authStatus() {
   const idn = await loadIdentity();
   const verified = idn.verified;
+  const hasGithub = Boolean(verified?.github?.login);
+  const hasGitlab = Boolean(verified?.gitlab?.username);
   return {
     deviceId: idn.deviceId,
     displayName: idn.displayName,
     tool: idn.tool,
     envOverride: idn.envOverride,
-    verified: Boolean(verified?.github?.login),
+    verified: hasGithub || hasGitlab,
     github: verified?.github || null,
+    gitlab: verified?.gitlab || null,
     createdAt: verified?.createdAt || null,
     publicKeyPresent: Boolean(verified?.publicKey),
     privateKeyPresent: await exists(privateKeyPath()),
@@ -450,6 +574,7 @@ export async function authGithubDeviceFlow({
     const user = await userRes.json();
     // Drop the token — we only keep a local signed identity, not cloud session.
     const identity = await saveVerifiedIdentity({
+      provider: "github",
       login: user.login,
       id: user.id,
       email: user.email || null,
@@ -457,4 +582,135 @@ export async function authGithubDeviceFlow({
     return { identity, user: { login: user.login, id: user.id, email: user.email || null } };
   }
   throw new Error("GitHub device flow timed out — run `rooms auth github` again");
+}
+
+/**
+ * GitLab OAuth device flow (CLI). Requires ROOMS_GITLAB_CLIENT_ID (OAuth App).
+ * Optional ROOMS_GITLAB_HOST (default https://gitlab.com) for self-managed.
+ * fetchImpl injectable for tests. Never uploads room events — only mints local identity.
+ *
+ * Docs: https://docs.gitlab.com/api/oauth2/#device-authorization-grant-flow
+ */
+export async function authGitlabDeviceFlow({
+  clientId = process.env.ROOMS_GITLAB_CLIENT_ID,
+  host = process.env.ROOMS_GITLAB_HOST || "https://gitlab.com",
+  scope = "read_user",
+  fetchImpl = globalThis.fetch,
+  openUrl = null,
+  pollIntervalMs = null,
+  onUserCode = null,
+  signal = null,
+} = {}) {
+  if (!clientId) {
+    throw new Error(
+      "Set ROOMS_GITLAB_CLIENT_ID to your GitLab OAuth App application id (device flow). " +
+        "Auth only mints a local verified identity — it does not upload room events.",
+    );
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("fetch is required for GitLab device flow");
+  }
+
+  const base = String(host).replace(/\/$/, "");
+  const formHeaders = {
+    Accept: "application/json",
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  const codeRes = await fetchImpl(`${base}/oauth/authorize_device`, {
+    method: "POST",
+    headers: formHeaders,
+    body: new URLSearchParams({ client_id: clientId, scope }).toString(),
+    signal,
+  });
+  if (!codeRes.ok) {
+    const body = await codeRes.text().catch(() => "");
+    throw new Error(`GitLab device code failed (${codeRes.status}): ${body.slice(0, 200)}`);
+  }
+  const codeJson = await codeRes.json();
+  const {
+    device_code: deviceCode,
+    user_code: userCode,
+    verification_uri: verificationUri,
+    verification_uri_complete: verificationUriComplete,
+    interval = 5,
+    expires_in: expiresIn = 300,
+  } = codeJson;
+  if (!deviceCode || !userCode) {
+    throw new Error("GitLab device code response missing device_code/user_code");
+  }
+
+  const openTarget = verificationUriComplete || verificationUri;
+  if (typeof onUserCode === "function") {
+    await onUserCode({
+      userCode,
+      verificationUri: verificationUri || openTarget,
+      verificationUriComplete,
+      expiresIn,
+    });
+  }
+  if (typeof openUrl === "function" && openTarget) {
+    try {
+      openUrl(openTarget);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const started = Date.now();
+  const intervalMs = (pollIntervalMs ?? Number(interval) * 1000) || 5000;
+  let wait = intervalMs;
+
+  while (Date.now() - started < expiresIn * 1000) {
+    if (signal?.aborted) throw new Error("GitLab device flow aborted");
+    await new Promise((r) => setTimeout(r, wait));
+    const tokenRes = await fetchImpl(`${base}/oauth/token`, {
+      method: "POST",
+      headers: formHeaders,
+      body: new URLSearchParams({
+        client_id: clientId,
+        device_code: deviceCode,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      }).toString(),
+      signal,
+    });
+    const tokenJson = await tokenRes.json();
+    if (tokenJson.error === "authorization_pending") continue;
+    if (tokenJson.error === "slow_down") {
+      wait += 5000;
+      continue;
+    }
+    if (tokenJson.error) {
+      throw new Error(`GitLab device flow: ${tokenJson.error_description || tokenJson.error}`);
+    }
+    const accessToken = tokenJson.access_token;
+    if (!accessToken) throw new Error("GitLab device flow: no access_token");
+
+    const userRes = await fetchImpl(`${base}/api/v4/user`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": "iops-rooms",
+      },
+      signal,
+    });
+    if (!userRes.ok) {
+      throw new Error(`GitLab /api/v4/user failed (${userRes.status})`);
+    }
+    const user = await userRes.json();
+    const username = user.username || user.login;
+    if (!username) throw new Error("GitLab /api/v4/user missing username");
+    // Drop the token — local signed identity only.
+    const identity = await saveVerifiedIdentity({
+      provider: "gitlab",
+      gitlabUsername: username,
+      id: user.id,
+      email: user.email || null,
+    });
+    return {
+      identity,
+      user: { username, id: user.id, email: user.email || null },
+    };
+  }
+  throw new Error("GitLab device flow timed out — run `rooms auth gitlab` again");
 }

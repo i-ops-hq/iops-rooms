@@ -4,7 +4,7 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 
 ## What this package will never do
 
-- Open sockets / `fetch` for **room traffic** or telemetry (no phone-home). Optional `rooms auth github` is the sole exception: GitHub OAuth **device flow** only, to mint a **local** verified identity — it does **not** upload `.room/` events
+- Open sockets / `fetch` for **room traffic** or telemetry (no phone-home). Optional `rooms auth github` / `rooms auth gitlab` are the sole exceptions: OAuth **device flow** only, to mint a **local** verified identity — they do **not** upload `.room/` events
 - Bind a listen socket to anything other than `127.0.0.1` (optional `rooms live` is localhost-only)
 - Read `process.env` wholesale or hunt for `.env`, SSH keys, or cloud credentials
 - Write outside `.room/` in the project it resolved (except local identity under `~/.iops-rooms/`: `device.json`, optional `identity.json` + `device.key` mode 0600)
@@ -18,7 +18,7 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 
 - Read/write `.room/room.json`, `.room/events.jsonl`, `.room/board.html`
 - Stamp each event with a stable `deviceId` + display name (override with `ROOMS_DEVICE_ID` / `ROOMS_ACTOR`; env overrides are marked **unverified**)
-- Optional: after `rooms auth github`, stamp posts with GitHub login + local ed25519 signature (public key on the event; private key stays in `~/.iops-rooms/device.key`)
+- Optional: after `rooms auth github` / `rooms auth gitlab`, stamp posts with GitHub/GitLab claim + local ed25519 signature (public key on the event; private key stays in `~/.iops-rooms/device.key`)
 - Speak MCP over **stdio only**
 - Render a static HTML file from `templates/board.html`
 - Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes
@@ -58,29 +58,43 @@ Corrupt JSONL lines are **soft-skipped** when reading events — one bad line mu
 - Soft-skip means a silently corrupt line is dropped; check `[rooms] skipped N corrupt JSONL line(s)` on stderr if events look missing.
 - Device identity under `~/.iops-rooms/device.json` is still a local writable file (by design).
 
-## Verified GitHub identity (P2 spike)
+## Verified GitHub / GitLab identity (P2 spike)
 
 Team leads may opt into **verified mode**. Solo can stay unsigned.
 
 ```
 ~/.iops-rooms/
   device.json      # deviceId + displayName
-  identity.json    # github login/id/email, publicKey, createdAt (after auth)
-  device.key       # ed25519 private key, mode 0600
+  identity.json    # github and/or gitlab claim, publicKey, createdAt (after auth)
+  device.key       # ed25519 private key, mode 0600 (shared)
 ```
 
-- `rooms auth github` uses GitHub **device flow**. Set `ROOMS_GITHUB_CLIENT_ID` to an OAuth App client id. Auth only mints a **local** identity; it does not upload room events to I-Ops or GitHub.
-- Posts/MCP attach `github.login` + `publicKey` + `sig` over a canonical payload (actor, deviceId, id, type, text hash, github login) when a verified identity is present.
+identity.json shape (either or both providers):
+
+```json
+{
+  "github": { "login": "alice", "id": 1, "email": null },
+  "gitlab": { "username": "alice", "id": 2, "email": null },
+  "deviceId": "abcd1234",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\n...",
+  "createdAt": "2026-09-07T00:00:00.000Z"
+}
+```
+
+- `rooms auth github` uses GitHub **device flow**. Set `ROOMS_GITHUB_CLIENT_ID` to an OAuth App client id.
+- `rooms auth gitlab` uses GitLab **device authorization grant**. Set `ROOMS_GITLAB_CLIENT_ID` (Application ID). Optional `ROOMS_GITLAB_HOST` (default `https://gitlab.com`) for self-managed.
+- Auth only mints a **local** identity; it does not upload room events to I-Ops, GitHub, or GitLab. Access tokens are discarded after reading `/user`.
+- Posts/MCP attach `github.login` and/or `gitlab.username` + `publicKey` + `sig` over a canonical payload (actor, deviceId, id, type, text hash, provider claim) when a verified identity is present. GitHub-only payload stays backward-compatible.
 - Env overrides (`ROOMS_ACTOR` / `ROOMS_DEVICE_ID`) still work for smoke and are stamped **unverified**.
-- Board badges: **verified** (sig ok) · **unverified** amber only for env override or a claimed GitHub login without a valid sig · **quiet/none** for unsigned solo (no amber by default).
+- Board badges: **verified** (sig ok) · **unverified** amber only for env override or a claimed GitHub/GitLab login without a valid sig · **quiet/none** for unsigned solo (no amber by default).
 
 ### sync-merge / import — warn-only
 
-If an imported event **claims** a GitHub login but the ed25519 signature is missing or invalid, Rooms **warns on stderr** and still imports the event. Hard-reject is out of scope for this spike.
+If an imported event **claims** a GitHub login or GitLab username but the ed25519 signature is missing or invalid, Rooms **warns on stderr** and still imports the event. Hard-reject is out of scope for this spike.
 
 ### Still spoofable (honest)
 
 - Anyone who can write `events.jsonl` can invent an `actor` string (unsigned).
 - A stolen `device.key` can mint valid signatures for that local identity until logout/re-auth.
-- Board badges verify the event's embedded public key + sig — they do **not** re-check GitHub live. Binding to GitHub is "I authenticated once and keep this keypair."
-- Warn-only merge means a forged `github.login` without a valid sig still lands on the board (marked unverified).
+- Board badges verify the event's embedded public key + sig — they do **not** re-check GitHub or GitLab live. Binding is "I authenticated once and keep this keypair."
+- Warn-only merge means a forged `github.login` / `gitlab.username` without a valid sig still lands on the board (marked unverified).
