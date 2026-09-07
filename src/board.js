@@ -495,11 +495,32 @@ function branchPath(x1, x2, yMain, yLane) {
 /** One commit: a soft halo plus a solid core. Two circles rather than an SVG blur filter — same
  *  look, no filter cost, and it still reads when the page is printed. */
 function graphDot(x, y, pt, hue) {
-  const kind = pt.isDiff ? "diff" : pt.type === "approved" ? "approved" : pt.type === "review_requested" ? "review" : "note";
+  const kind =
+    pt.type === "commit" || pt.type === "merge"
+      ? pt.type
+      : pt.isDiff
+        ? "diff"
+        : pt.type === "approved"
+          ? "approved"
+          : pt.type === "review_requested"
+            ? "review"
+            : "note";
   const when = formatWhen(pt.at);
-  const tip = `${pt.actor}${pt.tool ? ` · ${pt.tool}` : ""} · ${kind}${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`;
+  // A commit says who made it, which agent helped, and what it moved. "no agent recorded" is the
+  // honest label for a plain commit — it is the person's own work, not an unknown.
+  const tip =
+    kind === "commit" || kind === "merge"
+      ? `${pt.sha ? `${pt.sha} · ` : ""}${pt.actor}` +
+        ` · ${pt.agent || "no agent recorded"}` +
+        `${kind === "merge" ? " · merge" : ` · +${pt.ins || 0} −${pt.del || 0}`}` +
+        `${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`
+      : `${pt.actor}${pt.tool ? ` · ${pt.tool}` : ""} · ${kind}${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`;
   return (
-    `<g class="bg-dot" data-kind="${escapeHtml(kind)}" style="--h: ${hue}">` +
+    // data-agent colours a COMMIT by the agent that made it. A room post's tool (cli, mcp) is a
+    // different fact and must not borrow the agent palette.
+    `<g class="bg-dot" data-kind="${escapeHtml(kind)}"${
+      (kind === "commit" || kind === "merge") && pt.tool ? ` data-agent="${escapeHtml(pt.tool)}"` : ""
+    } style="--h: ${hue}">` +
     `<title>${escapeHtml(tip)}</title>` +
     `<circle class="bg-halo" cx="${x.toFixed(1)}" cy="${y}" r="${GRAPH.glow}"></circle>` +
     `<circle class="bg-core" cx="${x.toFixed(1)}" cy="${y}" r="${GRAPH.r}"></circle>` +
@@ -514,6 +535,108 @@ function graphDot(x, y, pt, hue) {
  * Positions come from the same 0-100 time axis the lane avatars use, so a dot and its avatar sit
  * at the same x. Nothing here is invented: a branch with no posts has no line to draw.
  */
+/**
+ * Fold git history into the graph's lane shape, so commits and room posts sit on one picture.
+ *
+ * Room posts say what someone TOLD the room; commits say what actually landed. Both are events on
+ * a branch at a time, so they share lanes and a time axis — but they keep their own dot kind, and a
+ * lane made only of commits is still drawn, because most projects have far more commits than posts.
+ *
+ * The axis spans BOTH sources. Using the room's own tMin would squash a year of commits into
+ * whatever window the room happens to cover.
+ */
+export function mergeHistoryIntoLanes(model, history) {
+  if (!history || !history.ok) return model;
+
+  const commitPoint = (c) => ({
+    t: c.t,
+    at: c.at,
+    actor: c.author.name,
+    tool: c.agents[0]?.id || "",
+    type: c.isMerge ? "merge" : "commit",
+    isDiff: false,
+    agent: c.agents[0]?.label || "",
+    sha: c.shortSha,
+    text: c.subject,
+    ins: c.insertions,
+    del: c.deletions,
+  });
+
+  const gitLanes = new Map();
+  const trunkName = model.current && history.branches.every((b) => b.name !== model.current)
+    ? model.current
+    : "main";
+  gitLanes.set(trunkName, { name: trunkName, isMain: true, points: history.trunk.map(commitPoint) });
+  for (const b of history.branches) {
+    const existing = gitLanes.get(b.name);
+    const pts = b.commits.map(commitPoint);
+    if (existing) existing.points.push(...pts);
+    else gitLanes.set(b.name, { name: b.name, isMain: false, pr: b.pr, points: pts });
+  }
+
+  // One axis over everything, so a commit from March and a post from today are placed honestly.
+  let tMin = Infinity;
+  let tMax = -Infinity;
+  for (const lane of gitLanes.values()) {
+    for (const pt of lane.points) {
+      if (pt.t == null) continue;
+      if (pt.t < tMin) tMin = pt.t;
+      if (pt.t > tMax) tMax = pt.t;
+    }
+  }
+  for (const lane of model.lanes || []) {
+    for (const pt of lane.points || []) {
+      if (pt.t == null) continue;
+      if (pt.t < tMin) tMin = pt.t;
+      if (pt.t > tMax) tMax = pt.t;
+    }
+  }
+  if (!(tMax > tMin)) {
+    tMin = Number.isFinite(model.tMin) ? model.tMin : tMin;
+    tMax = Number.isFinite(model.tMax) ? model.tMax : tMax;
+  }
+  const span = tMax - tMin;
+  const place = (pt) => ({
+    ...pt,
+    pct: pt.t == null || !(span > 0) ? 50 : Math.max(1, Math.min(99, ((pt.t - tMin) / span) * 100)),
+  });
+
+  const merged = new Map();
+  for (const lane of gitLanes.values()) {
+    merged.set(lane.name, {
+      name: lane.name,
+      isMain: lane.isMain,
+      isCurrent: lane.name === model.current,
+      pr: lane.pr || null,
+      eventCount: lane.points.length,
+      tools: [],
+      people: [],
+      points: lane.points.map(place),
+      hue: branchHue(lane.name),
+    });
+  }
+  for (const lane of model.lanes || []) {
+    const into = merged.get(lane.name);
+    const pts = (lane.points || []).map(place);
+    if (into) {
+      into.points = [...into.points, ...pts].sort((a, b) => a.pct - b.pct);
+      into.eventCount += pts.length;
+      into.people = lane.people;
+    } else {
+      merged.set(lane.name, { ...lane, points: pts, people: lane.people });
+    }
+  }
+
+  const lanes = [...merged.values()].map((l) => ({
+    ...l,
+    points: l.points.sort((a, b) => a.pct - b.pct),
+    firstPct: l.points.length ? l.points[0].pct : null,
+    lastPct: l.points.length ? l.points[l.points.length - 1].pct : null,
+  }));
+
+  return { ...model, lanes, tMin, tMax, fromHistory: true, historyTotal: history.total };
+}
+
 export function renderBranchGraph(model) {
   const withPosts = (model.lanes || []).filter((l) => (l.points || []).length > 0);
   if (!withPosts.length) return "";
@@ -836,7 +959,7 @@ export function buildTimelineModel(events, git = {}, opts = {}) {
 }
 
 function renderTimeline(events, git, opts = {}) {
-  const model = buildTimelineModel(events, git, opts);
+  const model = mergeHistoryIntoLanes(buildTimelineModel(events, git, opts), opts.history);
   if (!model.lanes.length && !model.unknownCount) {
     return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
@@ -990,7 +1113,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     "{{POSTERS_BLURB}}": escapeHtml(postersBlurb),
     "{{BRANCH}}": escapeHtml(branchLabel),
     "{{BRANCH_PANEL}}": renderBranchPanel(git, events),
-    "{{TIMELINE}}": renderTimeline(events, git, presenceOpts),
+    "{{TIMELINE}}": renderTimeline(events, git, { ...presenceOpts, history: opts.history }),
     "{{BUILT_BY}}": renderBuiltBy(opts.history),
     "{{TOOLS_STRIP}}": strip,
     "{{EVENTS}}": renderEvents(events),
