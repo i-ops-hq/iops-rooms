@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, appendFile, access } from "node:fs/promises";
+import { mkdir, readFile, writeFile, appendFile, access, lstat, open } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { constants } from "node:fs";
@@ -32,6 +32,63 @@ async function exists(path) {
 }
 
 /** Walk cwd → parents for .room/room.json. Stop at filesystem root. */
+
+/** Parse JSONL; soft-skip corrupt lines so one bad line cannot brick doctor/live/board. */
+export function parseEventsJsonl(raw, { label = "events.jsonl" } = {}) {
+  const out = [];
+  let skipped = 0;
+  for (const line of String(raw || "").split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      out.push(JSON.parse(t));
+    } catch {
+      skipped += 1;
+    }
+  }
+  if (skipped > 0) {
+    console.error(`[rooms] skipped ${skipped} corrupt JSONL line(s) in ${label}`);
+  }
+  return { events: out, skipped };
+}
+
+/**
+ * Refuse symlinks / non-regular files. Open with O_NOFOLLOW when available
+ * so a TOCTOU swap to a symlink cannot redirect the read.
+ */
+export async function readAllowlistedRegularFile(filePath) {
+  let st;
+  try {
+    st = await lstat(filePath);
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      throw new Error(`Missing required file: ${filePath}`);
+    }
+    throw err;
+  }
+  if (st.isSymbolicLink()) {
+    throw new Error(`Refusing symlink (not a regular file): ${filePath}`);
+  }
+  if (!st.isFile()) {
+    throw new Error(`Not a regular file: ${filePath}`);
+  }
+  const flags =
+    constants.O_RDONLY |
+    (typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0);
+  const handle = await open(filePath, flags);
+  try {
+    return await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Copy only an allowlisted regular file (never trees, never follow symlinks). */
+async function copyAllowlistedRegularFile(srcPath, destPath) {
+  const body = await readAllowlistedRegularFile(srcPath);
+  await writeFile(destPath, body, "utf8");
+}
+
 export async function findRoomDir(start = process.cwd()) {
   let dir = resolve(start);
   for (;;) {
@@ -126,25 +183,22 @@ export async function readEvents(projectDir) {
   const { events } = roomPaths(projectDir);
   if (!(await exists(events))) return [];
   const raw = await readFile(events, "utf8");
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  return parseEventsJsonl(raw, { label: events }).events;
 }
 
 export async function appendEvent(projectDir, event) {
   const paths = roomPaths(projectDir);
   const idn = await identity();
   const branch = event.branch || (await resolveBranch(projectDir)) || "";
+  // Reserved stamps (id, at) AFTER spread so callers cannot override them.
   const record = {
-    id: eventId(),
-    at: new Date().toISOString(),
     ...event,
     deviceId: event.deviceId || idn.deviceId,
     actor: event.actor || idn.displayName,
     tool: event.tool || idn.tool,
     branch: branch || event.branch || "",
+    id: eventId(),
+    at: new Date().toISOString(),
   };
   await appendFile(paths.events, `${JSON.stringify(record)}\n`, "utf8");
   const meta = await readMeta(projectDir);
@@ -266,39 +320,41 @@ export async function postNote(projectDir, { text, type = "note", extra = {} } =
 export { actor, tool, deviceId, identity, loadIdentity };
 
 export async function exportRoomBundle(projectDir, outDir) {
-  const { cp } = await import("node:fs/promises");
+  // Allowlist only: room.json + events.jsonl as regular files (never opaque tree cp).
   const paths = roomPaths(projectDir);
   await mkdir(outDir, { recursive: true });
-  await cp(paths.root, outDir, { recursive: true });
+  await copyAllowlistedRegularFile(paths.meta, join(outDir, META));
+  await copyAllowlistedRegularFile(paths.events, join(outDir, EVENTS));
   return outDir;
 }
 
 export async function importRoomBundle(bundleDir, projectDir = process.cwd()) {
-  const { cp } = await import("node:fs/promises");
   const dest = roomPaths(projectDir).root;
   if (await exists(dest)) {
     throw new Error(`.room/ already exists at ${dest}. Use rooms sync-merge <dir> to union events.`);
   }
-  await mkdir(dirname(dest), { recursive: true });
-  await cp(bundleDir, dest, { recursive: true });
+  await mkdir(dest, { recursive: true });
+  // Copy ONLY allowlisted regular files — never board.html, never tree cp, never follow symlinks.
+  await copyAllowlistedRegularFile(join(bundleDir, META), join(dest, META));
+  await copyAllowlistedRegularFile(join(bundleDir, EVENTS), join(dest, EVENTS));
+  // Always regenerate board.html locally from trusted templates + written data.
   await refreshBoard(projectDir);
   return { projectDir, meta: await readMeta(projectDir) };
 }
 
 /** Union events from a teammate bundle into this project's .room/ (by event id). Local-only. */
 export async function mergeRoomBundle(bundleDir, projectDir = process.cwd()) {
-  const { readFile: rf, appendFile: af } = await import("node:fs/promises");
   const local = roomPaths(projectDir);
   if (!(await exists(local.meta))) {
     throw new Error("No local room. Run rooms init (or import-room) first.");
   }
-  const incomingMetaPath = join(bundleDir, "room.json");
-  const incomingEventsPath = join(bundleDir, "events.jsonl");
-  if (!(await exists(incomingMetaPath)) || !(await exists(incomingEventsPath))) {
-    throw new Error("Bundle missing room.json or events.jsonl");
-  }
+  const incomingMetaPath = join(bundleDir, META);
+  const incomingEventsPath = join(bundleDir, EVENTS);
+  // Reject missing / symlink / non-regular sources before reading.
+  const metaRaw = await readAllowlistedRegularFile(incomingMetaPath);
+  const eventsRaw = await readAllowlistedRegularFile(incomingEventsPath);
   const localMeta = await readMeta(projectDir);
-  const incomingMeta = JSON.parse(await rf(incomingMetaPath, "utf8"));
+  const incomingMeta = JSON.parse(metaRaw);
   if (incomingMeta.id && localMeta.id && incomingMeta.id !== localMeta.id) {
     throw new Error(
       `Room code mismatch: local ${localMeta.id} vs bundle ${incomingMeta.id}. Same room only.`,
@@ -306,19 +362,15 @@ export async function mergeRoomBundle(bundleDir, projectDir = process.cwd()) {
   }
   const existing = await readEvents(projectDir);
   const seen = new Set(existing.map((e) => e.id));
-  const raw = await rf(incomingEventsPath, "utf8");
-  const incoming = raw
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+  const incoming = parseEventsJsonl(eventsRaw, { label: incomingEventsPath }).events;
   let added = 0;
   for (const ev of incoming) {
     if (!ev?.id || seen.has(ev.id)) continue;
-    await af(local.events, `${JSON.stringify(ev)}\n`, "utf8");
+    await appendFile(local.events, `${JSON.stringify(ev)}\n`, "utf8");
     seen.add(ev.id);
     added += 1;
   }
   await refreshBoard(projectDir);
   return { added, total: seen.size, meta: localMeta };
 }
+

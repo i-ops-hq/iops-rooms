@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { LIVE_CLIENT_SNIPPET } from "./live-client.js";
 import { readGitSnapshot } from "./git-info.js";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -13,6 +13,16 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+
+/** meta.name if set and not a useless default; else folder basename. */
+export function boardProjectName(meta, projectDir) {
+  const name = String(meta?.name || "").trim();
+  const useless = !name || /^(untitled|room)$/i.test(name);
+  if (!useless) return name;
+  const base = basename(resolve(projectDir || "."));
+  return base || "project";
 }
 
 function formatWhen(iso) {
@@ -65,9 +75,22 @@ function posterStats(events) {
   return { actors, tools };
 }
 
+function renderEmptyBanner() {
+  return `<aside class="empty-banner" role="status">
+  <h2 class="empty-title">Nothing posted yet</h2>
+  <p class="empty-lead">This room is set up, but nothing meaningful is on the board yet. Try one of these:</p>
+  <ul class="empty-actions">
+    <li><code>rooms post "…"</code> — post a CLI note</li>
+    <li>MCP <code>post_note</code> — agents post while working (enable in mcp.json)</li>
+    <li><code>rooms hooks install</code> — opt-in local git auto-post (not IDE telemetry)</li>
+  </ul>
+</aside>`;
+}
+
 function renderEvents(events) {
-  if (!events.length) {
-    return `<p class="empty">No events yet. Post from the CLI or your agent.</p>`;
+  const nonSystem = events.filter((e) => e.type !== "system");
+  if (nonSystem.length === 0) {
+    return renderEmptyBanner();
   }
   return events
     .map((ev) => {
@@ -183,13 +206,15 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   const projectDir = opts.projectDir || process.cwd();
   const git = await readGitSnapshot(projectDir);
   const { actors, tools } = posterStats(events);
-  // Count distinct non-system actors; if only system events, still 1 creator
+  // Non-system actors only — empty/system-only rooms show 0, not a fake "1 poster"
   const distinctPosters = actors.size;
-  const postersLabel = String(Math.max(distinctPosters, meta.createdBy ? 1 : 0));
+  const postersLabel = String(distinctPosters);
   const postersBlurb =
-    distinctPosters <= 1
-      ? "1 poster — join from another tool or machine with the room code."
-      : `${distinctPosters} posters on this board.`;
+    distinctPosters === 0
+      ? "No posts yet — join from another tool or machine with the room code."
+      : distinctPosters === 1
+        ? "1 poster on this board."
+        : `${distinctPosters} posters on this board.`;
 
   const toolList = [...tools];
   const posterNames = [...actors.keys()];
@@ -212,8 +237,10 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
       : "syncs only among your team’s devices — not I-Ops cloud";
 
   const branchLabel = shortBranch(git.current || "—", 18);
+  const projectName = boardProjectName(meta, projectDir);
+  const boardTitle = `Rooms · ${projectName}`;
   const replacements = {
-    "{{TITLE}}": escapeHtml(meta.name || "room"),
+    "{{TITLE}}": escapeHtml(boardTitle),
     "{{CODE}}": escapeHtml(meta.id || ""),
     "{{CREATED}}": escapeHtml(meta.createdAt || ""),
     "{{BY}}": escapeHtml(meta.createdBy || ""),

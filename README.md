@@ -60,6 +60,7 @@ Then agents use `post_note` / `share_diff` / `rename_room` while coding. Branch 
 
 ```bash
 rooms rename Rooms     # display name; code unchanged
+Board title is `Rooms · {project name}` — display name (`meta.name`) when set and not a useless default (`untitled` / `room`), otherwise the project folder basename.
 rooms live
 ```
 

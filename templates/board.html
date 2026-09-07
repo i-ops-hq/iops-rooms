@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{TITLE}} · {{CODE}} · Rooms by I-Ops</title>
+    <title>{{TITLE}}</title>
     <!--
       Visual tokens from I-Ops (sky, Jakarta/Inter/Plex stacks, #2f6fed).
       No Google Fonts, no remote CSS. Uses those families only if installed.
@@ -233,6 +233,41 @@
       }
       .empty {
         color: var(--ink-2);
+      }
+      .empty-banner {
+        background: var(--card);
+        border: 1px dashed var(--line);
+        border-radius: var(--r-lg);
+        padding: 22px 24px;
+        margin: 0 0 18px;
+        box-shadow: var(--shadow-sm);
+      }
+      .empty-title {
+        margin: 0 0 8px;
+        font-family: var(--font-display);
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .empty-lead {
+        margin: 0 0 12px;
+        color: var(--ink-2);
+        font-size: 15px;
+      }
+      .empty-actions {
+        margin: 0;
+        padding-left: 1.2em;
+        color: var(--ink-2);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .empty-actions code {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--ink);
+        background: var(--bg-soft);
+        padding: 1px 6px;
+        border-radius: 6px;
       }
       .event {
         background: var(--card);

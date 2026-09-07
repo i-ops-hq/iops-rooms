@@ -37,3 +37,22 @@ Network is **off** by default. When sync exists later, it is among **your team's
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
 
 If a build starts requiring network for the core room, that is a bug. Optional relays will be explicit (`--relay`) and off by default.
+
+## Import / sync-merge hardening (P0)
+
+`rooms import-room` and `rooms sync-merge` copy **only** allowlisted regular files (`room.json`, `events.jsonl`). They:
+
+- Refuse **symlinks** (`lstat` + open with `O_NOFOLLOW` when the platform supports it)
+- Never opaque `fs.cp` / tree copy of a bundle (so a malicious `board.html` symlink cannot escape `.room/`)
+- Always **regenerate** `board.html` locally via `writeBoard` after import/merge
+
+`appendEvent` stamps reserved fields (`id`, `at`) **after** spreading caller input so payloads cannot override them.
+
+Corrupt JSONL lines are **soft-skipped** when reading events — one bad line must not brick doctor / live / board.
+
+### Residual risk
+
+- A teammate (or compromised export) can still put **arbitrary text** in notes/diffs; treat room content like any shared file.
+- Export/import is still **trust-the-peer**: we validate file *shape* (regular files, allowlist), not cryptographic signatures.
+- Soft-skip means a silently corrupt line is dropped; check `[rooms] skipped N corrupt JSONL line(s)` on stderr if events look missing.
+- Device identity under `~/.iops-rooms/device.json` is still a local writable file (by design).
