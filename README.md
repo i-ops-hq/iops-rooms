@@ -47,7 +47,7 @@ Exact phrase you can paste to an agent:
 
 Or, if the CLI is already on your PATH: `rooms mcp install`.
 
-That writes/merges `.cursor/mcp.json` (keeps unrelated MCP servers) and copies `skills/rooms/SKILL.md` → `.cursor/skills/rooms/SKILL.md`. Logs stay local in `.room/` — nothing is uploaded.
+That writes/merges project MCP for **Cursor** (`.cursor/mcp.json` + `.cursor/skills/`), **Claude Code** (`.mcp.json` + `.claude/skills/`), and **Codex** (`.codex/config.toml`). Keeps unrelated servers. Logs stay local in `.room/` — nothing is uploaded.
 
 Also: `rooms init --name "…" --mcp` inits the room then installs MCP in one step.
 
@@ -56,8 +56,8 @@ Also: `rooms init --name "…" --mcp` inits the room then installs MCP in one st
 | Host | After install |
 |---|---|
 | **Cursor** | Reload MCP / restart agent. Project MCP comes from `.cursor/mcp.json`. Project skills under `.cursor/skills/` when Cursor skills are enabled. |
-| **Claude Code** | Point MCP at the same `npx … mcp` entry (or project mcp.json if your Claude setup reads it). Copy/link the skill into your Claude skill dir if you want the skill globally. |
-| **Codex** | Same MCP stdio command; skill path is host-specific — use the packaged `skills/rooms/SKILL.md` or the copied `.cursor/skills/` copy. |
+| **Claude Code** | Project `.mcp.json` + `.claude/skills/rooms/SKILL.md` written by install. Reload / new session. |
+| **Codex** | Project `.codex/config.toml` (`[mcp_servers.iops-rooms]`) when the project is trusted. No SKILL.md — use MCP tools. |
 
 **This repo (dev):** `.cursor/mcp.json` already runs `node src/mcp.js` (local checkout). Other projects get the pinned npx entry from `mcp install`.
 

@@ -240,6 +240,29 @@ async function deviceId() {
   return id.deviceId;
 }
 
+
+/** Treat CLI --name true/empty as omitted. */
+export function normalizeRoomNameOpt(name) {
+  if (name == null || name === true || name === false) return undefined;
+  const s = String(name).trim();
+  return s || undefined;
+}
+
+/** Prefer folder basename; fall back to git repo leaf; else untitled. Never throws. */
+export async function deriveRoomName(projectDir) {
+  try {
+    const { basename } = await import("node:path");
+    const leaf = basename(String(projectDir || "").replace(/[\\/]+$/, "") || ".");
+    if (leaf && leaf !== "." && leaf !== ".." && leaf !== "/") return leaf;
+  } catch { /* ignore */ }
+  try {
+    const { resolveGitRepoName } = await import("./git-info.js");
+    const g = await resolveGitRepoName(projectDir);
+    if (g) return g;
+  } catch { /* ignore */ }
+  return "untitled";
+}
+
 export async function initRoom({
   cwd = process.cwd(),
   name,
@@ -268,7 +291,7 @@ export async function initRoom({
     version: 1,
     product: "Rooms by I-Ops",
     id: (code || roomCode()).toUpperCase(),
-    name: name || "untitled",
+    name: (normalizeRoomNameOpt(name) || (await deriveRoomName(projectDir))),
     createdAt: new Date().toISOString(),
     createdBy: await actor(),
     network: "off",
