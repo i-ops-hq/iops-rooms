@@ -91,9 +91,15 @@ jobs:
         run: |
           set -euo pipefail
           TARBALL=$(npm pack --silent)
+          # List once into a file rather than piping into `grep -q`. grep exits on the first match
+          # and closes the pipe, tar takes SIGPIPE, and pipefail then reports the PIPELINE as
+          # failed — so a file that WAS found is reported missing. It passed on macOS and failed on
+          # the runner because bsdtar usually finishes before grep quits and GNU tar does not:
+          # a race, won locally and lost in CI. No pipe, no race.
+          tar -tzf "$TARBALL" > /tmp/tarball-listing.txt
           for want in package/skills/rooms/SKILL.md package/templates/board.html package/SECURITY.md; do
-            tar -tzf "$TARBALL" | grep -qx "$want" || {
+            if ! grep -qx "$want" /tmp/tarball-listing.txt; then
               echo "::error::$want is listed in package.json files but missing from the tarball"
               exit 1
-            }
+            fi
           done
