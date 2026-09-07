@@ -133,6 +133,19 @@ Teammate on the same checkout: `rooms join THECODE` (or `node src/cli.js join TH
 
 `--share` keeps `.room/` commitable. Default is gitignore.
 
+With `--share`, two extra files land beside the room and both matter:
+
+- **`.room/.gitattributes`** sets `events.jsonl merge=union`. The log is append-only, so two people
+  posting between pulls add different lines in the same place and git conflicts **every time** —
+  which for a shared room is the normal case, not an edge case. A union merge keeps both sides;
+  duplicate ids are dropped when the log is read.
+- **`.room/.gitignore`** excludes `board.html`. It is generated from the log on every read, so
+  committing 64 KB of derived HTML buys a second conflict on every merge and nothing else.
+
+Commit `room.json`, `events.jsonl` and those two dotfiles. Verified with three machines, three
+device ids and one shared remote: all three post concurrently, all three push, and every machine
+ends with the same events and all three actors.
+
 MCP Registry listing is a follow-up — npm is the install path for now.
 
 ## All rooms on this Mac

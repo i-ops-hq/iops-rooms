@@ -40,20 +40,38 @@ async function exists(path) {
 /** Parse JSONL; soft-skip corrupt lines so one bad line cannot brick doctor/live/board. */
 export function parseEventsJsonl(raw, { label = "events.jsonl" } = {}) {
   const out = [];
+  const seen = new Set();
   let skipped = 0;
+  let duplicates = 0;
   for (const line of String(raw || "").split("\n")) {
     const t = line.trim();
     if (!t) continue;
+    let ev;
     try {
-      out.push(JSON.parse(t));
+      ev = JSON.parse(t);
     } catch {
       skipped += 1;
+      continue;
     }
+    // An id can legitimately arrive twice: `.room/events.jsonl` is committed with merge=union for
+    // teams, and a union merge concatenates both sides rather than conflicting. mergeRoomBundle
+    // already dedupes by id on the sync-merge path; every read now applies the same rule, so a
+    // teammate's post cannot render twice on the board just because two people pulled it.
+    if (ev && ev.id !== undefined) {
+      if (seen.has(ev.id)) {
+        duplicates += 1;
+        continue;
+      }
+      seen.add(ev.id);
+    }
+    out.push(ev);
   }
   if (skipped > 0) {
+    // Corrupt lines are not expected and are worth saying out loud. Duplicates ARE expected after
+    // a union merge, so they are counted and returned rather than printed on every read.
     console.error(`[rooms] skipped ${skipped} corrupt JSONL line(s) in ${label}`);
   }
-  return { events: out, skipped };
+  return { events: out, skipped, duplicates };
 }
 
 /**
@@ -119,11 +137,41 @@ const IGNORE_LINE = ".room/";
 export async function ensureGitignore(projectDir, share) {
   if (share) {
     const paths = roomPaths(projectDir);
+
+    // events.jsonl is an append-only log, so two people posting between pulls append different
+    // lines at the same place and git conflicts every single time — which is the normal case for a
+    // shared room, not an edge case. `merge=union` keeps both sides instead, which is exactly right
+    // for an append-only log; parseEventsJsonl dedupes by id so a union can never double-render.
+    await writeFile(
+      join(paths.root, ".gitattributes"),
+      `# An append-only log. Keep both sides of a merge instead of conflicting on every
+# concurrent post; ids are unique and duplicate lines are dropped on read.
+events.jsonl merge=union
+`,
+      "utf8",
+    );
+
+    // board.html is GENERATED from events.jsonl. Committing a 64 KB derived file guarantees a
+    // second conflict on every merge and gains nothing — any read regenerates it.
+    await writeFile(
+      join(paths.root, ".gitignore"),
+      `# Generated from events.jsonl on every read. Never commit it.
+board.html
+`,
+      "utf8",
+    );
+
     await writeFile(
       join(paths.root, "README.md"),
       `# This room is meant to be committed.
 
-Teammates get the same transcript and board.html.
+Commit \`room.json\`, \`events.jsonl\` and the two dotfiles beside them. **Not** \`board.html\` —
+it is generated, and committing it conflicts on every merge for no benefit. Run \`rooms open\` or
+\`rooms live\` to rebuild it.
+
+\`.gitattributes\` sets \`merge=union\` on the log so concurrent posts merge instead of
+conflicting. Duplicate ids are dropped when the log is read.
+
 Do not put secrets in notes or diffs.
 `,
       "utf8",
