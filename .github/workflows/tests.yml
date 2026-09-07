@@ -1,0 +1,105 @@
+name: tests
+
+# There was no CI until 2026-09-07. PRs #20, #21 and #22 all merged showing `checks: 0`, so the
+# only verification any of them got was somebody running the suite locally and saying so. That
+# works until it doesn't, and it never catches the case where two branches are each fine alone.
+#
+# The last job is the one worth keeping. `npm publish` packs the WORKING TREE; git records what you
+# added. On 2026-09-07 a `bin/` directory was referenced from package.json and never `git add`ed —
+# `npm pack` included it, a fresh clone would not have had it, and the published package would have
+# worked while the repo was broken. CI checks out from git, so packing and then running the CLI
+# from the installed tarball is what makes that divergence fail here instead of downstream.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # No dependencies to install — the package has none, which is part of the trust story.
+      - name: There are still no runtime dependencies
+        run: |
+          DEPS=$(node -p "Object.keys(require('./package.json').dependencies || {}).length")
+          if [ "$DEPS" != "0" ]; then
+            echo "::error::package.json gained $DEPS runtime dependencies. SECURITY.md says this package installs nothing at runtime; if that changed on purpose, change the claim too."
+            exit 1
+          fi
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Solo smoke
+        run: npm run smoke:solo
+
+      - name: Two-device smoke
+        run: npm run smoke:two-device
+
+  packaged:
+    name: the packed tarball actually runs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Packs from the git checkout, so anything referenced but untracked is simply absent here.
+      - name: Pack, install into a clean directory, and run the CLI from it
+        run: |
+          set -euo pipefail
+          TARBALL=$(npm pack --silent)
+          WORK=$(mktemp -d)
+          mkdir -p "$WORK/consumer"
+          cd "$WORK/consumer"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$TARBALL"
+
+          # Both bin names, because both are published and each has broken independently before.
+          ./node_modules/.bin/rooms help > /dev/null
+          ./node_modules/.bin/iops-rooms help > /dev/null
+
+          # A real room from the installed copy, not from the checkout.
+          mkdir room && cd room
+          # A runner has no git identity, and Rooms stamps the branch onto every event, so the
+          # room needs a real repo with a real commit. Passed with -c rather than configured
+          # globally, so the job does not depend on runner state it did not set up.
+          git init -q .
+          git -c user.email=ci@example.invalid -c user.name=ci commit -q --allow-empty -m ci
+          ../node_modules/.bin/rooms init --name ci > /dev/null
+          ../node_modules/.bin/rooms post "from the packed tarball" > /dev/null
+          ../node_modules/.bin/rooms status
+
+          test -s .room/events.jsonl || { echo "::error::installed CLI wrote no events"; exit 1; }
+          test -s .room/board.html   || { echo "::error::installed CLI rendered no board"; exit 1; }
+
+      - name: The skill and templates the package promises are inside it
+        run: |
+          set -euo pipefail
+          TARBALL=$(npm pack --silent)
+          # List once into a file rather than piping into `grep -q`. grep exits on the first match
+          # and closes the pipe, tar takes SIGPIPE, and pipefail then reports the PIPELINE as
+          # failed — so a file that WAS found is reported missing. It passed on macOS and failed on
+          # the runner because bsdtar usually finishes before grep quits and GNU tar does not:
+          # a race, won locally and lost in CI. No pipe, no race.
+          tar -tzf "$TARBALL" > /tmp/tarball-listing.txt
+          for want in package/skills/rooms/SKILL.md package/templates/board.html package/SECURITY.md; do
+            if ! grep -qx "$want" /tmp/tarball-listing.txt; then
+              echo "::error::$want is listed in package.json files but missing from the tarball"
+              exit 1
+            fi
+          done
