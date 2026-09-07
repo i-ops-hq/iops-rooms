@@ -94,10 +94,13 @@ function posterStats(events) {
 function renderVerifyBadge(ev) {
   const badge = eventVerifiedBadge(ev);
   if (badge.kind === "verified") {
+    const dual = badge.provider === "both";
+    const host = dual ? "GitHub + GitLab" : badge.provider === "gitlab" ? "GitLab" : "GitHub";
     const tip = badge.login
-      ? `Signed locally as @${badge.login} — not a live GitHub check.`
-      : "Signed locally — not a live GitHub check.";
-    return `<span class="verify-badge" data-verify="verified" title="${escapeHtml(tip)}">verified</span>`;
+      ? `Signed locally as @${badge.login} (${host}) — not a live check.`
+      : `Signed locally (${host}) — not a live check.`;
+    const label = dual ? "verified · gh+gl" : badge.provider === "gitlab" ? "verified · gitlab" : badge.provider === "github" ? "verified · github" : "verified";
+    return `<span class="verify-badge" data-verify="verified" title="${escapeHtml(tip)}">${label}</span>`;
   }
   if (badge.kind === "unverified") {
     const tip = badge.login

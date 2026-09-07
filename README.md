@@ -177,15 +177,20 @@ Honest limit: **local git first**. Remotes/PRs are optional via `rooms scm-statu
 
 Hover an initial on the branch timeline for a compact tip: agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook, plus unknown), post·diff counts for that actor on that branch, last activity, and local HEAD when the lane is the current checkout. Icons are inline SVG — no CDN. Everything comes from `.room/events.jsonl` tool stamps, not live IDE telemetry. A light **Agents** strip lists tools seen in the room.
 
-## Verified GitHub identity (optional)
+## Verified GitHub / GitLab identity (optional)
 
 Solo can stay unsigned. Team leads can opt into verified mode — local only.
 
 ```bash
 export ROOMS_GITHUB_CLIENT_ID=Iv1.your_oauth_app_client_id
 rooms auth github    # GitHub device flow → ~/.iops-rooms/identity.json + device.key
+
+export ROOMS_GITLAB_CLIENT_ID=your_gitlab_oauth_app_id
+# optional: export ROOMS_GITLAB_HOST=https://gitlab.example.com
+rooms auth gitlab    # GitLab device flow → same identity.json + device.key
+
 rooms auth status
-rooms post "…"       # stamps github login + ed25519 sig when verified
+rooms post "…"       # stamps github/gitlab claim + ed25519 sig when verified
 rooms auth logout
 ```
 

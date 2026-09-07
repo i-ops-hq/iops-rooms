@@ -19,6 +19,7 @@ import {
   readPrivateKeyPem,
   loadIdentity,
   authGithubDeviceFlow,
+  authGitlabDeviceFlow,
 } from "../src/identity.js";
 import { initRoom, postNote, mergeRoomBundle, roomPaths, readEvents } from "../src/store.js";
 import { writeBoard } from "../src/board.js";
@@ -140,7 +141,7 @@ test("board shows verified badge when stamped", async () => {
       await postNote(dir, { text: "verified post" });
       const html = await readFile(roomPaths(dir).board, "utf8");
       assert.match(html, /data-verify="verified"/);
-      assert.match(html, />verified</);
+      assert.match(html, />verified(?: · (?:github|gitlab|gh\+gl))?</);
       const events = await readEvents(dir);
       const note = events.find((e) => e.type === "note");
       assert.equal(note.github.login, "badge-user");
@@ -327,7 +328,8 @@ test("verified hover tip is honest about local-only check", async () => {
       await initRoom({ cwd: dir, name: "tip-room" });
       await postNote(dir, { text: "signed tip" });
       const html = await readFile(roomPaths(dir).board, "utf8");
-      assert.match(html, /Signed locally as @tip-user — not a live GitHub check\./);
+      assert.match(html, /Signed locally as @tip-user \(GitHub\) — not a live check\./);
+      assert.match(html, />verified · github</);
       assert.doesNotMatch(html, /local ed25519 signature ok/);
       // timeline ✓ chip must not use native title (double-tip)
       assert.doesNotMatch(html, /class="tl-verify"[^>]*title=/);
@@ -354,6 +356,220 @@ test("env override still amber unverified on board", async () => {
       assert.match(html, /data-verify="unverified"/);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("gitlab fixture identity + stamp + verify", async () => {
+  await withRoomsHome(async () => {
+    const id = await installFixtureIdentity({
+      provider: "gitlab",
+      gitlabUsername: "gl-user",
+      id: 55,
+    });
+    assert.equal(id.gitlab.username, "gl-user");
+    assert.equal(id.github, undefined);
+    assert.ok(id.publicKey.includes("BEGIN PUBLIC KEY"));
+    const status = await authStatus();
+    assert.equal(status.verified, true);
+    assert.equal(status.gitlab.username, "gl-user");
+    assert.equal(status.github, null);
+
+    const idn = await loadIdentity();
+    const stamped = await stampEventIdentity(
+      {
+        actor: idn.displayName,
+        deviceId: idn.deviceId,
+        id: "gl1",
+        type: "note",
+        text: "from gitlab",
+      },
+      idn,
+    );
+    assert.equal(stamped.identity.mode, "verified");
+    assert.equal(stamped.identity.gitlab, "gl-user");
+    assert.equal(stamped.gitlab.username, "gl-user");
+    assert.equal(stamped.github, undefined);
+    assert.equal(verifyEventIdentity(stamped).ok, true);
+    assert.equal(eventVerifiedBadge(stamped).kind, "verified");
+    assert.equal(eventVerifiedBadge(stamped).provider, "gitlab");
+  });
+});
+
+test("gitlab auth preserves existing github claim + shared key", async () => {
+  await withRoomsHome(async () => {
+    await installFixtureIdentity({ login: "gh-first", id: 1 });
+    const before = JSON.parse(await readFile(identityFilePath(), "utf8"));
+    const pemBefore = await readPrivateKeyPem();
+    await installFixtureIdentity({ provider: "gitlab", gitlabUsername: "gl-second", id: 2 });
+    const after = JSON.parse(await readFile(identityFilePath(), "utf8"));
+    assert.equal(after.github.login, "gh-first");
+    assert.equal(after.gitlab.username, "gl-second");
+    assert.equal(after.publicKey, before.publicKey);
+    assert.equal(await readPrivateKeyPem(), pemBefore);
+    const idn = await loadIdentity();
+    const stamped = await stampEventIdentity(
+      {
+        actor: idn.displayName,
+        deviceId: idn.deviceId,
+        id: "both1",
+        type: "note",
+        text: "dual",
+      },
+      idn,
+    );
+    assert.equal(stamped.github.login, "gh-first");
+    assert.equal(stamped.gitlab.username, "gl-second");
+    assert.equal(verifyEventIdentity(stamped).ok, true);
+  });
+});
+
+test("gitlab device flow uses injectable fetch; no network in tests", async () => {
+  await withRoomsHome(async () => {
+    const calls = [];
+    const fetchImpl = async (url, opts = {}) => {
+      calls.push({ url: String(url), method: opts.method || "GET" });
+      if (String(url).includes("/oauth/authorize_device")) {
+        return {
+          ok: true,
+          async json() {
+            return {
+              device_code: "dc-gl",
+              user_code: "WLCM-GITL",
+              verification_uri: "https://gitlab.com/oauth/device",
+              interval: 0.01,
+              expires_in: 60,
+            };
+          },
+          async text() {
+            return "";
+          },
+        };
+      }
+      if (String(url).endsWith("/oauth/token")) {
+        return {
+          ok: true,
+          async json() {
+            return { access_token: "gl-tok", token_type: "Bearer", scope: "read_user" };
+          },
+        };
+      }
+      if (String(url).includes("/api/v4/user")) {
+        return {
+          ok: true,
+          async json() {
+            return { username: "flow-gl", id: 9, email: null };
+          },
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const seen = [];
+    const result = await authGitlabDeviceFlow({
+      clientId: "test-gl-client",
+      fetchImpl,
+      pollIntervalMs: 1,
+      onUserCode: (info) => seen.push(info.userCode),
+    });
+    assert.equal(result.user.username, "flow-gl");
+    assert.deepEqual(seen, ["WLCM-GITL"]);
+    assert.ok(calls.some((c) => c.url.includes("authorize_device")));
+    const status = await authStatus();
+    assert.equal(status.verified, true);
+    assert.equal(status.gitlab.username, "flow-gl");
+  });
+});
+
+test("auth gitlab without client id fails honestly", async () => {
+  await withRoomsHome(async () => {
+    delete process.env.ROOMS_GITLAB_CLIENT_ID;
+    await assert.rejects(
+      () => authGitlabDeviceFlow({ clientId: "", fetchImpl: async () => ({}) }),
+      /ROOMS_GITLAB_CLIENT_ID/,
+    );
+  });
+});
+
+test("claimed gitlab without sig shows amber unverified", async () => {
+  await withRoomsHome(async () => {
+    const forged = {
+      id: "claim-gl-1",
+      at: new Date().toISOString(),
+      type: "note",
+      text: "spoof gl",
+      actor: "attacker",
+      deviceId: "evil",
+      tool: "cli",
+      branch: "main",
+      gitlab: { username: "not-really-gl", id: 1 },
+    };
+    assert.equal(eventVerifiedBadge(forged).kind, "unverified");
+    assert.equal(eventVerifiedBadge(forged).provider, "gitlab");
+  });
+});
+
+test("board shows verified badge for gitlab stamp", async () => {
+  await withRoomsHome(async () => {
+    await installFixtureIdentity({ provider: "gitlab", gitlabUsername: "badge-gl" });
+    const dir = await mkdtemp(join(tmpdir(), "iops-rooms-gl-badge-"));
+    try {
+      await initRoom({ cwd: dir, name: "gl-badge-room" });
+      await postNote(dir, { text: "verified gitlab post" });
+      const html = await readFile(roomPaths(dir).board, "utf8");
+      assert.match(html, /data-verify="verified"/);
+      assert.match(html, /Signed locally as @badge-gl \(GitLab\) — not a live check\./);
+      assert.match(html, />verified · gitlab</);
+      const events = await readEvents(dir);
+      const note = events.find((e) => e.type === "note");
+      assert.equal(note.gitlab.username, "badge-gl");
+      assert.equal(verifyEventIdentity(note).ok, true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("sync-merge warns on claimed gitlab without valid sig (warn-only)", async () => {
+  await withRoomsHome(async () => {
+    const a = await mkdtemp(join(tmpdir(), "iops-rooms-gla-"));
+    const b = await mkdtemp(join(tmpdir(), "iops-rooms-glb-"));
+    const bundle = await mkdtemp(join(tmpdir(), "iops-rooms-glbundle-"));
+    try {
+      await initRoom({ cwd: a, name: "gla", code: "VRIFY2" });
+      const forged = {
+        id: "forged-gitlab-1",
+        at: new Date().toISOString(),
+        type: "note",
+        text: "spoof gl",
+        actor: "attacker",
+        deviceId: "evil",
+        tool: "cli",
+        branch: "",
+        gitlab: { username: "not-really-gl", id: 1 },
+      };
+      await appendFile(roomPaths(a).events, `${JSON.stringify(forged)}\n`, "utf8");
+      const { exportRoomBundle } = await import("../src/store.js");
+      await exportRoomBundle(a, bundle);
+
+      await initRoom({ cwd: b, name: "glb", code: "VRIFY2" });
+      const errs = [];
+      const orig = console.error;
+      console.error = (...args) => errs.push(args.join(" "));
+      let result;
+      try {
+        result = await mergeRoomBundle(bundle, b);
+      } finally {
+        console.error = orig;
+      }
+      assert.ok(result.added >= 1);
+      assert.ok(result.warnBadGitlab >= 1);
+      assert.ok(errs.some((e) => /claims gitlab/.test(e)));
+      const events = await readEvents(b);
+      assert.ok(events.some((e) => e.id === "forged-gitlab-1"));
+    } finally {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+      await rm(bundle, { recursive: true, force: true });
     }
   });
 });

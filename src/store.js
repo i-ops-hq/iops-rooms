@@ -204,7 +204,7 @@ export async function appendEvent(projectDir, event) {
     id: eventId(),
     at: new Date().toISOString(),
   };
-  // Verified GitHub identity stamps + ed25519 sig (local only; env overrides = unverified).
+  // Verified GitHub/GitLab identity stamps + ed25519 sig (local only; env overrides = unverified).
   record = await stampEventIdentity(record, idn);
   await appendFile(paths.events, `${JSON.stringify(record)}\n`, "utf8");
   const meta = await readMeta(projectDir);
@@ -371,17 +371,27 @@ export async function mergeRoomBundle(bundleDir, projectDir = process.cwd()) {
   const incoming = parseEventsJsonl(eventsRaw, { label: incomingEventsPath }).events;
   let added = 0;
   let warnBadGithub = 0;
+  let warnBadGitlab = 0;
   for (const ev of incoming) {
     if (!ev?.id || seen.has(ev.id)) continue;
-    // Warn-only: claimed github login without a valid ed25519 sig (do not hard-reject yet).
-    const claim = ev?.github?.login || ev?.githubLogin;
-    if (claim) {
+    // Warn-only: claimed github/gitlab without a valid ed25519 sig (do not hard-reject yet).
+    const ghClaim = ev?.github?.login || ev?.githubLogin;
+    const glClaim = ev?.gitlab?.username || ev?.gitlabUsername;
+    if (ghClaim || glClaim) {
       const v = verifyEventIdentity(ev);
       if (!v.ok) {
-        warnBadGithub += 1;
-        console.error(
-          `[rooms] warn: event ${ev.id} claims github @${claim} but sig check failed (${v.reason}) — imported anyway`,
-        );
+        if (ghClaim) {
+          warnBadGithub += 1;
+          console.error(
+            `[rooms] warn: event ${ev.id} claims github @${ghClaim} but sig check failed (${v.reason}) — imported anyway`,
+          );
+        }
+        if (glClaim) {
+          warnBadGitlab += 1;
+          console.error(
+            `[rooms] warn: event ${ev.id} claims gitlab @${glClaim} but sig check failed (${v.reason}) — imported anyway`,
+          );
+        }
       }
     }
     await appendFile(local.events, `${JSON.stringify(ev)}\n`, "utf8");
@@ -389,6 +399,6 @@ export async function mergeRoomBundle(bundleDir, projectDir = process.cwd()) {
     added += 1;
   }
   await refreshBoard(projectDir);
-  return { added, total: seen.size, meta: localMeta, warnBadGithub };
+  return { added, total: seen.size, meta: localMeta, warnBadGithub, warnBadGitlab };
 }
 

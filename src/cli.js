@@ -51,6 +51,7 @@ Usage:
   rooms mcp
   rooms mcp install
   rooms auth github
+  rooms auth gitlab
   rooms auth status
   rooms auth logout
   rooms help
@@ -58,7 +59,7 @@ Usage:
 One .room/ per project. Other AI windows are not scanned.
 Cursor/Claude Code only show up if the Rooms MCP is installed and they post.
 Hooks are local opt-in only — never auto-installed; not IDE telemetry.
-Auth mints a local verified GitHub identity only — does not upload room events.
+Auth mints a local verified GitHub/GitLab identity only — does not upload room events.
 `;
 
 function args(argv) {
@@ -345,11 +346,14 @@ async function main() {
     const b = await resolveBranch(dir);
     const { authStatus } = await import("./identity.js");
     const s = await authStatus();
-    const gh = s.verified
+    const gh = s.github?.login
       ? `@${s.github.login} (verified)`
-      : "— (unverified)";
+      : "— (not linked)";
+    const gl = s.gitlab?.username
+      ? `@${s.gitlab.username} (verified)`
+      : "— (not linked)";
     process.stdout.write(
-      `actor     ${a}\ntool      ${t}\ndeviceId  ${d}\nbranch    ${b || "—"}\ngithub    ${gh}\n`,
+      `actor     ${a}\ntool      ${t}\ndeviceId  ${d}\nbranch    ${b || "—"}\ngithub    ${gh}\ngitlab    ${gl}\n`,
     );
     return;
   }
@@ -390,6 +394,11 @@ async function main() {
         `warn  ${result.warnBadGithub} event(s) claimed github login without a valid signature (imported anyway — see SECURITY.md)\n`,
       );
     }
+    if (result.warnBadGitlab) {
+      process.stderr.write(
+        `warn  ${result.warnBadGitlab} event(s) claimed gitlab username without a valid signature (imported anyway — see SECURITY.md)\n`,
+      );
+    }
     return;
   }
 
@@ -406,6 +415,7 @@ async function main() {
     const sub = rest[0] || "status";
     const {
       authGithubDeviceFlow,
+      authGitlabDeviceFlow,
       authStatus,
       clearVerifiedIdentity,
       roomsHomeDir,
@@ -425,7 +435,30 @@ async function main() {
         },
       });
       process.stdout.write(
-        `verified  @${result.user.login}\n` +
+        `verified github @${result.user.login}\n` +
+          `stored    ${roomsHomeDir()}/identity.json + device.key (0600)\n` +
+          `(solo can stay unsigned; team leads opt into verified mode)\n`,
+      );
+      return;
+    }
+    if (sub === "gitlab") {
+      const clientId = argv["client-id"] || process.env.ROOMS_GITLAB_CLIENT_ID;
+      const host = argv.host || process.env.ROOMS_GITLAB_HOST || "https://gitlab.com";
+      process.stdout.write(
+        "GitLab device flow — local identity only (no room upload).\n",
+      );
+      const result = await authGitlabDeviceFlow({
+        clientId,
+        host,
+        openUrl: (url) => openPath(url),
+        onUserCode: ({ userCode, verificationUri }) => {
+          process.stdout.write(
+            `Open ${verificationUri} and enter code: ${userCode}\n`,
+          );
+        },
+      });
+      process.stdout.write(
+        `verified gitlab @${result.user.username}\n` +
           `stored    ${roomsHomeDir()}/identity.json + device.key (0600)\n` +
           `(solo can stay unsigned; team leads opt into verified mode)\n`,
       );
@@ -438,9 +471,12 @@ async function main() {
           `home      ${s.home}`,
           `deviceId  ${s.deviceId}`,
           `actor     ${s.displayName}`,
-          s.verified
+          s.github?.login
             ? `github    @${s.github.login}  (verified)`
-            : `github    —  (unverified)`,
+            : `github    —  (not linked)`,
+          s.gitlab?.username
+            ? `gitlab    @${s.gitlab.username}  (verified)`
+            : `gitlab    —  (not linked)`,
           s.createdAt ? `since     ${s.createdAt}` : null,
           s.envOverride ? `note      env override → posts stamped unverified` : null,
           "",
@@ -455,7 +491,7 @@ async function main() {
       process.stdout.write(`cleared verified identity under ${roomsHomeDir()}\n`);
       return;
     }
-    throw new Error("usage: rooms auth github | rooms auth status | rooms auth logout");
+    throw new Error("usage: rooms auth github | rooms auth gitlab | rooms auth status | rooms auth logout");
   }
 
   if (cmd === "doctor") {

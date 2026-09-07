@@ -135,10 +135,13 @@ export async function runDoctor({
     const d = await deviceId();
     const { authStatus } = await import("./identity.js");
     const s = await authStatus();
-    const gh = s.verified
+    const gh = s.github?.login
       ? `github=@${s.github.login} (verified)`
-      : "github=— (unverified; optional: rooms auth github)";
-    identityDetail = `actor=${a}  tool=${t}  deviceId=${d}  ${gh}`;
+      : "github=— (not linked; optional: rooms auth github)";
+    const gl = s.gitlab?.username
+      ? `gitlab=@${s.gitlab.username} (verified)`
+      : "gitlab=— (not linked; optional: rooms auth gitlab)";
+    identityDetail = `actor=${a}  tool=${t}  deviceId=${d}  ${gh}  ${gl}`;
     checks.push({ id: "identity", ok: true, hard: false, detail: identityDetail });
   } catch (err) {
     checks.push({
