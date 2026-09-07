@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeBoard, buildTimelineModel, normalizeTool } from "../src/board.js";
+import { writeBoard, buildTimelineModel, normalizeTool, toolLabel, toolIconSvg, TOOL_IDS } from "../src/board.js";
 
 test("normalizeTool maps common agent stamps lightly", () => {
   assert.equal(normalizeTool("cli"), "cli");
@@ -12,6 +12,14 @@ test("normalizeTool maps common agent stamps lightly", () => {
   assert.equal(normalizeTool("codex"), "codex");
   assert.equal(normalizeTool("mcp-server"), "mcp");
   assert.equal(normalizeTool("git-hook"), "git-hook");
+  assert.equal(normalizeTool("mystery-bot"), "unknown");
+  assert.equal(toolLabel("claude-code"), "Claude Code");
+  assert.equal(toolLabel("unknown"), "unknown");
+  for (const id of TOOL_IDS) {
+    const svg = toolIconSvg(id);
+    assert.match(svg, /<svg /);
+    assert.doesNotMatch(svg, /cdn\.|jsdelivr|unpkg|googleapis/i);
+  }
 });
 
 test("buildTimelineModel places actors on branch lanes with initials", () => {
@@ -63,6 +71,10 @@ test("buildTimelineModel places actors on branch lanes with initials", () => {
   assert.ok(tom);
   assert.equal(tom.initials, "TO");
   assert.equal(tom.lastDiff, true);
+  assert.equal(tom.diffCount, 1);
+  assert.equal(tom.postCount, 0);
+  assert.equal(ada.postCount, 1);
+  assert.equal(ada.diffCount, 0);
 });
 
 test("board HTML includes timeline lane markers and initials", async () => {
@@ -118,8 +130,16 @@ test("board HTML includes timeline lane markers and initials", async () => {
     assert.doesNotMatch(html, /class="tl-avatar"[^>]*\stitle=/);
     assert.match(html, />AS</); // Ashwinth initials
     assert.match(html, />ST</); // Steve initials
-    assert.match(html, /Agents\/tools/);
     assert.match(html, /data-rooms-timeline/);
+    assert.match(html, /agents-strip/);
+    assert.match(html, /agent-chip/);
+    assert.match(html, /data-tool="cli"/);
+    assert.match(html, /data-tool="claude"/);
+    assert.match(html, /data-posts=/);
+    assert.match(html, /data-diffs=/);
+    assert.match(html, /tl-tip-icons/);
+    assert.match(html, /From \.room\/events\.jsonl — not live IDE/);
+    assert.doesNotMatch(html, /cdn\.|jsdelivr|unpkg|googleapis/i);
     // Keep existing feed + empty-banner path intact for non-empty boards
     assert.match(html, /class="event"/);
     assert.match(html, /Rooms · timeline-room/);
@@ -127,6 +147,66 @@ test("board HTML includes timeline lane markers and initials", async () => {
     assert.match(html, /data-rooms-live/);
   } finally {
     delete process.env.ROOMS_BRANCH;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("timeline tip carries post/diff counts and keeps verify quiet by default", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "rooms-icons-"));
+  try {
+    const boardPath = join(dir, "board.html");
+    const events = [
+      {
+        type: "note",
+        actor: "Steve",
+        tool: "Cursor",
+        branch: "agent-icons-hover",
+        at: "2026-09-06T10:00:00.000Z",
+        text: "icons",
+      },
+      {
+        type: "diff",
+        actor: "Steve",
+        tool: "mcp",
+        branch: "agent-icons-hover",
+        at: "2026-09-06T11:00:00.000Z",
+        text: "share",
+        diff: "+icon\n",
+      },
+      {
+        type: "note",
+        actor: "Steve",
+        tool: "weird-agent",
+        branch: "agent-icons-hover",
+        at: "2026-09-06T12:00:00.000Z",
+        text: "fallback",
+      },
+    ];
+    await writeBoard(
+      boardPath,
+      {
+        id: "ICONS1",
+        name: "icons-room",
+        createdAt: "2026-09-06T09:00:00.000Z",
+        createdBy: "Steve",
+        network: "off",
+      },
+      events,
+      { projectDir: dir },
+    );
+    const html = await readFile(boardPath, "utf8");
+    assert.match(html, /data-actor="Steve"/);
+    assert.match(html, /data-tools="[^"]*cursor[^"]*"/);
+    assert.match(html, /data-tools="[^"]*mcp[^"]*"/);
+    assert.match(html, /data-tools="[^"]*unknown[^"]*"/);
+    assert.match(html, /data-posts="2"/);
+    assert.match(html, /data-diffs="1"/);
+    assert.match(html, /data-tool="unknown"/);
+    assert.match(html, /Claude Code|Cursor|Codex|MCP|CLI|git-hook/);
+    // 3-state verify still present in CSS / script path; unsigned stays quiet
+    assert.doesNotMatch(html, /class="verify-badge"[^>]*>unverified</);
+    assert.doesNotMatch(html, /class="tl-avatar"[^>]*data-verify="unverified"/);
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
