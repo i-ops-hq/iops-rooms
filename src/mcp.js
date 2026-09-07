@@ -7,6 +7,7 @@ import {
   initRoom,
   joinRoom,
   postNote,
+  renameRoom,
   readEvents,
   requireRoomDir,
   roomPaths,
@@ -37,6 +38,17 @@ const TOOLS = [
       properties: {
         code: { type: "string" },
         name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "rename_room",
+    description: "Rename the local room display title (code stays the same).",
+    inputSchema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        name: { type: "string", description: "New display name, e.g. Rooms" },
       },
     },
   },
@@ -151,6 +163,11 @@ async function callTool(name, args = {}) {
           2,
         ),
       );
+    }
+    case "rename_room": {
+      const dir = await requireRoomDir();
+      const meta = await renameRoom(dir, args.name);
+      return textResult(JSON.stringify({ id: meta.id, name: meta.name }, null, 2));
     }
     case "post_note": {
       const dir = await requireRoomDir();

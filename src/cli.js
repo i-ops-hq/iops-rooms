@@ -4,9 +4,14 @@ import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
 import {
   actor,
+  deviceId,
+  exportRoomBundle,
+  importRoomBundle,
+  mergeRoomBundle,
   initRoom,
   joinRoom,
   postNote,
+  renameRoom,
   readEvents,
   readMeta,
   refreshBoard,
@@ -23,19 +28,28 @@ Usage:
   rooms init [--name <n>] [--code <id>] [--share]
   rooms join <code> [--name <n>]
   rooms status
+  rooms rename <name>
   rooms open
+  rooms live [--port 7840]
+  rooms branches
+  rooms scm-status
+  rooms sync-hint
+  rooms sync-merge <bundle-dir>
   rooms post <message>
   rooms share-diff [--path <file>] [--note <text>]
   rooms request-review [note]
   rooms approve [note]
   rooms wait [--since <iso>] [--timeout 15000]
   rooms export [file.md]
+  rooms export-room [dir]
+  rooms import-room <dir>
   rooms whoami
+  rooms index [--open]
   rooms mcp
   rooms help
 
-Data lives in .room/ (gitignored unless --share). Network is off.
-Same folder: two people or two tools. Open the board with rooms open.
+One .room/ per project. Other AI windows are not scanned.
+Cursor/Claude Code only show up if the Rooms MCP is installed and they post.
 `;
 
 function args(argv) {
@@ -169,8 +183,50 @@ async function main() {
     return;
   }
 
+
+  if (cmd === "rename") {
+    const name = rest.join(" ").trim();
+    if (!name) throw new Error("usage: rooms rename <name>");
+    const dir = await requireRoomDir();
+    const meta = await renameRoom(dir, name);
+    process.stdout.write(`renamed  ${meta.id}  ${meta.name}\n`);
+    return;
+  }
+
   if (cmd === "status") {
     await status();
+    return;
+  }
+
+  if (cmd === "index") {
+    const { listRooms, writeIndex } = await import("./index-page.js");
+    const rooms = await listRooms();
+    process.stdout.write(
+      rooms.length
+        ? rooms
+            .map(
+              (r) =>
+                `${r.id}  ${r.name}  ${r.events} ev  ${r.projectDir}`,
+            )
+            .join("\n") + "\n"
+        : "no rooms found under ~/Projects (init first)\n",
+    );
+    if (argv.open) {
+      const path = await writeIndex(rooms);
+      openPath(path);
+      process.stdout.write(`opened ${path}\n`);
+    }
+    return;
+  }
+
+
+  if (cmd === "live") {
+    const dir = await requireRoomDir();
+    const { startLiveBoard } = await import("./live.js");
+    const live = await startLiveBoard(dir, { port: argv.port });
+    openPath(live.url);
+    process.stdout.write(`live  ${live.url}\n(bind ${live.host} only — Ctrl+C to stop)\n`);
+    await new Promise(() => {});
     return;
   }
 
@@ -233,7 +289,73 @@ async function main() {
   }
 
   if (cmd === "whoami") {
-    process.stdout.write(`actor  ${actor()}\ntool   ${tool()}\n`);
+    const a = await actor();
+    const t = await tool();
+    const d = await deviceId();
+    const dir = await requireRoomDir().catch(() => process.cwd());
+    const { resolveBranch } = await import("./git-info.js");
+    const b = await resolveBranch(dir);
+    process.stdout.write(`actor     ${a}\ntool      ${t}\ndeviceId  ${d}\nbranch    ${b || "—"}\n`);
+    return;
+  }
+
+  if (cmd === "branches") {
+    const dir = await requireRoomDir();
+    const { readGitSnapshot } = await import("./git-info.js");
+    const git = await readGitSnapshot(dir);
+    const events = await readEvents(dir);
+    process.stdout.write(`current  ${git.current || "—"}\n`);
+    if (git.head) process.stdout.write(`head     ${git.head}\n`);
+    process.stdout.write(`note     ${git.note}\n`);
+    for (const name of git.branches) {
+      const n = events.filter((e) => e.type !== "system" && (e.branch || "") === name).length;
+      const mark = name === git.current ? "*" : " ";
+      process.stdout.write(`${mark} ${name}  (${n} posts)\n`);
+    }
+    return;
+  }
+
+  if (cmd === "scm-status") {
+    const dir = await requireRoomDir();
+    const { scmStatus, formatScmStatus } = await import("./scm.js");
+    const provider = argv.provider || rest[0] || "github";
+    const s = await scmStatus(dir, { provider });
+    process.stdout.write(formatScmStatus(s));
+    return;
+  }
+
+  if (cmd === "sync-merge") {
+    const bundle = rest[0];
+    if (!bundle) throw new Error("usage: rooms sync-merge <bundle-dir>");
+    const dir = await requireRoomDir();
+    const result = await mergeRoomBundle(bundle, dir);
+    process.stdout.write(`merged  +${result.added} events  (total ids ${result.total})  room ${result.meta.id}\n`);
+    return;
+  }
+
+  if (cmd === "sync-hint") {
+    const { syncHint } = await import("./sync-hint.js");
+    const h = syncHint();
+    process.stdout.write(`${h.status}  ${h.message}\n`);
+    for (const step of h.steps) process.stdout.write(`- ${step}\n`);
+    return;
+  }
+
+  if (cmd === "export-room") {
+    const dir = await requireRoomDir();
+    const out = rest[0] || "room-bundle";
+    const dest = await exportRoomBundle(dir, out);
+    process.stdout.write(`exported  ${dest}\n`);
+    return;
+  }
+
+  if (cmd === "import-room") {
+    const bundle = rest[0];
+    if (!bundle) throw new Error("usage: rooms import-room <bundle-dir>");
+    const result = await importRoomBundle(bundle, process.cwd());
+    process.stdout.write(
+      `imported  room ${result.meta.id}  ${result.meta.name}\nboard   ${result.projectDir}/.room/board.html\n`,
+    );
     return;
   }
 

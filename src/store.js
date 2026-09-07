@@ -4,6 +4,8 @@ import { homedir } from "node:os";
 import { constants } from "node:fs";
 import { eventId, roomCode } from "./ids.js";
 import { writeBoard } from "./board.js";
+import { loadIdentity } from "./identity.js";
+import { resolveBranch } from "./git-info.js";
 
 export const ROOM_DIR_NAME = ".room";
 const META = "room.json";
@@ -105,7 +107,7 @@ export function transcriptMarkdown(meta, events) {
     ``,
   ];
   for (const ev of events) {
-    lines.push(`## ${ev.at} · ${ev.type} · ${ev.actor} (${ev.tool})`);
+    lines.push(`## ${ev.at} · ${ev.type} · ${ev.actor} · ${ev.deviceId || "?"} (${ev.tool})`);
     lines.push("");
     lines.push(ev.text || "");
     if (ev.path) lines.push(`\nFile: \`${ev.path}\``);
@@ -133,15 +135,21 @@ export async function readEvents(projectDir) {
 
 export async function appendEvent(projectDir, event) {
   const paths = roomPaths(projectDir);
+  const idn = await identity();
+  const branch = event.branch || (await resolveBranch(projectDir)) || "";
   const record = {
     id: eventId(),
     at: new Date().toISOString(),
     ...event,
+    deviceId: event.deviceId || idn.deviceId,
+    actor: event.actor || idn.displayName,
+    tool: event.tool || idn.tool,
+    branch: branch || event.branch || "",
   };
   await appendFile(paths.events, `${JSON.stringify(record)}\n`, "utf8");
   const meta = await readMeta(projectDir);
   const events = await readEvents(projectDir);
-  await writeBoard(paths.board, meta, events);
+  await writeBoard(paths.board, meta, events, { projectDir });
   return record;
 }
 
@@ -149,16 +157,27 @@ export async function refreshBoard(projectDir) {
   const paths = roomPaths(projectDir);
   const meta = await readMeta(projectDir);
   const events = await readEvents(projectDir);
-  await writeBoard(paths.board, meta, events);
+  await writeBoard(paths.board, meta, events, { projectDir });
   return paths.board;
 }
 
-function actor() {
-  return process.env.ROOMS_ACTOR || process.env.USER || process.env.USERNAME || "local";
+async function identity() {
+  return loadIdentity();
 }
 
-function tool() {
-  return process.env.ROOMS_TOOL || "cli";
+async function actor() {
+  const id = await identity();
+  return id.displayName;
+}
+
+async function tool() {
+  const id = await identity();
+  return id.tool;
+}
+
+async function deviceId() {
+  const id = await identity();
+  return id.deviceId;
 }
 
 export async function initRoom({
@@ -191,7 +210,7 @@ export async function initRoom({
     id: (code || roomCode()).toUpperCase(),
     name: name || "untitled",
     createdAt: new Date().toISOString(),
-    createdBy: actor(),
+    createdBy: await actor(),
     network: "off",
     share,
   };
@@ -199,9 +218,7 @@ export async function initRoom({
   await writeFile(paths.events, "", "utf8");
   await appendEvent(projectDir, {
     type: "system",
-    actor: actor(),
-    tool: tool(),
-    text: `Room ${meta.id} created. Files stay in ${paths.root}. Network is off.`,
+    text: `Room ${meta.id} created. Files stay in ${paths.root}. Network is off. Sync is among your devices only — not I-Ops cloud.`,
   });
   await ensureGitignore(projectDir, share);
   return { projectDir, meta, created: true };
@@ -224,17 +241,84 @@ export async function joinRoom({ cwd = process.cwd(), code, name } = {}) {
   return initRoom({ cwd, name, code: id });
 }
 
+export async function renameRoom(projectDir, name) {
+  const paths = roomPaths(projectDir);
+  const meta = await readMeta(projectDir);
+  const next = String(name || "").trim();
+  if (!next) throw new Error("rename needs a non-empty name");
+  meta.name = next;
+  await writeFile(paths.meta, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+  await refreshBoard(projectDir);
+  return meta;
+}
+
 export async function postNote(projectDir, { text, type = "note", extra = {} } = {}) {
   if (!text || !String(text).trim()) {
     throw new Error("Empty message");
   }
   return appendEvent(projectDir, {
     type,
-    actor: actor(),
-    tool: tool(),
     text: String(text).trim(),
     ...extra,
   });
 }
 
-export { actor, tool };
+export { actor, tool, deviceId, identity, loadIdentity };
+
+export async function exportRoomBundle(projectDir, outDir) {
+  const { cp } = await import("node:fs/promises");
+  const paths = roomPaths(projectDir);
+  await mkdir(outDir, { recursive: true });
+  await cp(paths.root, outDir, { recursive: true });
+  return outDir;
+}
+
+export async function importRoomBundle(bundleDir, projectDir = process.cwd()) {
+  const { cp } = await import("node:fs/promises");
+  const dest = roomPaths(projectDir).root;
+  if (await exists(dest)) {
+    throw new Error(`.room/ already exists at ${dest}. Use rooms sync-merge <dir> to union events.`);
+  }
+  await mkdir(dirname(dest), { recursive: true });
+  await cp(bundleDir, dest, { recursive: true });
+  await refreshBoard(projectDir);
+  return { projectDir, meta: await readMeta(projectDir) };
+}
+
+/** Union events from a teammate bundle into this project's .room/ (by event id). Local-only. */
+export async function mergeRoomBundle(bundleDir, projectDir = process.cwd()) {
+  const { readFile: rf, appendFile: af } = await import("node:fs/promises");
+  const local = roomPaths(projectDir);
+  if (!(await exists(local.meta))) {
+    throw new Error("No local room. Run rooms init (or import-room) first.");
+  }
+  const incomingMetaPath = join(bundleDir, "room.json");
+  const incomingEventsPath = join(bundleDir, "events.jsonl");
+  if (!(await exists(incomingMetaPath)) || !(await exists(incomingEventsPath))) {
+    throw new Error("Bundle missing room.json or events.jsonl");
+  }
+  const localMeta = await readMeta(projectDir);
+  const incomingMeta = JSON.parse(await rf(incomingMetaPath, "utf8"));
+  if (incomingMeta.id && localMeta.id && incomingMeta.id !== localMeta.id) {
+    throw new Error(
+      `Room code mismatch: local ${localMeta.id} vs bundle ${incomingMeta.id}. Same room only.`,
+    );
+  }
+  const existing = await readEvents(projectDir);
+  const seen = new Set(existing.map((e) => e.id));
+  const raw = await rf(incomingEventsPath, "utf8");
+  const incoming = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+  let added = 0;
+  for (const ev of incoming) {
+    if (!ev?.id || seen.has(ev.id)) continue;
+    await af(local.events, `${JSON.stringify(ev)}\n`, "utf8");
+    seen.add(ev.id);
+    added += 1;
+  }
+  await refreshBoard(projectDir);
+  return { added, total: seen.size, meta: localMeta };
+}

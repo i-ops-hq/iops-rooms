@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{TITLE}} · {{CODE}} · Rooms by I-Ops</title>
+    <title>All rooms · Rooms by I-Ops</title>
     <!--
       Visual tokens from I-Ops (sky, Jakarta/Inter/Plex stacks, #2f6fed).
       No Google Fonts, no remote CSS. Uses those families only if installed.
@@ -234,6 +234,14 @@
       .empty {
         color: var(--ink-2);
       }
+      a.event {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+      }
+      a.event:hover {
+        border-color: var(--blue);
+      }
       .event {
         background: var(--card);
         border: 1px solid var(--line);
@@ -287,152 +295,6 @@
         border-radius: 10px;
         color: var(--ink);
       }
-
-      .device {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        color: var(--ink-3);
-      }
-      .tools-strip {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        margin: 0 0 18px;
-        font-family: var(--font-mono);
-        font-size: 13px;
-        color: var(--ink-2);
-      }
-      .tool-chip {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: var(--r-pill);
-        padding: 6px 12px;
-        font-weight: 500;
-      }
-      .dot-sep {
-        color: var(--ink-3);
-        padding: 0 2px;
-      }
-      .network-blurb,
-      .posters-blurb {
-        font-size: 14px;
-        color: var(--ink-2);
-        margin: 10px 0 0;
-        max-width: 52ch;
-      }
-
-      .branch {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        color: var(--accent, #3d6bf3);
-        background: color-mix(in srgb, var(--accent, #3d6bf3) 12%, transparent);
-        border-radius: 999px;
-        padding: 2px 8px;
-      }
-      .branch-panel {
-        margin: 0 0 22px;
-        padding: 16px 18px;
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-      }
-      .branch-heading {
-        margin: 0 0 8px;
-        font-size: 15px;
-        font-weight: 600;
-      }
-      .branch-current { margin: 0 0 6px; font-size: 14px; color: var(--ink-2); }
-      .branch-note { margin: 0 0 12px; font-size: 13px; color: var(--ink-3); max-width: 62ch; }
-      .branch-list { display: flex; flex-direction: column; gap: 8px; }
-
-      .event[data-branch]:not([data-branch=""]) {
-        border-left: 3px solid hsl(var(--branch-hue, 210) 55% 48%);
-        padding-left: 12px;
-      }
-      .event[data-main="1"] {
-        border-left-width: 4px;
-        border-left-color: hsl(145 45% 38%);
-      }
-      .branch-swatch {
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        background: hsl(var(--branch-hue, 210) 55% 48%);
-        flex-shrink: 0;
-      }
-      .branch-row[data-main="1"] .branch-swatch {
-        background: hsl(145 45% 38%);
-        box-shadow: 0 0 0 2px color-mix(in srgb, hsl(145 45% 38%) 30%, transparent);
-      }
-      .branch-row {
-        display: grid;
-        grid-template-columns: 10px minmax(8ch, 1fr) minmax(12ch, 1.4fr) minmax(12ch, 1.2fr);
-        gap: 10px;
-        align-items: baseline;
-        font-size: 13px;
-        padding: 8px 10px;
-        border-radius: 10px;
-        background: var(--bg-soft, transparent);
-      }
-      .branch-row[data-current="1"] {
-        outline: 1px solid color-mix(in srgb, var(--accent, #3d6bf3) 35%, var(--line));
-      }
-      .branch-name { font-family: var(--font-mono); font-weight: 600; }
-      .branch-badge {
-        display: inline-block;
-        margin-left: 6px;
-        font-family: var(--font);
-        font-size: 10px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: hsl(145 45% 32%);
-        background: color-mix(in srgb, hsl(145 45% 38%) 16%, transparent);
-        border-radius: 999px;
-        padding: 1px 7px;
-        vertical-align: middle;
-      }
-      .branch-legend {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 0 0 12px;
-        font-size: 12px;
-        color: var(--ink-3);
-      }
-      .branch-swatch-main {
-        background: hsl(145 45% 38%);
-        box-shadow: 0 0 0 2px color-mix(in srgb, hsl(145 45% 38%) 30%, transparent);
-      }
-      .lead-join { font-size: 15px; max-width: 52ch; }
-      .branch-meta, .branch-last { color: var(--ink-3); font-size: 12px; }
-      
-      details.branch-history {
-        margin-top: 12px;
-        font-size: 13px;
-        color: var(--ink-3);
-      }
-      details.branch-history summary {
-        cursor: pointer;
-        font-family: var(--font-mono);
-        font-size: 12px;
-      }
-      .live-chip {
-        position: fixed;
-        top: 14px;
-        right: 14px;
-        z-index: 50;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        letter-spacing: 0.02em;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: var(--card);
-        border: 1px solid var(--line);
-        color: var(--ink-2);
-        box-shadow: 0 4px 18px rgba(0,0,0,0.06);
-      }
       @media (prefers-reduced-motion: reduce) {
         * {
           transition: none !important;
@@ -444,42 +306,21 @@
     <header class="hero">
       <div class="wrap">
         <span class="eyebrow">I-Ops · Rooms</span>
-        <h1 class="h-display">{{TITLE}}</h1>
-        <p class="code">{{CODE}}</p>
-        <p class="lead">Live project room for humans + agents. Other apps and folders are not watched.</p>
-        <p class="lead">Cursor / Claude Code / Codex post via MCP into the same <span class="code" style="font-size:15px">.room</span>.</p>
-        <p class="lead lead-join">Another machine: <span class="code" style="font-size:15px">rooms join {{CODE}}</span> — sync among your devices only.</p>
-        <p class="stamp">created {{CREATED}} · {{BY}}</p>
+        <h1 class="h-display">On this Mac</h1>
+        <p class="lead">Rooms you created. Not every AI window that happens to be open.</p>
         <div class="facts">
-          <div class="fact"><b>{{POSTERS}}</b><span>posters</span></div>
-          <div class="fact"><b>{{COUNT}}</b><span>events</span></div>
-          <div class="fact"><b>{{NETWORK}}</b><span>network — {{NETWORK_DETAIL}}</span></div>
-          <div class="fact"><b>{{BRANCH}}</b><span>branch</span></div>
-          <div class="fact"><b>.room</b><span>on disk</span></div>
+          <div class="fact"><b>{{COUNT}}</b><span>rooms found</span></div>
         </div>
-        <p class="posters-blurb">{{POSTERS_BLURB}}</p>
       </div>
     </header>
     <main class="wrap stage">
       <p class="note">
-        <strong>Opt-in log.</strong>
-        Only CLI and MCP posts land here — not ChatGPT, Grok, or Claude in the browser.
-        Join is local <span class="code" style="font-size:13px">.room</span> state on your machines — not an I-Ops account.
-        Other projects: <span class="code" style="font-size: 13px">rooms index --open</span>.
-        This board does not phone home.
-        Static <span class="code" style="font-size:13px">file://</span> stays offline.
-        <span class="code" style="font-size:13px">rooms live</span> serves <span class="code" style="font-size:13px">127.0.0.1</span> only and auto-updates open tabs — still no internet.
+        <strong>Opt-in only.</strong>
+        ChatGPT, Claude.ai, and Grok in the browser never appear here.
+        Cursor or Claude Code appear after you add the Rooms MCP and the agent posts into a <code>.room/</code>.
+        Different projects are different rooms — click one to open its board.
       </p>
-      {{BRANCH_PANEL}}
-      {{TOOLS_STRIP}}
-      <div class="legend">
-        <span class="lg" data-tone="note"><span class="dot"></span>note</span>
-        <span class="lg" data-tone="diff"><span class="dot"></span>diff</span>
-        <span class="lg" data-tone="review_requested"><span class="dot"></span>review</span>
-        <span class="lg" data-tone="approved"><span class="dot"></span>approved</span>
-        <span class="lg" data-tone="system"><span class="dot"></span>system</span>
-      </div>
-      {{EVENTS}}
+      {{ROWS}}
     </main>
   </body>
 </html>
