@@ -17,7 +17,7 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 ## What it does
 
 - Read/write `.room/room.json`, `.room/events.jsonl`, `.room/board.html`
-- Stamp each event with a stable `deviceId` + display name (override with `ROOMS_DEVICE_ID` / `ROOMS_ACTOR`; env overrides are marked **unverified**)
+- Stamp each event with a stable `deviceId` + display name. `ROOMS_ACTOR` claims to be a person, cannot be checked, and is marked **unverified**. `ROOMS_DEVICE_ID` only labels the machine — required in VMs, where a cloned template shares one `device.json` and an ephemeral one has none — so it does not block signing; the event records `deviceAsserted`
 - Optional: after `rooms auth github` / `rooms auth gitlab`, stamp posts with GitHub/GitLab claim + local ed25519 signature (public key on the event; private key stays in `~/.iops-rooms/device.key`)
 - Speak MCP over **stdio only**
 - Render a static HTML file from `templates/board.html`
@@ -85,8 +85,12 @@ identity.json shape (either or both providers):
 - `rooms auth gitlab` uses GitLab **device authorization grant**. Set `ROOMS_GITLAB_CLIENT_ID` (Application ID). Optional `ROOMS_GITLAB_HOST` (default `https://gitlab.com`) for self-managed.
 - Auth only mints a **local** identity; it does not upload room events to I-Ops, GitHub, or GitLab. Access tokens are discarded after reading `/user`.
 - Posts/MCP attach `github.login` and/or `gitlab.username` + `publicKey` + `sig` over a canonical payload (actor, deviceId, id, type, text hash, provider claim) when a verified identity is present. GitHub-only payload stays backward-compatible.
-- Env overrides (`ROOMS_ACTOR` / `ROOMS_DEVICE_ID`) still work for smoke and are stamped **unverified**.
-- Board badges: **verified** (sig ok) · **unverified** amber only for env override or a claimed GitHub/GitLab login without a valid sig · **quiet/none** for unsigned solo (no amber by default).
+- `ROOMS_ACTOR` is stamped **unverified**: it claims to be a person and nothing can check it.
+- `ROOMS_DEVICE_ID` is **not** an identity claim, so a verified identity still signs normally. The
+  signature covers the device id, so the person is checked and the machine label is asserted —
+  the event carries `identity.deviceAsserted: true` to say which half was which. Without this,
+  running in a VM and being verified were mutually exclusive.
+- Board badges: **verified** (sig ok) · **unverified** amber only for a `ROOMS_ACTOR` claim or a claimed GitHub/GitLab login without a valid sig · **quiet/none** for unsigned solo (no amber by default).
 
 ### sync-merge / import — warn-only
 
