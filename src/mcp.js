@@ -13,6 +13,7 @@ import {
   roomPaths,
   waitForNewEvents,
 } from "./store.js";
+import { capDiff } from "./diff-source.js";
 
 process.env.ROOMS_TOOL = process.env.ROOMS_TOOL || "mcp";
 
@@ -187,12 +188,15 @@ async function callTool(name, args = {}) {
     }
     case "share_diff": {
       const dir = await requireRoomDir();
+      // The agent supplies the bytes; this tool never reads a file. Only the cap applies, and it
+      // is recorded rather than applied silently.
+      const { diff, truncated } = capDiff(args.diff);
       await postNote(dir, {
         type: "diff",
         text: args.note || "shared a diff",
-        extra: { path: args.path || "", diff: String(args.diff).slice(0, 100_000) },
+        extra: { path: args.path || "", diff, ...(truncated ? { truncated: true } : {}) },
       });
-      return textResult("diff stored locally");
+      return textResult(truncated ? "diff stored locally (truncated)" : "diff stored locally");
     }
     case "request_review": {
       const dir = await requireRoomDir();

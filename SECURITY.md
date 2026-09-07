@@ -8,6 +8,7 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 - Bind a listen socket to anything other than `127.0.0.1` (optional `rooms live` is localhost-only)
 - Read `process.env` wholesale or hunt for `.env`, SSH keys, or cloud credentials
 - Write outside `.room/` in the project it resolved (except local identity under `~/.iops-rooms/`: `device.json`, optional `identity.json` + `device.key` mode 0600)
+- **Read** a file outside that project for `share-diff --path`, or a file whose name looks like a secret, without you saying so explicitly — see below
 - Run shell commands or `eval` user/agent text
 - Install other packages at runtime
 - Load scripts, fonts, or pixels from the public internet in `board.html`
@@ -24,6 +25,34 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 - Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes
 - Optional: read local `git` for branch stamps; optional read-only `gh` for `scm-status` (never uploads the room)
 - Optional: export/import a `.room/` folder for git-friendly handoff (still offline)
+
+## What `share-diff` will read (P0)
+
+`rooms share-diff --path <file>` writes file contents into the room, and a shared room is
+committed and pushed when `--share` is on. Until 2026-09-07 it read whatever path it was handed —
+`--path ../fake-secret.env` published a secret from outside the project in one command. Three
+independent controls now apply, because confinement alone fixes only the first:
+
+- **Outside the project is refused.** The path resolves against the directory holding `.room/`.
+  `--allow-outside` is the deliberate way through, and it is per-invocation.
+- **Secret-looking names are refused**, inside the project too — `.env`, `*.pem`, `*.key`,
+  `id_rsa`, `id_ed25519`, `*secret*`, `*credentials*`. `--allow-outside` does not lift this; the
+  two are independent. The test is the **basename**, not the whole path, so a project under a
+  directory named `credentials` is not refused wholesale.
+- **The read is bounded.** At most 100 KB plus one byte is ever read, so file size no longer
+  decides memory. Previously the whole file was read and then sliced — on a file past Node's
+  maximum string length that was not a slow read but an outright `Invalid string length` crash.
+  Truncation is recorded on the event and shown on the board rather than applied silently.
+
+**Piped content is capped but not filtered.** `cat file | rooms share-diff` is the escape hatch on
+purpose: `--path` means *this tool reads a file for you*, and stdin means *these are bytes you
+chose*. The responsibility moves with the choice.
+
+**The MCP `share_diff` tool is different, and the difference is worth understanding.** It takes the
+diff as a string and never touches the filesystem, so none of the above can apply — an agent hands
+over bytes it already has. The only lever there is the skill's instruction not to send secrets,
+which is guidance to a model, not a control. If that distinction matters to you, the CLI is the
+enforced path.
 
 ## Sync story
 

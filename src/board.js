@@ -160,7 +160,9 @@ function renderEvents(events) {
           : "";
       const diff =
         ev.diff != null && ev.diff !== ""
-          ? `<pre class="diff">${escapeHtml(ev.diff)}</pre>`
+          ? `<pre class="diff">${escapeHtml(ev.diff)}${
+              ev.truncated ? "\n\n[cut at 100 KB — this is the start of the file, not all of it]" : ""
+            }</pre>`
           : "";
       const deviceBit = device
         ? `<span class="device" title="device ${escapeHtml(ev.deviceId || "")}">${device}</span>`
