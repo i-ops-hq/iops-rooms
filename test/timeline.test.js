@@ -3,7 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeBoard, buildTimelineModel, normalizeTool, toolLabel, toolIconSvg, TOOL_IDS } from "../src/board.js";
+import {
+  writeBoard,
+  buildTimelineModel,
+  normalizeTool,
+  toolLabel,
+  toolIconSvg,
+  TOOL_IDS,
+  DEFAULT_ACTIVE_MS,
+  resolveActiveMs,
+  humanizeRelative,
+  presenceFromLastAt,
+  lastAtByTool,
+} from "../src/board.js";
 
 test("normalizeTool maps common agent stamps lightly", () => {
   assert.equal(normalizeTool("cli"), "cli");
@@ -206,6 +218,117 @@ test("timeline tip carries post/diff counts and keeps verify quiet by default", 
     // 3-state verify still present in CSS / script path; unsigned stays quiet
     assert.doesNotMatch(html, /class="verify-badge"[^>]*>unverified</);
     assert.doesNotMatch(html, /class="tl-avatar"[^>]*data-verify="unverified"/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("DEFAULT_ACTIVE_MS is 10 minutes; ROOMS_ACTIVE_MS overrides", () => {
+  assert.equal(DEFAULT_ACTIVE_MS, 10 * 60 * 1000);
+  assert.equal(resolveActiveMs({}), DEFAULT_ACTIVE_MS);
+  assert.equal(resolveActiveMs({ ROOMS_ACTIVE_MS: "" }), DEFAULT_ACTIVE_MS);
+  assert.equal(resolveActiveMs({ ROOMS_ACTIVE_MS: "60000" }), 60_000);
+  assert.equal(resolveActiveMs({ ROOMS_ACTIVE_MS: "nope" }), DEFAULT_ACTIVE_MS);
+  assert.equal(resolveActiveMs({ ROOMS_ACTIVE_MS: "-1" }), DEFAULT_ACTIVE_MS);
+});
+
+test("humanizeRelative and presenceFromLastAt window + tip copy", () => {
+  assert.equal(humanizeRelative(0), "just now");
+  assert.equal(humanizeRelative(2 * 60 * 1000), "2m ago");
+  assert.equal(humanizeRelative(3 * 60 * 60 * 1000), "3h ago");
+  assert.equal(humanizeRelative(2 * 24 * 60 * 60 * 1000), "2d ago");
+
+  const now = Date.parse("2026-09-06T12:00:00.000Z");
+  const windowMs = 10 * 60 * 1000;
+  const active = presenceFromLastAt("2026-09-06T11:58:00.000Z", { now, windowMs });
+  assert.equal(active.state, "active");
+  assert.equal(active.active, true);
+  assert.equal(active.label, "active · last 2m ago");
+
+  const idle = presenceFromLastAt("2026-09-06T09:00:00.000Z", { now, windowMs });
+  assert.equal(idle.state, "idle");
+  assert.equal(idle.active, false);
+  assert.equal(idle.label, "idle · last 3h ago");
+
+  const never = presenceFromLastAt("", { now, windowMs });
+  assert.equal(never.state, "idle");
+  assert.equal(never.label, "idle · never");
+
+  // system events ignored for tool last-at
+  const byTool = lastAtByTool([
+    { type: "system", tool: "cli", at: "2026-09-06T11:59:00.000Z" },
+    { type: "note", tool: "cli", at: "2026-09-06T11:50:00.000Z" },
+    { type: "diff", tool: "Cursor", at: "2026-09-06T11:55:00.000Z" },
+  ]);
+  assert.equal(byTool.get("cli"), "2026-09-06T11:50:00.000Z");
+  assert.equal(byTool.get("cursor"), "2026-09-06T11:55:00.000Z");
+});
+
+test("agents strip and tip expose green/gray active·idle from events only", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "rooms-presence-"));
+  try {
+    const boardPath = join(dir, "board.html");
+    const now = Date.parse("2026-09-06T12:00:00.000Z");
+    const events = [
+      {
+        type: "note",
+        actor: "Steve",
+        tool: "cursor",
+        branch: "agent-active-idle",
+        at: "2026-09-06T11:58:00.000Z",
+        text: "recent",
+      },
+      {
+        type: "diff",
+        actor: "Steve",
+        tool: "cli",
+        branch: "agent-active-idle",
+        at: "2026-09-06T09:00:00.000Z",
+        text: "old",
+        diff: "+old\n",
+      },
+      {
+        type: "system",
+        actor: "sys",
+        tool: "mcp",
+        at: "2026-09-06T11:59:00.000Z",
+        text: "ignored for presence",
+      },
+    ];
+    await writeBoard(
+      boardPath,
+      {
+        id: "ACTV01",
+        name: "presence-room",
+        createdAt: "2026-09-06T08:00:00.000Z",
+        createdBy: "Steve",
+        network: "off",
+      },
+      events,
+      { projectDir: dir, now, windowMs: DEFAULT_ACTIVE_MS },
+    );
+    const html = await readFile(boardPath, "utf8");
+    assert.match(html, /agent-chip"[^>]*data-tool="cursor"[^>]*data-presence="active"/);
+    assert.match(html, /agent-chip"[^>]*data-tool="cli"[^>]*data-presence="idle"/);
+    assert.match(html, /agent-presence/);
+    assert.match(html, /active · last 2m ago/);
+    assert.match(html, /idle · last 3h ago/);
+    assert.match(html, /data-presence="active"/);
+    assert.match(html, /data-presence-label="active · last 2m ago"/);
+    assert.match(html, /tl-presence/);
+    assert.match(html, /data-tool-presence=/);
+    assert.match(html, /<b>Presence<\/b>/);
+    assert.doesNotMatch(html, /class="agent-chip"[^>]*data-tool="mcp"/); // system-only tool must not invent presence
+    assert.match(html, /From \.room\/events\.jsonl — not live IDE/);
+
+    const model = buildTimelineModel(events, { current: "agent-active-idle", branches: ["agent-active-idle"] }, { now, windowMs: DEFAULT_ACTIVE_MS });
+    const steve = model.lanes[0].people.find((p) => p.actor === "Steve");
+    assert.ok(steve);
+    assert.equal(steve.presence.state, "active");
+    assert.equal(steve.presence.label, "active · last 2m ago");
+    assert.equal(model.toolPresence.cursor.state, "active");
+    assert.equal(model.toolPresence.cli.state, "idle");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

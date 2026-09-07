@@ -325,18 +325,109 @@ export function toolIconSvg(tool) {
   }
 }
 
-function renderToolChip(tool) {
-  const id = normalizeTool(tool);
-  const label = toolLabel(id);
-  return `<span class="agent-chip" data-tool="${escapeHtml(id)}" title="${escapeHtml(label)}">${toolIconSvg(id)}<span class="agent-chip-label">${escapeHtml(label)}</span></span>`;
+/** Default presence window: 10 minutes. Override with ROOMS_ACTIVE_MS (ms). */
+export const DEFAULT_ACTIVE_MS = 10 * 60 * 1000;
+
+/** Resolve active window from env; invalid/missing → default. */
+export function resolveActiveMs(env = process.env) {
+  const raw = env?.ROOMS_ACTIVE_MS;
+  if (raw == null || String(raw).trim() === "") return DEFAULT_ACTIVE_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_ACTIVE_MS;
+  return n;
 }
 
-function renderAgentsStrip(events) {
-  const tools = new Set();
+/**
+ * Humanize a non-negative elapsed duration for tip copy.
+ * e.g. "just now", "2m ago", "3h ago", "2d ago"
+ */
+export function humanizeRelative(msAgo) {
+  let ms = Number(msAgo);
+  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return sec <= 5 ? "just now" : `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 48) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function formatPresenceLabel(state, relative) {
+  if (relative === "just now") return `${state} · just now`;
+  return `${state} · last ${relative}`;
+}
+
+/**
+ * Active if last non-system event timestamp is within windowMs of now.
+ * Honest: only .room event stamps — not IDE scrape / invented presence.
+ */
+export function presenceFromLastAt(lastAt, opts = {}) {
+  const now = opts.now != null ? Number(opts.now) : Date.now();
+  const windowMs = opts.windowMs != null ? Number(opts.windowMs) : resolveActiveMs();
+  const t = parseAt(lastAt);
+  if (t == null) {
+    return {
+      state: "idle",
+      lastAt: "",
+      relative: "",
+      label: "idle · never",
+      active: false,
+    };
+  }
+  const ago = Math.max(0, now - t);
+  const active = ago <= windowMs;
+  const state = active ? "active" : "idle";
+  const relative = humanizeRelative(ago);
+  return {
+    state,
+    lastAt: lastAt || "",
+    relative,
+    label: formatPresenceLabel(state, relative),
+    active,
+  };
+}
+
+/** Latest non-system event `at` per normalized tool. */
+export function lastAtByTool(events) {
+  const map = new Map();
   for (const ev of events || []) {
     if (!ev || ev.type === "system") continue;
-    tools.add(normalizeTool(ev.tool));
+    const id = normalizeTool(ev.tool);
+    const at = ev.at || "";
+    const prev = map.get(id) || "";
+    if (!prev || (at && at > prev)) map.set(id, at);
   }
+  return map;
+}
+
+/** Latest non-system event `at` per actor. */
+export function lastAtByActor(events) {
+  const map = new Map();
+  for (const ev of events || []) {
+    if (!ev || ev.type === "system") continue;
+    const name = ev.actor || "unknown";
+    const at = ev.at || "";
+    const prev = map.get(name) || "";
+    if (!prev || (at && at > prev)) map.set(name, at);
+  }
+  return map;
+}
+
+function renderToolChip(tool, presence) {
+  const id = normalizeTool(tool);
+  const label = toolLabel(id);
+  const state = presence?.state === "active" ? "active" : "idle";
+  const tip = presence?.label ? `${label} · ${presence.label}` : label;
+  return `<span class="agent-chip" data-tool="${escapeHtml(id)}" data-presence="${state}" title="${escapeHtml(tip)}">${toolIconSvg(id)}<span class="agent-presence" aria-hidden="true"></span><span class="agent-chip-label">${escapeHtml(label)}</span></span>`;
+}
+
+function renderAgentsStrip(events, opts = {}) {
+  const now = opts.now != null ? Number(opts.now) : Date.now();
+  const windowMs = opts.windowMs != null ? Number(opts.windowMs) : resolveActiveMs();
+  const lastByTool = lastAtByTool(events);
+  const tools = new Set(lastByTool.keys());
   const list = [...tools].sort((a, b) => {
     const ia = TOOL_IDS.indexOf(a);
     const ib = TOOL_IDS.indexOf(b);
@@ -344,7 +435,7 @@ function renderAgentsStrip(events) {
   });
   if (!list.length) return "";
   return `<div class="agents-strip" aria-label="agents seen in room"><span class="agents-strip-label">Agents</span>${list
-    .map((t) => renderToolChip(t))
+    .map((t) => renderToolChip(t, presenceFromLastAt(lastByTool.get(t), { now, windowMs })))
     .join("")}</div>`;
 }
 
@@ -364,7 +455,7 @@ function parseAt(iso) {
  * Build branch lanes + per-(actor,branch) presence from Rooms events + local git.
  * Positions are honest: only .room event stamps, not IDE session data.
  */
-export function buildTimelineModel(events, git = {}) {
+export function buildTimelineModel(events, git = {}, opts = {}) {
   const nonSystem = (events || []).filter((e) => e && e.type !== "system");
   const byBranch = new Map();
   let tMin = Infinity;
@@ -465,6 +556,9 @@ export function buildTimelineModel(events, git = {}) {
       const t = parseAt(p.lastAt);
       const pct =
         t == null ? 50 : Math.max(2, Math.min(98, ((t - tMin) / (tMax - tMin)) * 100));
+      const now = opts.now != null ? Number(opts.now) : Date.now();
+      const windowMs = opts.windowMs != null ? Number(opts.windowMs) : resolveActiveMs();
+      const presence = presenceFromLastAt(p.lastAt, { now, windowMs });
       return {
         actor: p.actor,
         initials: initials(p.actor),
@@ -482,6 +576,7 @@ export function buildTimelineModel(events, git = {}) {
         githubLogin: p.githubLogin || null,
         pct,
         hue: actorHue(p.actor),
+        presence,
       };
     });
     people.sort((a, b) => (a.lastAt || "").localeCompare(b.lastAt || ""));
@@ -497,6 +592,13 @@ export function buildTimelineModel(events, git = {}) {
   });
 
   const unknown = byBranch.get("(unknown)");
+  const now = opts.now != null ? Number(opts.now) : Date.now();
+  const windowMs = opts.windowMs != null ? Number(opts.windowMs) : resolveActiveMs();
+  const toolLast = lastAtByTool(nonSystem);
+  const toolPresence = {};
+  for (const [tool, at] of toolLast) {
+    toolPresence[tool] = presenceFromLastAt(at, { now, windowMs });
+  }
   return {
     lanes,
     unknownCount: unknown?.eventCount || 0,
@@ -505,11 +607,14 @@ export function buildTimelineModel(events, git = {}) {
     head: git.head || "",
     current: git.current || "",
     hasPeople: lanes.some((l) => l.people.length > 0),
+    toolPresence,
+    now,
+    windowMs,
   };
 }
 
-function renderTimeline(events, git) {
-  const model = buildTimelineModel(events, git);
+function renderTimeline(events, git, opts = {}) {
+  const model = buildTimelineModel(events, git, opts);
   if (!model.lanes.length && !model.unknownCount) {
     return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
@@ -539,7 +644,17 @@ function renderTimeline(events, git) {
           const verify = posterVerifyKind(p);
           // Tip icons are rendered client-side from data-tools; keep avatar chrome light.
           // No title= on .tl-verify — custom .tl-tooltip owns hover; native title stacks.
-          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-posts="${p.postCount}" data-diffs="${p.diffCount}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
+          const presenceState = p.presence?.state === "active" ? "active" : "idle";
+          const presenceLabel = p.presence?.label || "idle · never";
+          const toolPresenceBits = p.tools
+            .map((tid) => {
+              const pr = model.toolPresence?.[tid];
+              const st = pr?.state === "active" ? "active" : "idle";
+              const lb = pr?.label || "idle · never";
+              return `${tid}=${st}:${lb}`;
+            })
+            .join("|");
+          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-tool-presence="${escapeHtml(toolPresenceBits)}" data-presence="${presenceState}" data-presence-label="${escapeHtml(presenceLabel)}" data-posts="${p.postCount}" data-diffs="${p.diffCount}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span><span class="tl-presence" data-presence="${presenceState}" aria-hidden="true"></span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
         })
         .join("\n        ");
       const empty =
@@ -572,7 +687,7 @@ function renderTimeline(events, git) {
   return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
     <h2 class="timeline-heading">Timeline</h2>
-    <p class="timeline-note">Branches flow left→right in time. Initials float on the lane of their last room post. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
+    <p class="timeline-note">Branches flow left→right in time. Initials float on the lane of their last room post. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook) with green/gray active·idle dots (from .room posts within the active window), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
   </div>
   <div class="timeline-scroll">
     <div class="timeline-canvas">
@@ -594,6 +709,9 @@ ${lanesHtml}
 export async function writeBoard(boardPath, meta, events, opts = {}) {
   let template = await readFile(TEMPLATE, "utf8");
   const projectDir = opts.projectDir || process.cwd();
+  const now = opts.now != null ? Number(opts.now) : Date.now();
+  const windowMs = opts.windowMs != null ? Number(opts.windowMs) : resolveActiveMs();
+  const presenceOpts = { now, windowMs };
   const git = await readGitSnapshot(projectDir);
   const { actors } = posterStats(events);
   // Non-system actors only — empty/system-only rooms show 0, not a fake "1 poster"
@@ -607,7 +725,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
         : `${distinctPosters} posters on this board.`;
 
   const posterNames = [...actors.keys()];
-  const agentsStrip = renderAgentsStrip(events);
+  const agentsStrip = renderAgentsStrip(events, presenceOpts);
   let posterStrip = "";
   if (distinctPosters >= 2) {
     posterStrip = `<div class="tools-strip" aria-label="posters">${posterNames
@@ -649,7 +767,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     "{{POSTERS_BLURB}}": escapeHtml(postersBlurb),
     "{{BRANCH}}": escapeHtml(branchLabel),
     "{{BRANCH_PANEL}}": renderBranchPanel(git, events),
-    "{{TIMELINE}}": renderTimeline(events, git),
+    "{{TIMELINE}}": renderTimeline(events, git, presenceOpts),
     "{{TOOLS_STRIP}}": strip,
     "{{EVENTS}}": renderEvents(events),
   };
