@@ -241,6 +241,17 @@ export async function joinRoom({ cwd = process.cwd(), code, name } = {}) {
   return initRoom({ cwd, name, code: id });
 }
 
+export async function renameRoom(projectDir, name) {
+  const paths = roomPaths(projectDir);
+  const meta = await readMeta(projectDir);
+  const next = String(name || "").trim();
+  if (!next) throw new Error("rename needs a non-empty name");
+  meta.name = next;
+  await writeFile(paths.meta, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+  await refreshBoard(projectDir);
+  return meta;
+}
+
 export async function postNote(projectDir, { text, type = "note", extra = {} } = {}) {
   if (!text || !String(text).trim()) {
     throw new Error("Empty message");

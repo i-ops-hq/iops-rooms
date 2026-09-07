@@ -345,9 +345,29 @@
       .branch-current { margin: 0 0 6px; font-size: 14px; color: var(--ink-2); }
       .branch-note { margin: 0 0 12px; font-size: 13px; color: var(--ink-3); max-width: 62ch; }
       .branch-list { display: flex; flex-direction: column; gap: 8px; }
+
+      .event[data-branch]:not([data-branch=""]) {
+        border-left: 3px solid hsl(var(--branch-hue, 210) 55% 48%);
+        padding-left: 12px;
+      }
+      .event[data-main="1"] {
+        border-left-width: 4px;
+        border-left-color: hsl(145 45% 38%);
+      }
+      .branch-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: hsl(var(--branch-hue, 210) 55% 48%);
+        flex-shrink: 0;
+      }
+      .branch-row[data-main="1"] .branch-swatch {
+        background: hsl(145 45% 38%);
+        box-shadow: 0 0 0 2px color-mix(in srgb, hsl(145 45% 38%) 30%, transparent);
+      }
       .branch-row {
         display: grid;
-        grid-template-columns: minmax(8ch, 1fr) minmax(12ch, 1.4fr) minmax(12ch, 1.2fr);
+        grid-template-columns: 10px minmax(8ch, 1fr) minmax(12ch, 1.4fr) minmax(12ch, 1.2fr);
         gap: 10px;
         align-items: baseline;
         font-size: 13px;
@@ -399,8 +419,8 @@
         <span class="eyebrow">I-Ops · Rooms</span>
         <h1 class="h-display">{{TITLE}}</h1>
         <p class="code">{{CODE}}</p>
-        <p class="lead">One project’s room. Other apps and other folders are not watched.</p>
-        <p class="lead">Two people / two agent tabs, same <span class="code" style="font-size:15px">.room</span>.</p>
+        <p class="lead">Live project room for humans + agents. Other apps and folders are not watched.</p>
+        <p class="lead">Cursor / Claude Code / Codex post via MCP into the same <span class="code" style="font-size:15px">.room</span>.</p>
         <p class="stamp">created {{CREATED}} · {{BY}}</p>
         <div class="facts">
           <div class="fact"><b>{{POSTERS}}</b><span>posters</span></div>

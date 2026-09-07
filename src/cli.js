@@ -11,6 +11,7 @@ import {
   initRoom,
   joinRoom,
   postNote,
+  renameRoom,
   readEvents,
   readMeta,
   refreshBoard,
@@ -27,6 +28,7 @@ Usage:
   rooms init [--name <n>] [--code <id>] [--share]
   rooms join <code> [--name <n>]
   rooms status
+  rooms rename <name>
   rooms open
   rooms live [--port 7840]
   rooms branches
@@ -178,6 +180,16 @@ async function main() {
     process.stdout.write(
       `${created ? "created" : "joined"} ${meta.id}  ${meta.name}\nboard   ${board}\n`,
     );
+    return;
+  }
+
+
+  if (cmd === "rename") {
+    const name = rest.join(" ").trim();
+    if (!name) throw new Error("usage: rooms rename <name>");
+    const dir = await requireRoomDir();
+    const meta = await renameRoom(dir, name);
+    process.stdout.write(`renamed  ${meta.id}  ${meta.name}\n`);
     return;
   }
 

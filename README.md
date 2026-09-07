@@ -32,6 +32,35 @@ Individual first: prove one poster can init → post → see the board. Team lat
 - Network stays **off** for solo; team “own devices” sync is a later slice — still not I-Ops cloud.
 
 
+
+## Agents live on the board (Cursor / Claude Code / Codex)
+
+Goal: agents **post as they work** via MCP — not only manual CLI notes.
+
+**This repo:** `.cursor/mcp.json` already runs `node src/mcp.js`. Copy `skills/rooms/SKILL.md` into the agent skill path. Reload MCP, run `rooms live`, leave the tab open.
+
+**Other projects (npx):**
+
+```json
+{
+  "mcpServers": {
+    "iops-rooms": {
+      "command": "npx",
+      "args": ["-y", "iops-rooms@0.1.0", "mcp"]
+    }
+  }
+}
+```
+
+Pin the version. There is no pip package yet — Node/`npx` (or a local `node /path/to/iops-rooms/src/mcp.js`) is the install path.
+
+Then agents use `post_note` / `share_diff` / `rename_room` while coding. Branch stamps come from local git.
+
+```bash
+rooms rename Rooms     # display name; code unchanged
+rooms live
+```
+
 ## CLI vs MCP
 
 **CLI** (Terminal):

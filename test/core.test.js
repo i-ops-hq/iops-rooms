@@ -179,7 +179,7 @@ test("two devices stamp distinct deviceId and both appear on the board", async (
     assert.match(html, /cli/);
     assert.match(html, /mcp/);
     assert.match(html, /does not phone home/i);
-    assert.match(html, /Two people/);
+    assert.match(html, /humans \+ agents/);
     assert.match(html, /files stay in this folder/);
     assert.doesNotMatch(html, /Vinci|assurance|Control Room|harness|governed/i);
   } finally {

@@ -39,6 +39,17 @@ function shortBranch(name, max = 18) {
   return s.slice(0, Math.max(1, max - 1)) + "…";
 }
 
+function branchHue(name) {
+  const s = String(name || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function isMainBranch(name) {
+  return /^(main|master)$/i.test(String(name || ""));
+}
+
 function posterStats(events) {
   const actors = new Map();
   const tools = new Set();
@@ -81,7 +92,9 @@ function renderEvents(events) {
       const branchBit = branch
         ? `<span class="branch" title="git branch">${branch}</span>`
         : "";
-      return `<article class="event" data-type="${kind}" data-tone="${kind}" data-branch="${branch}">
+      const hue = branch ? branchHue(ev.branch) : 210;
+      const mainAttr = isMainBranch(ev.branch) ? ' data-main="1"' : "";
+      return `<article class="event" data-type="${kind}" data-tone="${kind}" data-branch="${branch}"${mainAttr} style="--branch-hue: ${hue}">
   <header>
     <span class="dot"></span>
     <span class="actor">${actor}</span>
@@ -134,11 +147,14 @@ function renderBranchPanel(git, events) {
       const devices = [...info.devices].map((d) => shortDevice(d)).filter(Boolean).join(", ");
       const who = devices ? `${actors} · devices ${devices}` : actors;
       const current = name === git.current ? ' data-current="1"' : "";
+      const mainAttr = isMainBranch(name) ? ' data-main="1"' : "";
+      const hue = branchHue(name);
       const last = info.lastAt
         ? `${escapeHtml(info.lastActor || "?")} · ${escapeHtml(formatWhen(info.lastAt))}`
         : "no room posts yet";
-      return `<div class="branch-row"${current}>
-  <span class="branch-name" title="${escapeHtml(name)}">${escapeHtml(shortBranch(name, 28))}</span>
+      return `<div class="branch-row"${current}${mainAttr} style="--branch-hue: ${hue}">
+  <span class="branch-swatch" aria-hidden="true"></span>
+  <span class="branch-name" title="${escapeHtml(name)}">${escapeHtml(shortBranch(name, 28))}${isMainBranch(name) ? " · main" : ""}</span>
   <span class="branch-meta">${info.count} post${info.count === 1 ? "" : "s"} · ${escapeHtml(who)}</span>
   <span class="branch-last">${last}</span>
 </div>`;
