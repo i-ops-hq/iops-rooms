@@ -1,6 +1,6 @@
 {
   "name": "iops-rooms",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Rooms by I-Ops — local, inspectable shared rooms for agent sessions",
   "type": "module",
   "license": "MIT",
