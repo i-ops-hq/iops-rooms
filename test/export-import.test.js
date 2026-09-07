@@ -217,6 +217,9 @@ test("empty board shows Nothing posted yet banner; title uses Rooms · name", as
     assert.match(html, /not IDE telemetry/);
     assert.match(html, /<title>Rooms · Homework<\/title>/);
     assert.match(html, /<h1 class="h-display">Rooms · Homework<\/h1>/);
+    assert.match(html, /<b>0<\/b><span>posters<\/span>/);
+    assert.match(html, /No posts yet —/);
+    assert.doesNotMatch(html, /1 poster —/);
     assert.equal(boardProjectName({ name: "untitled" }, dir), basename(dir));
     assert.equal(boardProjectName(meta, dir), "Homework");
   } finally {

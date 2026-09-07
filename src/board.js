@@ -206,13 +206,15 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   const projectDir = opts.projectDir || process.cwd();
   const git = await readGitSnapshot(projectDir);
   const { actors, tools } = posterStats(events);
-  // Count distinct non-system actors; if only system events, still 1 creator
+  // Non-system actors only — empty/system-only rooms show 0, not a fake "1 poster"
   const distinctPosters = actors.size;
-  const postersLabel = String(Math.max(distinctPosters, meta.createdBy ? 1 : 0));
+  const postersLabel = String(distinctPosters);
   const postersBlurb =
-    distinctPosters <= 1
-      ? "1 poster — join from another tool or machine with the room code."
-      : `${distinctPosters} posters on this board.`;
+    distinctPosters === 0
+      ? "No posts yet — join from another tool or machine with the room code."
+      : distinctPosters === 1
+        ? "1 poster on this board."
+        : `${distinctPosters} posters on this board.`;
 
   const toolList = [...tools];
   const posterNames = [...actors.keys()];
