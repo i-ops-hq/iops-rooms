@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SERVER_KEY = "iops-rooms";
-const PINNED_VERSION = "0.2.0";
+const PINNED_VERSION = "0.3.0";
 
 async function exists(path) {
   try {
