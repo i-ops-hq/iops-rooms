@@ -201,7 +201,7 @@ rooms post "…"       # stamps github/gitlab claim + ed25519 sig when verified
 rooms auth logout
 ```
 
-Auth mints a **local** verified identity. It does **not** upload `.room/` events. Unsigned solo posts stay quiet on the board (no amber badge). Env overrides for smoke (`ROOMS_ACTOR` / `ROOMS_DEVICE_ID`) and claimed-login-without-sig show **unverified**. See SECURITY.md for warn-only sync-merge and residual spoofability.
+Auth mints a **local** verified identity. It does **not** upload `.room/` events. Unsigned solo posts stay quiet on the board (no amber badge). `ROOMS_ACTOR` and claimed-login-without-sig show **unverified**. `ROOMS_DEVICE_ID` only names the machine — required in VMs — so it still signs, and the event records `deviceAsserted`. See SECURITY.md for warn-only sync-merge and residual spoofability.
 
 ## Team device sync (dogfood)
 

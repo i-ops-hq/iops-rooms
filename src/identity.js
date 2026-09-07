@@ -30,7 +30,12 @@ export function privateKeyPath() {
 }
 
 function newDeviceId() {
-  return randomBytes(4).toString("hex");
+  // 16 bytes, not 4. Four bytes is 32 bits: two devices share an id at ~1% odds by 9,300
+  // devices and ~50% by 77,000. A fleet of ephemeral VMs counts RUNS, not machines — 1,000
+  // VMs spun 20x a day for a month is 600,000 ids and a certain collision. Two devices
+  // sharing an id merge into one actor on the board, which fails as a wrong picture rather
+  // than an error. Ids already in device.json are kept as-is; only new ones are longer.
+  return randomBytes(16).toString("hex");
 }
 
 async function exists(path) {
@@ -66,8 +71,17 @@ export async function loadIdentity() {
   ).trim();
   const tool = (envTool || "cli").trim();
 
-  // Env actor/device overrides are convenient for smoke — always marked unverified.
-  const envOverride = Boolean(envId || envName);
+  // ROOMS_ACTOR claims to be a PERSON. Nothing can check that, so it stays unverified.
+  //
+  // ROOMS_DEVICE_ID names a MACHINE, which is not a claim about identity at all — and in a VM
+  // it is mandatory: a cloned template hands every clone the same device.json, and an ephemeral
+  // VM loses it on each spin-up. Treating it as an identity override made "runs in a VM" and
+  // "verified by GitHub or GitLab" mutually exclusive, which is the exact combination office
+  // deployments need. A signed event stays signed; the signature covers the device id, so the
+  // person is verified and the device label is asserted. `deviceAsserted` records that.
+  const actorOverride = Boolean(envName);
+  const deviceOverride = Boolean(envId);
+  const envOverride = actorOverride || deviceOverride;
 
   if (!envId && (!stored || stored.deviceId !== deviceId || stored.displayName !== displayName)) {
     await mkdir(roomsHomeDir(), { recursive: true });
@@ -86,6 +100,8 @@ export async function loadIdentity() {
     tool,
     actor: displayName,
     envOverride,
+    actorOverride,
+    deviceOverride,
     verified: verified || null,
   };
 }
@@ -308,13 +324,19 @@ export function verifyCanonical(publicKeyPem, payload, sigBase64) {
 
 /**
  * Attach verified stamp + ed25519 signature to an event record (mutates/returns).
- * Env actor/device overrides stay allowed but marked unverified.
+ * A ROOMS_ACTOR override is an uncheckable claim to be a person and stays unverified.
+ * A ROOMS_DEVICE_ID override only labels the machine and does not block signing — see
+ * loadIdentity for why VMs cannot work any other way.
  */
 export async function stampEventIdentity(record, idn) {
   const out = { ...record };
-  const envOverride = Boolean(idn?.envOverride);
+  // Older callers may hand us an identity from before the split; fall back to the coarse flag.
+  const actorOverride = Boolean(
+    idn?.actorOverride ?? (idn?.deviceOverride ? false : idn?.envOverride),
+  );
+  const deviceAsserted = Boolean(idn?.deviceOverride);
 
-  if (envOverride) {
+  if (actorOverride) {
     out.identity = { mode: "unverified", reason: "env_override" };
   }
 
@@ -327,8 +349,8 @@ export async function stampEventIdentity(record, idn) {
     return out;
   }
 
-  // Env override wins for actor/device smoke — do not pretend verified.
-  if (envOverride) {
+  // An unverifiable person claim wins — do not pretend verified.
+  if (actorOverride) {
     return out;
   }
 
@@ -367,6 +389,10 @@ export async function stampEventIdentity(record, idn) {
     mode: "verified",
     ...(githubLogin ? { github: githubLogin } : {}),
     ...(gitlabUsername ? { gitlab: gitlabUsername } : {}),
+    // The signature covers deviceId, so this is not a hole — but the id was supplied by the
+    // environment rather than minted on the machine, and a board that will one day answer
+    // "which machine ran this" should be able to say which half was checked.
+    ...(deviceAsserted ? { deviceAsserted: true } : {}),
   };
   return out;
 }
