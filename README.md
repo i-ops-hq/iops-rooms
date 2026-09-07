@@ -149,7 +149,7 @@ Lists `.room/` under ~/Projects. Does not list browser chat windows.
 | rooms status / whoami | Paths and actor |
 | rooms open | Local HTML board |
 | rooms post | Note |
-| rooms share-diff | Diff on disk (stamped actor/tool/device) |
+| rooms share-diff | Diff on disk (stamped actor/tool/device). Confined to the project; `--allow-outside` to escape it, secret-looking names refused |
 | rooms request-review / approve | Audit |
 | rooms wait / export | Poll, markdown export |
 | rooms doctor | Diagnose empty / unhealthy rooms |

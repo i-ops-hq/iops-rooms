@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
 import {
   actor,
@@ -21,6 +20,11 @@ import {
   transcriptMarkdown,
   waitForNewEvents,
 } from "./store.js";
+import {
+  capDiff,
+  readDiffFile,
+  resolveSharePath,
+} from "./diff-source.js";
 
 const HELP = `Rooms by I-Ops — local shared rooms for agent sessions
 
@@ -38,7 +42,7 @@ Usage:
   rooms sync-hint
   rooms sync-merge <bundle-dir>
   rooms post <message>
-  rooms share-diff [--path <file>] [--note <text>]
+  rooms share-diff [--path <file>] [--note <text>] [--allow-outside]
   rooms request-review [note]
   rooms approve [note]
   rooms wait [--since <iso>] [--timeout 15000]
@@ -135,18 +139,25 @@ async function shareDiff(opts) {
   const dir = await requireRoomDir();
   let diff = "";
   let path = opts.path || "";
+  let truncated = false;
   if (opts.path) {
-    diff = await readFile(opts.path, "utf8");
+    // Refuses an escape from the project and a secret-looking name; see src/diff-source.js.
+    const src = resolveSharePath(dir, opts.path, {
+      allowOutside: Boolean(opts["allow-outside"]),
+    });
+    path = src.label;
+    ({ diff, truncated } = await readDiffFile(src.absolute));
   } else if (!process.stdin.isTTY) {
+    // Piped content is the caller's own choice of bytes, so it is not filtered — only capped.
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
-    diff = Buffer.concat(chunks).toString("utf8");
+    ({ diff, truncated } = capDiff(Buffer.concat(chunks).toString("utf8")));
   }
   if (!diff.trim()) throw new Error("No diff. Pass --path or pipe a patch on stdin.");
   await postNote(dir, {
     type: "diff",
     text: opts.note || "shared a diff",
-    extra: { path, diff: diff.slice(0, 100_000) },
+    extra: { path, diff, ...(truncated ? { truncated: true } : {}) },
   });
 }
 
