@@ -90,11 +90,24 @@ Copy `skills/rooms/SKILL.md` into a user skill dir if you want it globally.
 
 ## Install
 
-From the repo root run init, post, status, and open with node src/cli.js (see CLI vs MCP above).
+Published on npm (MIT). Pin the version — do not use `@latest`.
 
-Teammate on the same git checkout: node src/cli.js join THECODE
+```bash
+npm i -g iops-rooms@0.1.0
+# or one-shot:
+npx -y iops-rooms@0.1.0 help
+npx -y iops-rooms@0.1.0 init --name homework
+npx -y iops-rooms@0.1.0 post "starting"
+npx -y iops-rooms@0.1.0 live
+```
+
+From a git checkout of this repo you can still run `node src/cli.js …` (see CLI vs MCP above).
+
+Teammate on the same checkout: `rooms join THECODE` (or `node src/cli.js join THECODE`).
 
 `--share` keeps `.room/` commitable. Default is gitignore.
+
+MCP Registry listing is a follow-up — npm is the install path for now.
 
 ## All rooms on this Mac
 

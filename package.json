@@ -1,11 +1,11 @@
 {
   "name": "iops-rooms",
   "version": "0.1.0",
-  "description": "Rooms by I-Ops \u2014 local, inspectable shared rooms for agent sessions",
+  "description": "Rooms by I-Ops — local, inspectable shared rooms for agent sessions",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "rooms": "./src/cli.js"
+    "rooms": "src/cli.js"
   },
   "exports": {
     ".": "./src/store.js"
@@ -15,7 +15,8 @@
     "skills",
     "templates",
     "SECURITY.md",
-    "LICENSE"
+    "LICENSE",
+    "README.md"
   ],
   "engines": {
     "node": ">=20"
@@ -37,6 +38,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/i-ops/rooms"
-  }
+    "url": "git+https://github.com/AshPlayer-1415/iops-rooms.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AshPlayer-1415/iops-rooms/issues"
+  },
+  "homepage": "https://github.com/AshPlayer-1415/iops-rooms#readme",
+  "mcpName": "io.github.AshPlayer-1415/iops-rooms"
 }
