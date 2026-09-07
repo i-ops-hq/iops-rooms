@@ -32,6 +32,13 @@ function shortDevice(id) {
   return s;
 }
 
+function shortBranch(name, max = 18) {
+  if (!name) return "—";
+  const s = String(name);
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(1, max - 1)) + "…";
+}
+
 function posterStats(events) {
   const actors = new Map();
   const tools = new Set();
@@ -97,9 +104,12 @@ function renderBranchPanel(git, events) {
   for (const ev of events) {
     if (ev.type === "system") continue;
     const b = ev.branch || "(unknown)";
-    const prev = byBranch.get(b) || { count: 0, actors: new Set(), lastAt: "", lastActor: "" };
+    const prev =
+      byBranch.get(b) ||
+      { count: 0, actors: new Set(), devices: new Set(), lastAt: "", lastActor: "" };
     prev.count += 1;
     if (ev.actor) prev.actors.add(ev.actor);
+    if (ev.deviceId) prev.devices.add(ev.deviceId);
     if (!prev.lastAt || (ev.at && ev.at > prev.lastAt)) {
       prev.lastAt = ev.at || "";
       prev.lastActor = ev.actor || "";
@@ -107,36 +117,47 @@ function renderBranchPanel(git, events) {
     byBranch.set(b, prev);
   }
   const local = git.branches || [];
-  const names = [...new Set([...local, ...byBranch.keys()])].filter((n) => n !== "(unknown)" || byBranch.has(n));
-  if (!names.length && !git.current) {
+  const unknown = byBranch.get("(unknown)");
+  const named = [...new Set([...local, ...byBranch.keys()])].filter((n) => n !== "(unknown)");
+  if (!named.length && !unknown && !git.current) {
     return `<section class="branch-panel" aria-label="branches">
   <h2 class="branch-heading">Branches</h2>
   <p class="branch-note">${escapeHtml(git.note || "No local git branches yet.")}</p>
 </section>`;
   }
-  const rows = names
+  const rows = named
     .map((name) => {
-      const info = byBranch.get(name) || { count: 0, actors: new Set(), lastAt: "", lastActor: "" };
+      const info =
+        byBranch.get(name) ||
+        { count: 0, actors: new Set(), devices: new Set(), lastAt: "", lastActor: "" };
       const actors = [...info.actors].join(", ") || "—";
+      const devices = [...info.devices].map((d) => shortDevice(d)).filter(Boolean).join(", ");
+      const who = devices ? `${actors} · devices ${devices}` : actors;
       const current = name === git.current ? ' data-current="1"' : "";
       const last = info.lastAt
         ? `${escapeHtml(info.lastActor || "?")} · ${escapeHtml(formatWhen(info.lastAt))}`
         : "no room posts yet";
       return `<div class="branch-row"${current}>
-  <span class="branch-name">${escapeHtml(name)}</span>
-  <span class="branch-meta">${info.count} post${info.count === 1 ? "" : "s"} · ${escapeHtml(actors)}</span>
+  <span class="branch-name" title="${escapeHtml(name)}">${escapeHtml(shortBranch(name, 28))}</span>
+  <span class="branch-meta">${info.count} post${info.count === 1 ? "" : "s"} · ${escapeHtml(who)}</span>
   <span class="branch-last">${last}</span>
 </div>`;
     })
     .join("\n");
+  const hist = unknown
+    ? `<details class="branch-history"><summary>Pre-stamp history (${unknown.count} post${unknown.count === 1 ? "" : "s"} without a branch field)</summary>
+  <p class="branch-note">Older events from before branch awareness. Actors: ${escapeHtml([...unknown.actors].join(", ") || "—")}${unknown.devices.size ? ` · devices ${escapeHtml([...unknown.devices].map((d) => shortDevice(d)).join(", "))}` : ""}.</p>
+</details>`
+    : "";
   const cur = git.current
-    ? `<p class="branch-current">Current checkout: <strong>${escapeHtml(git.current)}</strong>${git.head ? ` <span class="device">@ ${escapeHtml(git.head)}</span>` : ""}</p>`
+    ? `<p class="branch-current">Current checkout: <strong title="${escapeHtml(git.current)}">${escapeHtml(shortBranch(git.current, 40))}</strong>${git.head ? ` <span class="device">@ ${escapeHtml(git.head)}</span>` : ""}</p>`
     : "";
   return `<section class="branch-panel" aria-label="branches">
   <h2 class="branch-heading">Branches</h2>
   ${cur}
-  <p class="branch-note">${escapeHtml(git.note || "Local git + room posts. Remotes/PRs come later.")}</p>
+  <p class="branch-note">${escapeHtml(git.note || "Local git + room posts. Remotes/PRs come later. Actors are people/tools; devices are machines.")}</p>
   <div class="branch-list">${rows}</div>
+  ${hist}
 </section>`;
 }
 
@@ -173,7 +194,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
       ? "files stay in this folder"
       : "syncs only among your team’s devices — not I-Ops cloud";
 
-  const branchLabel = git.current || "—";
+  const branchLabel = shortBranch(git.current || "—", 18);
   const replacements = {
     "{{TITLE}}": escapeHtml(meta.name || "room"),
     "{{CODE}}": escapeHtml(meta.id || ""),

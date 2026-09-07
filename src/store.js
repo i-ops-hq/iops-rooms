@@ -266,10 +266,48 @@ export async function importRoomBundle(bundleDir, projectDir = process.cwd()) {
   const { cp } = await import("node:fs/promises");
   const dest = roomPaths(projectDir).root;
   if (await exists(dest)) {
-    throw new Error(`.room/ already exists at ${dest}`);
+    throw new Error(`.room/ already exists at ${dest}. Use rooms sync-merge <dir> to union events.`);
   }
   await mkdir(dirname(dest), { recursive: true });
   await cp(bundleDir, dest, { recursive: true });
   await refreshBoard(projectDir);
   return { projectDir, meta: await readMeta(projectDir) };
+}
+
+/** Union events from a teammate bundle into this project's .room/ (by event id). Local-only. */
+export async function mergeRoomBundle(bundleDir, projectDir = process.cwd()) {
+  const { readFile: rf, appendFile: af } = await import("node:fs/promises");
+  const local = roomPaths(projectDir);
+  if (!(await exists(local.meta))) {
+    throw new Error("No local room. Run rooms init (or import-room) first.");
+  }
+  const incomingMetaPath = join(bundleDir, "room.json");
+  const incomingEventsPath = join(bundleDir, "events.jsonl");
+  if (!(await exists(incomingMetaPath)) || !(await exists(incomingEventsPath))) {
+    throw new Error("Bundle missing room.json or events.jsonl");
+  }
+  const localMeta = await readMeta(projectDir);
+  const incomingMeta = JSON.parse(await rf(incomingMetaPath, "utf8"));
+  if (incomingMeta.id && localMeta.id && incomingMeta.id !== localMeta.id) {
+    throw new Error(
+      `Room code mismatch: local ${localMeta.id} vs bundle ${incomingMeta.id}. Same room only.`,
+    );
+  }
+  const existing = await readEvents(projectDir);
+  const seen = new Set(existing.map((e) => e.id));
+  const raw = await rf(incomingEventsPath, "utf8");
+  const incoming = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+  let added = 0;
+  for (const ev of incoming) {
+    if (!ev?.id || seen.has(ev.id)) continue;
+    await af(local.events, `${JSON.stringify(ev)}\n`, "utf8");
+    seen.add(ev.id);
+    added += 1;
+  }
+  await refreshBoard(projectDir);
+  return { added, total: seen.size, meta: localMeta };
 }

@@ -1,17 +1,19 @@
 /**
- * Team device sync — sketch / runbook, not hosted multiplayer.
- * Real sync later: shared .room via git --share, export/import, or peer watch.
+ * Team device sync — on their machines only (export / merge). No I-Ops cloud.
  */
 export function syncHint() {
   return {
-    status: "sketch",
+    status: "dogfood",
     message:
-      "Team device sync is not auto-magic yet. Use --share + git, or rooms export-room / import-room, so teammates see the same .room/ on devices they control. No I-Ops cloud.",
+      "Share .room/ among devices you control: export on A, merge on B. Same room code required. Live board stays 127.0.0.1 on each machine.",
     steps: [
-      "rooms init --share   # commit .room/ with the project",
-      "teammate: git pull && rooms join <CODE>",
-      "or: rooms export-room /tmp/room-bundle && hand off && rooms import-room /tmp/room-bundle",
-      "rooms live on each machine still binds 127.0.0.1 only",
+      "# Device A",
+      "rooms export-room /tmp/room-bundle",
+      "# copy /tmp/room-bundle to Device B (AirDrop, USB, git --share, …)",
+      "# Device B (room already inited with same code, or import-room once)",
+      "rooms sync-merge /tmp/room-bundle",
+      "rooms live   # see unioned events",
+      "# Or commit .room/ with rooms init --share and git pull on teammates",
     ],
   };
 }

@@ -7,6 +7,7 @@ import {
   deviceId,
   exportRoomBundle,
   importRoomBundle,
+  mergeRoomBundle,
   initRoom,
   joinRoom,
   postNote,
@@ -31,6 +32,7 @@ Usage:
   rooms branches
   rooms scm-status
   rooms sync-hint
+  rooms sync-merge <bundle-dir>
   rooms post <message>
   rooms share-diff [--path <file>] [--note <text>]
   rooms request-review [note]
@@ -303,16 +305,19 @@ async function main() {
 
   if (cmd === "scm-status") {
     const dir = await requireRoomDir();
-    const { scmStatus } = await import("./scm.js");
-    const s = await scmStatus(dir);
-    process.stdout.write(`${s.ok ? "ok" : "degraded"}  ${s.provider}\n${s.message}\n`);
-    if (s.ok && s.repo?.nameWithOwner) {
-      process.stdout.write(`repo     ${s.repo.nameWithOwner}\n`);
-      process.stdout.write(`default  ${s.repo.defaultBranchRef?.name || "?"}\n`);
-      for (const pr of s.openPrs || []) {
-        process.stdout.write(`pr #${pr.number}  ${pr.headRefName}  ${pr.title}\n`);
-      }
-    }
+    const { scmStatus, formatScmStatus } = await import("./scm.js");
+    const provider = argv.provider || rest[0] || "github";
+    const s = await scmStatus(dir, { provider });
+    process.stdout.write(formatScmStatus(s));
+    return;
+  }
+
+  if (cmd === "sync-merge") {
+    const bundle = rest[0];
+    if (!bundle) throw new Error("usage: rooms sync-merge <bundle-dir>");
+    const dir = await requireRoomDir();
+    const result = await mergeRoomBundle(bundle, dir);
+    process.stdout.write(`merged  +${result.added} events  (total ids ${result.total})  room ${result.meta.id}\n`);
     return;
   }
 

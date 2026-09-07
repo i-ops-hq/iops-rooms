@@ -104,12 +104,28 @@ node src/cli.js live   # leave open — branch UI refreshes with posts
 
 Honest limit: **local git first**. Remotes/PRs are optional via `rooms scm-status` (uses `gh` when present; degrades cleanly if missing).
 
-## Team sync + SCM (sketch)
+## Team device sync (dogfood)
+
+On **your** machines only — export / merge. Same room code. No I-Ops cloud.
 
 ```bash
-node src/cli.js sync-hint    # how teammates share .room/ on devices they control
-node src/cli.js scm-status   # read-only GitHub via gh — not hosted multiplayer
+# Device A
+node src/cli.js export-room /tmp/room-bundle
+# copy bundle to Device B, then:
+node src/cli.js sync-merge /tmp/room-bundle
+node src/cli.js live
 ```
+
+Or `rooms init --share` and commit `.room/` so teammates `git pull`. See `rooms sync-hint`.
+
+## SCM connect (GitHub first)
+
+```bash
+node src/cli.js scm-status           # gh auth → repo, remote branches sample, open PRs
+node src/cli.js scm-status gitlab    # honest stub for now
+```
+
+Degrades cleanly if `gh` missing. Never uploads the room.
 
 ## Live local board
 
