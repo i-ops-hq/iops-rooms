@@ -379,6 +379,33 @@
         outline: 1px solid color-mix(in srgb, var(--accent, #3d6bf3) 35%, var(--line));
       }
       .branch-name { font-family: var(--font-mono); font-weight: 600; }
+      .branch-badge {
+        display: inline-block;
+        margin-left: 6px;
+        font-family: var(--font);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: hsl(145 45% 32%);
+        background: color-mix(in srgb, hsl(145 45% 38%) 16%, transparent);
+        border-radius: 999px;
+        padding: 1px 7px;
+        vertical-align: middle;
+      }
+      .branch-legend {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 12px;
+        font-size: 12px;
+        color: var(--ink-3);
+      }
+      .branch-swatch-main {
+        background: hsl(145 45% 38%);
+        box-shadow: 0 0 0 2px color-mix(in srgb, hsl(145 45% 38%) 30%, transparent);
+      }
+      .lead-join { font-size: 15px; max-width: 52ch; }
       .branch-meta, .branch-last { color: var(--ink-3); font-size: 12px; }
       
       details.branch-history {
@@ -421,6 +448,7 @@
         <p class="code">{{CODE}}</p>
         <p class="lead">Live project room for humans + agents. Other apps and folders are not watched.</p>
         <p class="lead">Cursor / Claude Code / Codex post via MCP into the same <span class="code" style="font-size:15px">.room</span>.</p>
+        <p class="lead lead-join">Another machine: <span class="code" style="font-size:15px">rooms join {{CODE}}</span> — sync among your devices only.</p>
         <p class="stamp">created {{CREATED}} · {{BY}}</p>
         <div class="facts">
           <div class="fact"><b>{{POSTERS}}</b><span>posters</span></div>

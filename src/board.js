@@ -154,7 +154,7 @@ function renderBranchPanel(git, events) {
         : "no room posts yet";
       return `<div class="branch-row"${current}${mainAttr} style="--branch-hue: ${hue}">
   <span class="branch-swatch" aria-hidden="true"></span>
-  <span class="branch-name" title="${escapeHtml(name)}">${escapeHtml(shortBranch(name, 28))}${isMainBranch(name) ? " · main" : ""}</span>
+  <span class="branch-name" title="${escapeHtml(name)}">${escapeHtml(shortBranch(name, 28))}${isMainBranch(name) ? ' <span class="branch-badge">default</span>' : ""}</span>
   <span class="branch-meta">${info.count} post${info.count === 1 ? "" : "s"} · ${escapeHtml(who)}</span>
   <span class="branch-last">${last}</span>
 </div>`;
@@ -172,6 +172,7 @@ function renderBranchPanel(git, events) {
   <h2 class="branch-heading">Branches</h2>
   ${cur}
   <p class="branch-note">${escapeHtml(git.note || "Local git + room posts. Remotes/PRs come later. Actors are people/tools; devices are machines.")}</p>
+  <p class="branch-legend"><span class="branch-swatch branch-swatch-main" aria-hidden="true"></span> green rail = main / master</p>
   <div class="branch-list">${rows}</div>
   ${hist}
 </section>`;
