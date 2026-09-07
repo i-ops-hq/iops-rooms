@@ -97,7 +97,7 @@ test("installMcp merges without wiping other servers", async () => {
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.ok(body.mcpServers.filesystem);
     assert.ok(body.mcpServers["iops-rooms"]);
-    assert.match(body.mcpServers["iops-rooms"].args.join(" "), /iops-rooms@0\.3\.0/);
+    assert.match(body.mcpServers["iops-rooms"].args.join(" "), /iops-rooms@0\.3\.1/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -109,7 +109,7 @@ test("cli: rooms mcp install creates mcp.json", async () => {
     const out = await runCli(dir, ["mcp", "install"]);
     assert.equal(out.code, 0, out.stderr);
     assert.match(out.stdout, /wrote|merged|updated/);
-    assert.match(out.stdout, /iops-rooms@0\.3\.0/);
+    assert.match(out.stdout, /iops-rooms@0\.3\.1/);
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.equal(body.mcpServers["iops-rooms"].command, "npx");
   } finally {
