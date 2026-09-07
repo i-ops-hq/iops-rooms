@@ -49,6 +49,32 @@ jobs:
       - name: Two-device smoke
         run: npm run smoke:two-device
 
+  coverage:
+    name: coverage floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # The --test-coverage-* thresholds landed in Node 22; the matrix above still runs 20.
+          node-version: "22"
+
+      # Measured over src/ only. Including test files pushes the aggregate up by three points and
+      # measures the tests testing themselves, which is not the thing worth defending.
+      #
+      # The floor sits a couple of points under what the suite achieves so an honest refactor does
+      # not break the build, while a real regression does. It is a RATCHET: when the numbers rise,
+      # raise these. Set on 2026-09-07 at src-only 92.03 line / 75.07 branch / 91.40 functions,
+      # after mcp.js went 0 -> 96.65 and every module in src/ came off zero.
+      - name: Coverage must not fall below the floor
+        run: |
+          node --test --experimental-test-coverage \
+            --test-coverage-exclude='test/**' \
+            --test-coverage-lines=90 \
+            --test-coverage-branches=73 \
+            --test-coverage-functions=89 \
+            test/*.test.js
+
   packaged:
     name: the packed tarball actually runs
     runs-on: ubuntu-latest
