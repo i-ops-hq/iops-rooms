@@ -173,6 +173,20 @@ node src/cli.js live   # leave open — branch UI refreshes with posts
 
 Honest limit: **local git first**. Remotes/PRs are optional via `rooms scm-status` (uses `gh` when present; degrades cleanly if missing).
 
+## Verified GitHub identity (optional)
+
+Solo can stay unsigned. Team leads can opt into verified mode — local only.
+
+```bash
+export ROOMS_GITHUB_CLIENT_ID=Iv1.your_oauth_app_client_id
+rooms auth github    # GitHub device flow → ~/.iops-rooms/identity.json + device.key
+rooms auth status
+rooms post "…"       # stamps github login + ed25519 sig when verified
+rooms auth logout
+```
+
+Auth mints a **local** verified identity. It does **not** upload `.room/` events. Unsigned solo posts stay quiet on the board (no amber badge). Env overrides for smoke (`ROOMS_ACTOR` / `ROOMS_DEVICE_ID`) and claimed-login-without-sig show **unverified**. See SECURITY.md for warn-only sync-merge and residual spoofability.
+
 ## Team device sync (dogfood)
 
 On **your** machines only — export / merge. Same room code. No I-Ops cloud.

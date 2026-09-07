@@ -111,6 +111,14 @@ test("source does not open the network", async () => {
   const files = await readdir(join(root, "src"));
   for (const f of files) {
     const src = await readFile(join(root, "src", f), "utf8");
+    // identity.js: optional rooms auth github device flow only (injectable fetchImpl; no room upload)
+    if (f === "identity.js") {
+      assert.match(src, /authGithubDeviceFlow/);
+      assert.match(src, /login\/device\/code/);
+      assert.doesNotMatch(src, /from ["']node:http/);
+      assert.doesNotMatch(src, /from ["']node:https/);
+      continue;
+    }
     assert.doesNotMatch(src, /\bfetch\s*\(/);
     assert.doesNotMatch(src, /from ["']node:https/);
     // live.js may use node:http bound to 127.0.0.1 only — never other src files

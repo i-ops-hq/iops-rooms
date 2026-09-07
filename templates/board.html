@@ -338,6 +338,42 @@
         font-size: 13px;
         color: var(--ink-2);
       }
+
+      .verify-badge {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border-radius: var(--r-pill);
+        padding: 2px 8px;
+        border: 1px solid var(--line);
+        color: var(--ink-2);
+        background: var(--bg-soft);
+      }
+      .verify-badge[data-verify="verified"] {
+        color: var(--green);
+        border-color: color-mix(in srgb, var(--green) 35%, var(--line));
+        background: color-mix(in srgb, var(--green) 12%, transparent);
+      }
+      .verify-badge[data-verify="unverified"] {
+        color: var(--amber);
+        border-color: color-mix(in srgb, var(--amber) 35%, var(--line));
+        background: color-mix(in srgb, var(--amber) 10%, transparent);
+      }
+      .tl-verify {
+        position: absolute;
+        right: -2px;
+        bottom: -2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        font-size: 8px;
+        line-height: 12px;
+        text-align: center;
+        background: var(--green);
+        color: #fff;
+        font-weight: 700;
+      }
       .tool-chip {
         background: var(--card);
         border: 1px solid var(--line);
