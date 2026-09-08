@@ -19,14 +19,17 @@ import assert from "node:assert/strict";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
-/** Files that tell a reader which version to install, or where the repo lives. */
+/**
+ * Files that tell a reader which version to install, or where the repo lives.
+ *
+ * `Rooms by I-Ops context.md` used to be here. It was an private planning document, no longer part of this repository. Do not add it back.
+ */
 const DOCS = [
   "README.md",
   "SECURITY.md",
   "skills/rooms/SKILL.md",
   ".cursor/skills/rooms/SKILL.md",
   "examples/mcp.json",
-  "Rooms by I-Ops context.md",
 ];
 
 const PINNED = /iops-rooms@(\d+\.\d+\.\d+)/g;
