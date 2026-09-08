@@ -4,8 +4,8 @@
 history you already have: every commit, the person who made it, and the agent that co-authored it.
 
 ```bash
-npx -y iops-rooms@0.3.1 init --name "my project"
-npx -y iops-rooms@0.3.1 open
+npx -y iops-rooms@0.4.0 init --name "my project"
+npx -y iops-rooms@0.4.0 open
 ```
 
 That is the whole setup. No account, no model bill, no network. On a large repo it reads several hundred
@@ -97,7 +97,7 @@ Goal: agents **post as they work** via MCP — not only manual CLI notes.
 
 Exact phrase you can paste to an agent:
 
-> Run `npx -y iops-rooms@0.3.1 mcp install` in this project
+> Run `npx -y iops-rooms@0.4.0 mcp install` in this project
 
 Or, if the CLI is already on your PATH: `rooms mcp install`.
 
@@ -122,7 +122,7 @@ Manual JSON (same as install writes):
   "mcpServers": {
     "iops-rooms": {
       "command": "npx",
-      "args": ["-y", "iops-rooms@0.3.1", "mcp"]
+      "args": ["-y", "iops-rooms@0.4.0", "mcp"]
     }
   }
 }
@@ -170,15 +170,15 @@ Copy `skills/rooms/SKILL.md` into a user skill dir if you want it globally.
 Published on npm (MIT). Pin the version — do not use `@latest`.
 
 ```bash
-npm i -g iops-rooms@0.3.1
+npm i -g iops-rooms@0.4.0
 # or one-shot:
-npx -y iops-rooms@0.3.1 help
-npx -y iops-rooms@0.3.1 init --name homework
-npx -y iops-rooms@0.3.1 post "starting"
-npx -y iops-rooms@0.3.1 live
+npx -y iops-rooms@0.4.0 help
+npx -y iops-rooms@0.4.0 init --name homework
+npx -y iops-rooms@0.4.0 post "starting"
+npx -y iops-rooms@0.4.0 live
 
 # Explicit form (required on 0.3.0; fine on 0.3.1+):
-# npx -y -p iops-rooms@0.3.1 rooms help
+# npx -y -p iops-rooms@0.4.0 rooms help
 ```
 
 From a git checkout of this repo you can still run `node src/cli.js …` (see CLI vs MCP above).
