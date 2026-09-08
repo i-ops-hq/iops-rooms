@@ -1,7 +1,24 @@
+<div align="center">
+
 # Rooms by I-Ops
 
-**See who built your project — and which AI helped.** Point it at a git repo and it reads the
-history you already have: every commit, the person who made it, and the agent that co-authored it.
+**See who built your project — and which AI helped.**
+
+[![npm](https://img.shields.io/npm/v/iops-rooms?color=0b7285&label=npm)](https://www.npmjs.com/package/iops-rooms)
+[![license](https://img.shields.io/badge/license-MIT-0b7285)](LICENSE)
+[![node](https://img.shields.io/badge/node-20%20%7C%2022%20%7C%2024-0b7285)](package.json)
+[![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-tested-0b7285)](.github/workflows/tests.yml)
+[![tests](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml/badge.svg)](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml)
+[![dependencies](https://img.shields.io/badge/runtime%20deps-0-0b7285)](package.json)
+
+*One layer of [I-Ops](https://i-ops.dev), open sourced.*
+
+</div>
+
+---
+
+Point it at a git repo and it reads the history you already have: every commit, the person who made
+it, and the agent that co-authored it.
 
 ```bash
 npx -y iops-rooms@0.4.1 init --name "my project"
@@ -16,6 +33,10 @@ Claude Opus 5    most commits  many thousands of lines
 Cursor           the rest  many thousands of lines  
 no agent recorded the remainder
 ```
+
+<p align="center">
+  <img src="docs/screenshots/board.png" alt="The Rooms board for a real repo: several hundred commits, a branch graph with a dot per commit coloured by the agent that made it, and a Built by panel splitting the work between Claude Opus 5, Cursor, and commits with no agent recorded" width="820">
+</p>
 
 **Where that comes from, and what it is not.** Claude Code and Cursor both write a
 `Co-Authored-By` trailer on the commits they help with, so the attribution is already in your repo
@@ -83,6 +104,10 @@ npx -y iops-rooms@0.4.1 live
 ```
 
 Serves the board on `127.0.0.1` and refreshes it as things change. Leave the tab open.
+
+<p align="center">
+  <img src="docs/screenshots/install.png" alt="Installing and running Rooms from npm in a terminal: npx iops-rooms init, then open, then live" width="820">
+</p>
 
 That is the whole loop for one person. Two optional extras, in the order most people want them:
 
@@ -189,3 +214,22 @@ No runtime dependencies.
 
 Hosted relay, accounts, seats, SSO, or a model of our own. No whole-repo sync. No IDE telemetry —
 agents appear when they post through MCP, and git hooks are opt-in.
+
+---
+
+## About
+
+Rooms is one working layer of **[I-Ops](https://i-ops.dev)**, open sourced.
+
+I-Ops is a desktop application for making AI workers finish real tasks correctly. Rooms is the part
+that answers *who is doing what, and which agent did it* — and it was **built from scratch for this
+repository**, not carved out of the product. Nothing here is a stripped-down copy of something
+closed; it is a small tool that stands on its own, and you can read all 4,000 lines of it.
+
+**Feedback is genuinely wanted.** If you try it and something is confusing, wrong, or missing — or
+if you have read the code and disagree with a decision in it — please say so. Open an
+[issue](https://github.com/i-ops-hq/iops-rooms/issues), send a pull request, or email
+**hello@i-ops.dev**. Reviews of the security posture in [SECURITY.md](SECURITY.md) are especially
+welcome.
+
+MIT licensed. Built by I-Ops Operations Intelligence, LLC — [i-ops.dev](https://i-ops.dev).
