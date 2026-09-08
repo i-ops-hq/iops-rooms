@@ -12,6 +12,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import {
   buildReport,
   compact,
@@ -25,7 +26,8 @@ import {
 } from "../src/report.js";
 
 const exec = promisify(execFile);
-const root = new URL("..", import.meta.url).pathname;
+// fileURLToPath, not .pathname: on Windows the latter is `/C:/…`, which nothing can spawn from.
+const root = fileURLToPath(new URL("..", import.meta.url));
 const cli = join(root, "src", "cli.js");
 const IDENT = ["-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false"];
 const git = (cwd, args) => exec("git", [...IDENT, ...args], { cwd });

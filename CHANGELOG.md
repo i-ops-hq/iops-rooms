@@ -2,6 +2,14 @@
 
 ## 0.5.0
 
+### A Windows clone reported its drive letter as the remote
+
+`C:\Users\me\origin.git` matches the scp-style remote shape — `host:path` — with a host of `C`. A
+Windows user cloning from a local directory saw a remote of `C/Users/...`, which is not a forge and
+not a place anybody can visit. Found by the Windows matrix on the run that shipped this release, on
+a test written for a completely different reason. An ssh alias has no dot in it either and *is* a
+real remote, so the guard is the drive letter, not the dot.
+
 ### `approve` recorded a row and said "approved"
 
 An agent reads a tool's description to decide what it does, and hears its reply as the outcome.

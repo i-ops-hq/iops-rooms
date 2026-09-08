@@ -32,6 +32,10 @@ export function sanitizeRemote(url) {
   if (!raw) return null;
   // scp-style: git@github.com:owner/repo.git — no scheme, so URL() will not parse it.
   const scp = raw.match(/^(?:([^@/]+)@)?([^:/]+):(.+)$/);
+  // `C:\Users\me\origin.git` matches the scp-style shape with a "host" of `C`. On Windows CI a
+  // clone from a local directory was reported as the remote `C/Users/...`, which is not a forge and
+  // not a place anybody can visit. A drive letter is one character; a hostname never is.
+  if (/^[a-zA-Z]:[\\/]/.test(raw)) return null;
   let host = "";
   let path = "";
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {

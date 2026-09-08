@@ -100,7 +100,7 @@ jobs:
       # after the branch graph was rebuilt around commit order and its geometry pinned by tests.
       - name: Coverage must not fall below the floor
         run: |
-          node --test --experimental-test-coverage \
+          node --import ./test/env-setup.js --test --experimental-test-coverage \
             --test-coverage-exclude='test/**' \
             --test-coverage-lines=90 \
             --test-coverage-branches=75 \

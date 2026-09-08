@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { roomsHomeDir } from "../src/identity.js";
 
 const realHome = join(homedir(), ".iops-rooms");
@@ -24,7 +25,7 @@ test("and a spawned CLI inherits it, which is where the leak actually happened",
   const r = spawnSync(
     process.execPath,
     ["-e", "import('./src/identity.js').then(m => process.stdout.write(m.roomsHomeDir()))"],
-    { cwd: new URL("..", import.meta.url).pathname, env: { ...process.env }, encoding: "utf8" },
+    { cwd: fileURLToPath(new URL("..", import.meta.url)), env: { ...process.env }, encoding: "utf8" },
   );
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, process.env.ROOMS_HOME);

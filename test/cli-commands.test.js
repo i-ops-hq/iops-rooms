@@ -16,7 +16,7 @@ import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -361,15 +361,15 @@ test("open asks for an app window, and turns a board path into a URL for it", as
       calls.push({ bin, args });
       return { unref() {} };
     };
-    const r = openPath("/Users/x/proj/.room/board.html", {
-      app: true,
-      findBin: () => "/Applications/Some Browser",
-      launch,
-    });
+    // Built the same way the code builds it: a Windows board path is `C:\…` and becomes
+    // `file:///C:/…`, so a hardcoded POSIX URL would only ever be asserting the test's own platform.
+    const boardPath = join(tmpdir(), "proj", ".room", "board.html");
+    const r = openPath(boardPath, { app: true, findBin: () => "/Applications/Some Browser", launch });
     assert.equal(r.mode, "app");
     assert.equal(calls.length, 1);
+    assert.equal(r.url, pathToFileURL(boardPath).href);
     assert.ok(
-      calls[0].args.some((a) => a === "--app=file:///Users/x/proj/.room/board.html"),
+      calls[0].args.some((a) => a === `--app=${pathToFileURL(boardPath).href}`),
       `a file path became a file:// URL, got ${JSON.stringify(calls[0].args)}`,
     );
 
@@ -378,7 +378,7 @@ test("open asks for an app window, and turns a board path into a URL for it", as
     assert.equal(live.url, "http://127.0.0.1:7840/");
 
     // No app browser installed is not an error; it falls back to whatever opens files.
-    const fallback = openPath("/tmp/board.html", { app: true, findBin: () => null, launch });
+    const fallback = openPath(join(tmpdir(), "board.html"), { app: true, findBin: () => null, launch });
     assert.equal(fallback.mode, "browser");
   } finally {
     if (prev !== undefined) process.env.ROOMS_NO_OPEN = prev;

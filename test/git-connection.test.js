@@ -119,6 +119,17 @@ test("a GitHub remote is reduced to host and path, whatever form it was configur
   });
 });
 
+test("a Windows path is not a remote named after its drive letter", () => {
+  // `C:\Users\me\origin.git` matches the scp-style shape with a "host" of `C`. Windows CI reported
+  // a clone from a local directory as the remote `C/Users/...`, which is not a forge and not a place
+  // anyone can visit. Found by the Windows matrix on the run that shipped 0.5.0.
+  assert.equal(sanitizeRemote("C:\\Users\\me\\origin.git"), null);
+  assert.equal(sanitizeRemote("C:/Users/me/origin.git"), null);
+  assert.equal(sanitizeRemote("D:\\repos\\thing"), null);
+  // An ssh alias has no dot either and IS a remote, so the guard is the drive letter, not the dot.
+  assert.equal(sanitizeRemote("mygitalias:owner/repo").label, "mygitalias/owner/repo");
+});
+
 test("a URL git accepts but cannot be parsed is dropped, not half-rendered", () => {
   assert.equal(sanitizeRemote("https://"), null);
   assert.equal(sanitizeRemote("://nope"), null);
