@@ -1,5 +1,72 @@
 # Changelog
 
+## Unreleased
+
+### One command, and a real window
+
+`rooms open` in a folder with no room creates one and opens it, instead of failing with
+instructions to run `rooms init` first. Install and start is now two commands with nothing
+between them.
+
+The board opens in an application window — Chrome, Brave, Edge or Chromium in `--app` mode, whichever
+is installed — rather than as a tab in whatever the browser had open. `--tab` forces the old
+behaviour, and a machine with none of those falls back to the system opener.
+
+### Branches that were never merged are branches too
+
+The graph reconstructed branches from merge commits, which meant a branch you are still working on,
+or one that was deployed and never merged back, did not exist as far as the board was concerned. On
+one repo that was the difference between drawing zero branches and drawing ten. Every ref is now
+read, and anything holding commits the trunk does not have is drawn and marked open.
+
+### A graph you can read
+
+Branches curve above and below main instead of stacking downward from it, six at a time with a `+`
+for the rest, and the axis is commit order rather than elapsed time.
+
+The last of those is what made the rest work. On a time axis a branch that lived forty minutes
+inside a two-day history has no width, so its route degenerated into a vertical spike as tall as its
+lane was far from main — seventeen branches drew as a comb. Every commit now takes the same step,
+which is what `git log --graph` does. The cost is that a quiet month and a busy hour are the same
+width; the axis says so, and the real timestamp is still on every dot and at both ends.
+
+The drawing is as wide as the history is long, in its own scroller, opening at the newest end.
+Branches outside the collapsed view are hidden rather than merely cropped — cropping alone left
+their risers crossing the visible band as lines to nowhere.
+
+### The top of the board is about the project
+
+The cards were facts about the tool: posters, events, network off, `.room` on disk. They now read
+**commits · people · agent-assisted · branches · since the last change**, all from git history the
+repo already has, so they are full on the first run before anyone has posted. Each carries a line
+saying what the number means.
+
+The agent share is of the commits actually read, and it is a floor: an agent that writes no trailer
+leaves no trace, so the true share can only be higher.
+
+A rail says who you are — verified, unverified, or a name asserted through `ROOMS_ACTOR` that
+nothing can check — and what this checkout is connected to: the remote, the branch and SHA, whether
+the tree is clean, and how far it is from its upstream. Three things came out of building it:
+
+- **A remote URL can carry a credential.** `https://x-access-token:ghp_…@github.com/o/r` is what a
+  shared box or a CI checkout configures, and a board is a file people screenshot into issues. It is
+  stripped where the URL is read.
+- **Verified elsewhere is not verified here.** A restored `identity.json`, a copied home directory or
+  a VM template leaves an account linked to a different device. That now says so rather than showing
+  a check this machine has not earned.
+- **Rendering must not mint an identity.** `loadIdentity` writes `device.json` when it is missing, so
+  a renderer that called it would make opening a board the thing that gives the machine an identity.
+
+### The test suite was writing into your real identity store
+
+`npm test` resolved `ROOMS_HOME` to `~/.iops-rooms` in every file that did not set its own, which was
+most of them. On the machine this was found on it had left a display name of `cmd-test` and a
+verified GitHub login of `octocat` — and the board rendered that fixture back as "verified". Nothing
+failed; the suite passed while replacing the identity the developer's own posts are signed with.
+
+Fixed for every file at once with a `--import` hook that points `ROOMS_HOME` at a temp directory, and
+guarded by a test that fails if the hook is ever dropped. The smoke scripts got the same treatment.
+
 ## 0.4.1
 
 **`rooms auth github` works with no setup.** It reads your account from the `gh` CLI you already
