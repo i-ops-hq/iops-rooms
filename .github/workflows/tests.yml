@@ -78,8 +78,7 @@ jobs:
             --test-coverage-exclude='test/**' \
             --test-coverage-lines=90 \
             --test-coverage-branches=73 \
-            --test-coverage-functions=89 \
-            test/*.test.js
+            --test-coverage-functions=89
 
   packaged:
     name: the packed tarball actually runs
