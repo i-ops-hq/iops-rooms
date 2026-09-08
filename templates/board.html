@@ -609,7 +609,7 @@
       }
       .tl-axis {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-start;
         align-items: center;
         font-family: var(--font-mono);
         font-size: 11px;
@@ -617,7 +617,8 @@
         margin: 0 0 8px;
         padding-left: 148px;
       }
-      .tl-axis-mid { letter-spacing: 0.04em; }
+      .tl-axis-mid { letter-spacing: 0.02em; }
+      .tl-axis-mid b { color: var(--ink-2); font-weight: 500; }
 
       /* ---- built by ---------------------------------------------------------------- */
       .built-by { margin: 22px 0; }
@@ -672,13 +673,57 @@
          short dash and an animated dash offset, so one segment reads as a light moving
          along a connector. Two circles make the glow rather than an SVG blur filter —
          same look, no filter cost, and it survives printing. */
-      .branch-graph { margin: 4px 0 14px; }
+      .branch-graph { margin: 4px 0 10px; }
+      /* Collapsed, the SVG is cropped to the six lanes nearest main. `slice` scales the drawing to
+         cover the box and centres it, and main sits at the centre of the viewBox, so the crop takes
+         the same number of lanes off the top and the bottom. Checking the box swaps the ratio to the
+         drawing's own, at which point slice and meet are the same thing and every branch is shown.
+         CSS only: the board is a file, and it has to work opened from disk. */
+      /* The graph is as wide as the history is long, and scrolls on its own — dragging the whole
+         timeline sideways to read a branch would take the lane rows below with it. */
+      /* row-reverse so the scroller opens at the RIGHT edge — the newest commits, which is what
+         someone opening a board wants to see. Scrolling left walks back through history. */
+      .bg-scroll {
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        display: flex;
+        flex-direction: row-reverse;
+      }
+      .bg-scroll > svg { flex: 0 0 auto; }
       .branch-graph svg {
         display: block;
-        width: 100%;
-        height: auto;
-        overflow: visible;
+        width: var(--vb-w, 1000px);
+        height: var(--vb-open, 300px);
+        overflow: hidden;
+        transition: height 0.24s ease;
       }
+      .bg-toggle:checked ~ .bg-scroll svg { height: var(--vb-full, 300px); }
+      /* A branch outside the collapsed crop must not draw at all. Cropping alone leaves its riser
+         crossing the visible band — a line to nowhere, from a branch whose name is not on screen. */
+      .bg-branch[data-extra="1"] { display: none; }
+      .bg-toggle:checked ~ .bg-scroll .bg-branch[data-extra="1"] { display: inline; }
+      .bg-expand {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--ink-3);
+        border: 1px solid var(--line);
+        border-radius: var(--r-pill);
+        padding: 3px 11px;
+        margin: 8px 0 0;
+        cursor: pointer;
+        user-select: none;
+        background: var(--card);
+      }
+      .bg-expand:hover { color: var(--ink-1); border-color: var(--ink-3); }
+      .bg-toggle:focus-visible ~ .bg-expand { outline: 2px solid var(--blue); outline-offset: 2px; }
+      .bg-expand::before { content: ""; }
+      .bg-expand-close { display: none; }
+      .bg-toggle:checked ~ .bg-expand .bg-expand-open { display: none; }
+      .bg-toggle:checked ~ .bg-expand .bg-expand-close { display: inline; }
       .bg-track {
         fill: none;
         stroke: hsl(var(--h, 210) 45% 55%);
@@ -747,15 +792,12 @@
         fill: var(--ink-3);
         letter-spacing: 0.02em;
       }
-      .bg-label-main { fill: var(--green); }
-      .bg-more {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        color: var(--ink-3);
-        margin: 6px 0 0;
-      }
+      .bg-label-main { fill: var(--green); font-weight: 600; }
+      /* Knocks the wire out from behind a name; without it, 11px type over a line is unreadable. */
+      .bg-tag { fill: var(--card); }
       @media (prefers-reduced-motion: reduce) {
         .bg-pulse { animation: none; stroke-dasharray: none; opacity: 0.45; }
+        .branch-graph svg { transition: none; }
       }
       .tl-lanes { display: flex; flex-direction: column; gap: 10px; }
       .tl-lane {
@@ -891,6 +933,7 @@
           gap: 6px;
         }
         .tl-axis { padding-left: 0; }
+        .tl-axis-mid { white-space: normal; }
         .timeline-canvas { min-width: 480px; }
       }
 

@@ -70,14 +70,14 @@ jobs:
       #
       # The floor sits a couple of points under what the suite achieves so an honest refactor does
       # not break the build, while a real regression does. It is a RATCHET: when the numbers rise,
-      # raise these. Set on 2026-09-07 at src-only 92.03 line / 75.07 branch / 91.40 functions,
-      # after mcp.js went 0 -> 96.65 and every module in src/ came off zero.
+      # raise these. Raised 2026-09-07 to src-only 92.41 line / 77.51 branch / 91.84 functions,
+      # after the branch graph was rebuilt around commit order and its geometry pinned by tests.
       - name: Coverage must not fall below the floor
         run: |
           node --test --experimental-test-coverage \
             --test-coverage-exclude='test/**' \
             --test-coverage-lines=90 \
-            --test-coverage-branches=73 \
+            --test-coverage-branches=75 \
             --test-coverage-functions=89
 
   packaged:

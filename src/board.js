@@ -458,37 +458,63 @@ function parseAt(iso) {
  * Positions are honest: only .room event stamps, not IDE session data.
  */
 /** Branch graph geometry. Kept as constants so the SVG and the CSS agree on one set of numbers. */
-const GRAPH = { w: 1000, pad: 26, top: 30, gap: 34, maxLanes: 8, r: 3.4, glow: 8 };
+/**
+ * Geometry for the branch graph.
+ *
+ * `edge` is the room kept beyond the outermost lane, so a branch name has somewhere to sit.
+ * `shown` is how many branches are visible before the reader opens the rest — six, because main
+ * plus three lanes either side is what stays readable at a glance and still fits a screenshot.
+ */
+const GRAPH = { w: 1000, maxW: 7200, perCommit: 13, pad: 26, edge: 30, gap: 34, shown: 6, r: 3.4, glow: 8 };
 
-/** x for a 0-100 time position, inset so a dot at either end is not clipped. */
-function graphX(pct) {
-  return GRAPH.pad + (Math.max(0, Math.min(100, pct)) / 100) * (GRAPH.w - GRAPH.pad * 2);
+/**
+ * Branches alternate below main, above main, further below, further above.
+ *
+ * Stacking every branch downward made main the ceiling of the picture and pushed the oldest branch
+ * furthest from it. Alternating puts main in the middle where a trunk belongs, keeps the busiest
+ * branches nearest it, and halves how far the graph runs before it needs scrolling.
+ */
+function laneOffset(i) {
+  const step = Math.floor(i / 2) + 1;
+  return i % 2 === 0 ? step : -step;
 }
 
 /**
- * A branch leaves main, runs its own line, and rejoins. Orthogonal with rounded corners rather
- * than a free bezier — the same reasoning as the runtime architecture diagram: free curves between
- * many nodes read as spaghetti, right angles with a radius read as a circuit.
+ * A branch leaves main, runs its own line, and rejoins.
+ *
+ * Curves rather than right angles, which is a reversal of the runtime-diagram treatment and for a
+ * reason: that diagram's boxes are far apart and its connectors are wide, so square corners read as
+ * a circuit. A branch here can be two commits inside three hundred — narrow and, if it sits on an
+ * outer lane, tall. A square staple at that aspect ratio is a spike; the same shape as a curve is
+ * a legible arc off the trunk.
  */
 function branchPath(x1, x2, yMain, yLane) {
-  const r = Math.min(12, Math.max(4, (x2 - x1) / 4));
-  const dy = yLane > yMain ? 1 : -1;
-  const a = x1 + r;
-  const b = x2 - r;
-  if (b <= a) {
-    // Too short to route: a single spur down and back, so a one-post branch still reads as one.
-    const mid = (x1 + x2) / 2;
-    return `M${x1} ${yMain} Q${mid} ${yMain} ${mid} ${yLane} Q${mid} ${yMain} ${x2} ${yMain}`;
-  }
+  const span = Math.max(0, x2 - x1);
+  const third = span / 3;
+  const k = Math.min(52, Math.max(7, third));
+  const xa = x1 + third;
+  const xb = x2 - third;
   return (
     `M${x1} ${yMain}` +
-    ` Q${a} ${yMain} ${a} ${yMain + r * dy}` +
-    ` L${a} ${yLane - r * dy}` +
-    ` Q${a} ${yLane} ${a + r} ${yLane}` +
-    ` L${b - r} ${yLane}` +
-    ` Q${b} ${yLane} ${b} ${yLane - r * dy}` +
-    ` L${b} ${yMain + r * dy}` +
-    ` Q${b} ${yMain} ${x2} ${yMain}`
+    ` C${(x1 + k).toFixed(1)} ${yMain} ${(xa - k).toFixed(1)} ${yLane} ${xa.toFixed(1)} ${yLane}` +
+    ` L${xb.toFixed(1)} ${yLane}` +
+    ` C${(xb + k).toFixed(1)} ${yLane} ${(x2 - k).toFixed(1)} ${yMain} ${x2} ${yMain}`
+  );
+}
+
+/**
+ * A branch name, in a chip on its own wire.
+ *
+ * Drawn as a rect plus text rather than plain text: with lanes above and below main, a name will
+ * sooner or later land on top of another branch's line, and bare 11px type over a wire is unreadable.
+ * The chip is the card colour, so it knocks the wire out behind the name.
+ */
+function graphLabel(x, y, text, anchor = "start", extra = "") {
+  const w = Math.max(20, text.length * 6.2 + 10);
+  const rx = anchor === "end" ? x - w : x;
+  return (
+    `<rect class="bg-tag" x="${rx.toFixed(1)}" y="${(y - 9.5).toFixed(1)}" width="${w.toFixed(1)}" height="13" rx="3"></rect>` +
+    `<text class="bg-label${extra ? ` ${extra}` : ""}" x="${(rx + 5).toFixed(1)}" y="${y}">${escapeHtml(text)}</text>`
   );
 }
 
@@ -637,38 +663,92 @@ export function mergeHistoryIntoLanes(model, history) {
   return { ...model, lanes, tMin, tMax, fromHistory: true, historyTotal: history.total };
 }
 
+/**
+ * Where each event sits on the horizontal axis.
+ *
+ * By ORDER, not by elapsed time. A branch that lived forty minutes inside a repo spanning two
+ * months is 0.1% of a time axis — drawn to scale it is a vertical spike, not a branch, and
+ * seventeen of them are a comb. Ordering gives every commit the same width, which is what
+ * `git log --graph` does and what makes a branch look like a branch.
+ *
+ * The cost is that a quiet month and a busy hour take the same space. The axis says so, and the
+ * real timestamp is still on every dot's tooltip and at both ends of the axis.
+ */
+function rankAxis(lanes) {
+  const times = new Set();
+  for (const lane of lanes) {
+    for (const pt of lane.points || []) if (pt.t != null) times.add(pt.t);
+  }
+  const sorted = [...times].sort((a, b) => a - b);
+  const rank = new Map(sorted.map((t, i) => [t, i]));
+  const steps = Math.max(1, sorted.length - 1);
+  const w = Math.max(
+    GRAPH.w,
+    Math.min(GRAPH.maxW, sorted.length * GRAPH.perCommit + GRAPH.pad * 2),
+  );
+  const span = w - GRAPH.pad * 2;
+  return {
+    w,
+    count: sorted.length,
+    // A point with no timestamp cannot be ordered, so it sits in the middle rather than at an end.
+    of: (pt) => (pt.t == null ? GRAPH.pad + span / 2 : GRAPH.pad + (rank.get(pt.t) / steps) * span),
+    // A branch leaves main one commit before its first and rejoins one after its last — which is
+    // where it actually forked and merged, and guarantees even a one-commit branch has a body.
+    at: (i) => GRAPH.pad + (Math.max(0, Math.min(steps, i)) / steps) * span,
+    rankOf: (pt) => (pt.t == null ? steps / 2 : rank.get(pt.t)),
+  };
+}
+
 export function renderBranchGraph(model) {
   const withPosts = (model.lanes || []).filter((l) => (l.points || []).length > 0);
   if (!withPosts.length) return "";
 
   const main = withPosts.find((l) => l.isMain) || null;
   const others = withPosts.filter((l) => l !== main);
-  const shown = others.slice(0, GRAPH.maxLanes);
-  const dropped = others.length - shown.length;
+  const axis = rankAxis(withPosts);
 
-  const yMain = GRAPH.top;
-  const height = GRAPH.top + (shown.length + 1) * GRAPH.gap;
+  // Every branch is drawn. The ones past `shown` sit outside the collapsed crop rather than being
+  // left out of the picture — a branch the reader cannot reach is a branch they do not know about.
+  const reach = Math.ceil(others.length / 2);
+  const half = reach * GRAPH.gap + GRAPH.edge;
+  const yMain = half;
+  const fullH = half * 2;
+  const openH = (Math.min(reach, GRAPH.shown / 2) * GRAPH.gap + GRAPH.edge) * 2;
+  const hidden = Math.max(0, others.length - GRAPH.shown);
 
   const mainRail =
     `<g class="bg-branch" data-main="1" style="--h: ${main ? main.hue : 150}">` +
-    `<path class="bg-track" d="M${GRAPH.pad} ${yMain} L${GRAPH.w - GRAPH.pad} ${yMain}"></path>` +
-    `<path class="bg-pulse" d="M${GRAPH.pad} ${yMain} L${GRAPH.w - GRAPH.pad} ${yMain}"></path>` +
+    `<path class="bg-track" d="M${GRAPH.pad} ${yMain} L${axis.w - GRAPH.pad} ${yMain}"></path>` +
+    `<path class="bg-pulse" d="M${GRAPH.pad} ${yMain} L${axis.w - GRAPH.pad} ${yMain}"></path>` +
     `</g>`;
 
-  const branches = shown
+  const branches = others
     .map((lane, i) => {
-      const yLane = yMain + (i + 1) * GRAPH.gap;
-      const x1 = graphX(lane.firstPct);
-      const x2 = graphX(lane.lastPct);
+      const dir = laneOffset(i);
+      const yLane = yMain + dir * GRAPH.gap;
+      const ranks = lane.points.map((pt) => axis.rankOf(pt));
+      const x1 = axis.at(Math.min(...ranks) - 1);
+      const x2 = axis.at(Math.max(...ranks) + 1);
       const d = branchPath(x1, x2, yMain, yLane);
       const cur = lane.isCurrent ? ' data-current="1"' : "";
+      // The name goes on the branch's own wire, on the far side from main, so it never sits in the
+      // gap between two lines and belongs to neither.
+      const name = shortBranch(lane.name, 26);
+      const nearRight = x1 > axis.w - 240;
+      const label = graphLabel(
+        nearRight ? x2 - 2 : x1 + 2,
+        dir > 0 ? yLane + 16 : yLane - 8,
+        name,
+        nearRight ? "end" : "start",
+      );
       return (
-        `<g class="bg-branch"${cur} style="--h: ${lane.hue}; --delay: ${(i * 0.5).toFixed(2)}s">` +
+        `<g class="bg-branch"${cur} data-lane="${i}"${i >= GRAPH.shown ? ' data-extra="1"' : ""}` +
+        ` style="--h: ${lane.hue}; --delay: ${((i % 6) * 0.5).toFixed(2)}s">` +
         `<title>${escapeHtml(lane.name)} · ${lane.eventCount} post${lane.eventCount === 1 ? "" : "s"}</title>` +
         `<path class="bg-track" d="${d}"></path>` +
         `<path class="bg-pulse" d="${d}"></path>` +
-        `<text class="bg-label" x="${GRAPH.pad}" y="${yLane - 8}">${escapeHtml(shortBranch(lane.name, 26))}</text>` +
-        lane.points.map((pt) => graphDot(graphX(pt.pct), yLane, pt, lane.hue)).join("") +
+        label +
+        lane.points.map((pt) => graphDot(axis.of(pt), yLane, pt, lane.hue)).join("") +
         `</g>`
       );
     })
@@ -676,24 +756,38 @@ export function renderBranchGraph(model) {
 
   const mainDots = main
     ? `<g class="bg-branch" data-main="1" style="--h: ${main.hue}">` +
-      `<text class="bg-label bg-label-main" x="${GRAPH.pad}" y="${yMain - 12}">${escapeHtml(shortBranch(main.name, 26))}</text>` +
-      main.points.map((pt) => graphDot(graphX(pt.pct), yMain, pt, main.hue)).join("") +
+      graphLabel(axis.w - GRAPH.pad, yMain - 11, shortBranch(main.name, 26), "end", "bg-label-main") +
+      main.points.map((pt) => graphDot(axis.of(pt), yMain, pt, main.hue)).join("") +
       `</g>`
     : "";
 
-  // A dropped branch is a branch the reader cannot see. Say so rather than quietly drawing eight.
-  const more = dropped > 0
-    ? `<p class="bg-more">${dropped} more branch${dropped === 1 ? "" : "es"} not drawn — the list below has all of them.</p>`
-    : "";
+  // Collapsed, the SVG is cropped to `openH` around main — which is why main sits at the centre of
+  // the viewBox and lanes fan out from it. The checkbox swaps the height to the full drawing, so
+  // the reveal is CSS only and the board keeps working as a file with no server behind it.
+  const toggle =
+    hidden > 0
+      ? `<label class="bg-expand" for="bg-toggle">` +
+        `<span class="bg-expand-open">+ ${hidden} more branch${hidden === 1 ? "" : "es"}</span>` +
+        `<span class="bg-expand-close">− show the ${GRAPH.shown} closest to main</span>` +
+        `</label>`
+      : "";
 
-  return `<figure class="branch-graph">
-  <svg viewBox="0 0 ${GRAPH.w} ${height}" preserveAspectRatio="xMidYMid meet" role="img"
-       aria-label="Branch graph: ${withPosts.length} branch${withPosts.length === 1 ? "" : "es"} over time, one dot per post">
+  const svg = `<svg viewBox="0 0 ${axis.w} ${fullH}" preserveAspectRatio="xMidYMid slice" role="img"
+       style="--vb-w: ${axis.w}px; --vb-open: ${openH}px; --vb-full: ${fullH}px"
+       aria-label="Branch graph: ${withPosts.length} branch${withPosts.length === 1 ? "" : "es"} in commit order, one dot per commit or post">
     ${mainRail}
     ${branches}
     ${mainDots}
-  </svg>
-  ${more}
+  </svg>`;
+
+  // Input first so `~` can reach both the svg it resizes and the label it relabels; the label sits
+  // after the svg so the control reads under the picture it opens.
+  return `<figure class="branch-graph">
+  <input type="checkbox" class="bg-toggle" id="bg-toggle" hidden>
+  <div class="bg-scroll">
+    ${svg}
+  </div>
+  ${toggle}
 </figure>`;
 }
 
@@ -1032,14 +1126,12 @@ function renderTimeline(events, git, opts = {}) {
   return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
     <h2 class="timeline-heading">Timeline</h2>
-    <p class="timeline-note">Branches flow left→right in time. Initials float on the lane of their last room post. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook) with green/gray active·idle dots (from .room posts within the active window), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
+    <p class="timeline-note">Branches flow left→right in commit order — every commit takes the same step, so a quiet month and a busy hour are the same width and a short-lived branch is still readable. Real timestamps are on every dot and at both ends of the axis. Initials float on the lane of their last room post. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook) with green/gray active·idle dots (from .room posts within the active window), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
   </div>
   <div class="timeline-scroll">
     <div class="timeline-canvas">
       <div class="tl-axis" aria-hidden="true">
-        <span>${t0}</span>
-        <span class="tl-axis-mid">time →</span>
-        <span>${t1}</span>
+        <span class="tl-axis-mid">oldest <b>${t0}</b> → newest <b>${t1}</b> · one step per commit, scroll the graph to move through it</span>
       </div>
 ${renderBranchGraph(model)}
       <div class="tl-lanes">
