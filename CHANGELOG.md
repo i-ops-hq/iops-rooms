@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Four commands that answer the question without opening anything
+
+The board is the poster. These are the habit — all read-only, all reading git, none of which needs a
+room, a server, an account or a browser. They work on a repo that has never heard of this tool.
+
+```
+rooms week [--since 7d] [--path src/] [--not vendor,dist]
+rooms branch [<base>]
+rooms file src/auth.ts
+rooms badge --out agents.svg
+```
+
+`rooms week` prints the mix with a bar per agent and, when there is a previous week to compare to,
+the change against it. `rooms branch` reports only the commits on this branch, which is the number
+worth reading before opening a PR. `rooms file` answers "was this an agent dump" with the commits
+that touched one path. `rooms badge` writes an SVG you can paste into a README.
+
+**`--since`, `--path` and `--not` filter the denominator, not just the sample.** A monorepo or a
+week of lockfile churn otherwise makes every percentage a ratio of two different populations.
+
+**"no agent recorded" is a row, not a remainder.** It has the same label, the same bar and the same
+weight as every agent, on every surface including the badge — because a plain commit is not evidence
+that no agent was used. Cursor and Copilot often write no `Co-Authored-By` trailer, so every share
+is a floor and each of these commands says so in as many words. That sentence is why the number is
+worth more than a vendor dashboard's, and it travels with it.
+
+The README now leads with `npx iops-rooms week` and a section saying what this will **not** tell
+you: which lines an agent wrote, how much of a codebase is AI-written, or anything about a person
+you could not already read in `git log`.
+
 ### A human co-author was being counted as Copilot
 
 `attributeAgent` matched on the email DOMAIN, and `github.com` is not only where Copilot lives — it

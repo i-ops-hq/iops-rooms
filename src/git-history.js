@@ -97,11 +97,50 @@ async function git(cwd, args, { timeout = 20_000, maxBuffer = 64 * 1024 * 1024 }
  * 500 of a longer history and says nothing has quietly changed the answer to "how much of this did
  * Cursor build".
  */
-export async function readCommits(projectDir, { limit = DEFAULT_COMMIT_LIMIT } = {}) {
+/**
+ * A shorthand window to something git understands. `7d`, `2w`, `6mo`, `1y` — or anything git already
+ * parses, passed straight through, because `--since="last monday"` is a thing people type.
+ */
+export function sinceArg(since) {
+  const raw = String(since || "").trim();
+  if (!raw) return "";
+  const m = raw.match(/^(\d+)\s*(d|w|mo|m|y)$/i);
+  if (!m) return raw;
+  const n = m[1];
+  const unit = { d: "days", w: "weeks", mo: "months", m: "months", y: "years" }[m[2].toLowerCase()];
+  return `${n} ${unit} ago`;
+}
+
+/**
+ * Path arguments for `git log`, with exclusions.
+ *
+ * Without these a monorepo or one week of lockfile churn makes every figure a lie — a commit that
+ * regenerated package-lock.json counts the same as a commit that wrote a feature. `:(exclude)` is
+ * git's own pathspec magic, so the filtering happens in git rather than after the fact.
+ */
+export function pathArgs({ paths = [], exclude = [] } = {}) {
+  const inc = paths.filter(Boolean);
+  const exc = exclude.filter(Boolean).map((p) => `:(exclude)${p}`);
+  if (!inc.length && !exc.length) return [];
+  return ["--", ...(inc.length ? inc : [":(glob)**"]), ...exc];
+}
+
+export async function readCommits(
+  projectDir,
+  { limit = DEFAULT_COMMIT_LIMIT, since = "", paths = [], exclude = [], range = "" } = {},
+) {
   const inside = (await git(projectDir, ["rev-parse", "--is-inside-work-tree"], { timeout: 4000 })).trim();
   if (inside !== "true") return { ok: false, commits: [], total: 0, truncated: 0, note: "not a git checkout" };
 
-  const totalRaw = (await git(projectDir, ["rev-list", "--count", "HEAD"], { timeout: 8000 })).trim();
+  const rev = String(range || "").trim() || "HEAD";
+  const sinceFlag = sinceArg(since) ? [`--since=${sinceArg(since)}`] : [];
+  const pathsel = pathArgs({ paths, exclude });
+
+  // The total is counted under the SAME filters. Counting all of HEAD and then reporting a filtered
+  // sample would make "38% of 104" a ratio of two different populations.
+  const totalRaw = (
+    await git(projectDir, ["rev-list", "--count", rev, ...sinceFlag, ...pathsel], { timeout: 8000 })
+  ).trim();
   const total = Number(totalRaw) || 0;
 
   const fmt =
@@ -110,10 +149,13 @@ export async function readCommits(projectDir, { limit = DEFAULT_COMMIT_LIMIT } =
 
   const raw = await git(projectDir, [
     "log",
+    rev,
     "--use-mailmap",
     `--max-count=${Math.max(1, limit)}`,
     "--numstat",
     `--format=${fmt}`,
+    ...sinceFlag,
+    ...pathsel,
   ]);
 
   const commits = parseLog(raw);

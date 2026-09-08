@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import { statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { basename } from "node:path";
 import {
   actor,
   deviceId,
@@ -29,9 +30,17 @@ import {
   resolveSharePath,
 } from "./diff-source.js";
 
-const HELP = `Rooms by I-Ops — local shared rooms for agent sessions
+const HELP = `Rooms by I-Ops — who is doing what on this repo, and which agent did it
 
 Usage:
+
+Read your git history — no room, no server, no account:
+  rooms week [--since 7d] [--path src/] [--not vendor,dist]
+  rooms branch [<base>]        the mix for commits on this branch only
+  rooms file <path>            who and which agent last touched it
+  rooms badge [--out <file>]   an SVG for your README
+
+The board and the room:
   rooms init [--name <n>] [--code <id>] [--share] [--mcp]
              (name defaults to folder / git repo when omitted)
   rooms join <code> [--name <n>]
@@ -63,6 +72,10 @@ Usage:
   rooms auth status
   rooms auth logout
   rooms help
+
+Attribution comes from the Co-Authored-By trailers agents write themselves.
+"no agent recorded" is not "no agent used" — Cursor and Copilot often write
+no trailer, so every share is a floor, never a measurement.
 
 One .room/ per project. Other AI windows are not scanned.
 Cursor/Claude Code only show up if the Rooms MCP is installed and they post.
@@ -166,6 +179,15 @@ export function openPath(target, { app = false, findBin = findAppBrowser, launch
       : spawn(cmd, [target], { detached: true, stdio: "ignore" });
   child.unref();
   return { launched: true, mode: "browser" };
+}
+
+/** All four git commands fail the same way, because they fail for the same reason. */
+function failNotGit(r) {
+  process.stderr.write(
+    `${r.note || "not a git checkout"}\n` +
+      "These commands read git history — run them inside a repository.\n",
+  );
+  process.exitCode = 1;
 }
 
 async function status() {
@@ -476,6 +498,97 @@ async function main() {
     process.stdout.write(
       `actor     ${a}\ntool      ${t}\ndeviceId  ${d}\nbranch    ${b || "—"}\ngithub    ${gh}\ngitlab    ${gl}\n`,
     );
+    return;
+  }
+
+  // ------------------------------------------------------------------ git, with no room needed
+  //
+  // None of these calls requireRoomDir() or roomDirOrCreate(). Reading who built a repo works on a
+  // checkout that has never heard of this tool, and making someone create a room first would put a
+  // write in front of a read.
+  if (cmd === "week" || cmd === "branch" || cmd === "file" || cmd === "badge") {
+    const dir = process.cwd();
+    const { buildReport, formatWeek, formatBranch, formatFile, renderBadgeSvg, defaultBase } =
+      await import("./report.js");
+    const paths = argv.path ? [String(argv.path)] : [];
+    const exclude = argv.not ? String(argv.not).split(",").map((x) => x.trim()).filter(Boolean) : [];
+    const name = basename(dir);
+
+    if (cmd === "week") {
+      const since = argv.since ? String(argv.since) : "7d";
+      const r = await buildReport(dir, { since, paths, exclude });
+      if (!r.ok) return failNotGit(r);
+      // Week over week, because "am I leaning harder on one model" is the question a weekly
+      // report is actually asked. Only for the default window — a delta against an arbitrary
+      // --since would be comparing this window to a window nobody chose.
+      let delta = null;
+      if (!argv.since) {
+        const prior = await buildReport(dir, { since: "14d", paths, exclude });
+        // Only when there IS a previous week. On a repo two days old every row read "+39", which
+        // is arithmetically true and says nothing — a comparison against a window with no commits
+        // in it is just the current number with a plus sign.
+        if (prior.ok && prior.seen > r.seen) {
+          const before = new Map(prior.rows.map((row) => [row.id, row.commits]));
+          delta = {};
+          for (const row of r.rows) {
+            const priorHalf = (before.get(row.id) || 0) - row.commits;
+            delta[row.id] = row.commits - priorHalf;
+          }
+        }
+      }
+      process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta }));
+      return;
+    }
+
+    if (cmd === "branch") {
+      const base = rest[0] || (await defaultBase(dir));
+      if (!base) {
+        process.stderr.write("no default branch to compare against — name one: rooms branch main\n");
+        process.exitCode = 1;
+        return;
+      }
+      const { readGitSnapshot } = await import("./git-info.js");
+      const snap = await readGitSnapshot(dir);
+      const head = snap.current || "HEAD";
+      if (head === base) {
+        process.stdout.write(`on ${base} already — rooms branch compares a branch against it\n`);
+        return;
+      }
+      const r = await buildReport(dir, { range: `${base}..HEAD`, paths, exclude });
+      if (!r.ok) return failNotGit(r);
+      process.stdout.write(formatBranch(r, { branch: head, base }));
+      return;
+    }
+
+    if (cmd === "file") {
+      const target = rest[0] || argv.path;
+      if (!target) {
+        process.stderr.write("which file? rooms file src/auth.ts\n");
+        process.exitCode = 1;
+        return;
+      }
+      const r = await buildReport(dir, { paths: [String(target)], exclude, since: argv.since || "" });
+      if (!r.ok) return failNotGit(r);
+      if (!r.seen) {
+        process.stdout.write(`no commits touch ${target} in this window\n`);
+        return;
+      }
+      process.stdout.write(formatFile(r, { path: String(target), window: argv.since ? `last ${argv.since}` : "" }));
+      return;
+    }
+
+    // badge
+    const r = await buildReport(dir, { since: argv.since ? String(argv.since) : "", paths, exclude });
+    if (!r.ok) return failNotGit(r);
+    const svg = renderBadgeSvg(r, { label: argv.label ? String(argv.label) : "agents" });
+    const out = argv.out ? String(argv.out) : "";
+    if (!out) {
+      process.stdout.write(svg);
+      return;
+    }
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(out, svg, "utf8");
+    process.stdout.write(`wrote ${out}\n  ![agents](${out})\n`);
     return;
   }
 

@@ -17,8 +17,37 @@
 
 ---
 
-Point it at a git repo and it reads the history you already have: every commit, the person who made
-it, and the agent that co-authored it.
+Point it at a git repo and find out **who built it, and which agent signed the commit.** No account,
+no server, no model deciding anything — the answer is recomputed from the repository every time.
+
+```bash
+npx iops-rooms week
+```
+
+```
+iops-rooms · last 7d
+105 commits · +15k −1.4k · 2 people
+
+  Claude Opus 5      39  ████████░░░░░░░░░░░░░░  37%
+  Cursor              1  █░░░░░░░░░░░░░░░░░░░░░   1%
+  no agent recorded  65  ██████████████░░░░░░░░  62%
+```
+
+Four commands, all read-only, none of which needs a room:
+
+| | |
+|---|---|
+| `rooms week` | what shipped this week and which agent helped, against last week |
+| `rooms branch` | the mix for the commits on this branch — read it before you open the PR |
+| `rooms file src/auth.ts` | who and which agent last touched a file that looks wrong |
+| `rooms badge --out agents.svg` | a stacked bar for your README |
+
+**`no agent recorded` is not `no agent used`.** Cursor and Copilot often write no
+`Co-Authored-By` trailer at all, so a plain commit only means none was recorded. Every share here is
+a **floor**, never a measurement of how much of your code an AI wrote — and unlike a vendor
+dashboard, it is blind to which vendor you use.
+
+Then, when you want the picture rather than the number:
 
 ```bash
 npm i -g iops-rooms
@@ -57,6 +86,15 @@ Pin a version. Do not run `@latest`.
 The first four work on a repo that has never heard of Rooms, including for teammates who never
 install it — because every clone already carries the whole history. Only the last row needs anyone
 to post anything.
+
+### What this will not tell you
+
+- **Which lines an agent wrote.** Rooms reads commits, not keystrokes. Line-level provenance is a
+  different product with a different privacy cost, and claiming it from trailers would be a guess.
+- **How much of your codebase is AI-written.** That number needs the agent to record itself on every
+  commit, and most do not. What you get is the share that *said so*.
+- **Anything about a person you could not already read in `git log`.** No prompts, no sessions, no
+  keystroke timing, no vendor telemetry.
 
 **Two histories both look right.** A repo that works on `main` with no merges draws as one rail
 with every commit on it. A repo that merges pull requests draws a rail plus a lane per branch —
