@@ -11,7 +11,7 @@
 [![tests](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml/badge.svg)](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-0-0b7285)](package.json)
 
-*One layer of [I-Ops](https://i-ops.dev), open sourced.*
+*One of the layers of [I-Ops](https://i-ops.dev), open sourced.*
 
 </div>
 
@@ -25,17 +25,11 @@ npx -y iops-rooms@0.4.1 init --name "my project"
 npx -y iops-rooms@0.4.1 open
 ```
 
-That is the whole setup. No account, no model bill, no network. On a large repo it reads several hundred
-commits in about a second and says:
-
-```
-Claude Opus 5    most commits  many thousands of lines 
-Cursor           the rest  many thousands of lines  
-no agent recorded the remainder
-```
+That is the whole setup. No account, no model bill, no network. A few hundred commits read in about
+a second, and here is what you get:
 
 <p align="center">
-  <img src="docs/screenshots/board.png" alt="The Rooms board for a real repo: several hundred commits, a branch graph with a dot per commit coloured by the agent that made it, and a Built by panel splitting the work between Claude Opus 5, Cursor, and commits with no agent recorded" width="820">
+  <img src="docs/screenshots/board.png" alt="The Rooms board: a branch graph with a dot per commit coloured by the agent that made it, and a Built by panel splitting the work between each agent and the commits with no agent recorded" width="820">
 </p>
 
 **Where that comes from, and what it is not.** Claude Code and Cursor both write a

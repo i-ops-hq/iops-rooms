@@ -9,8 +9,7 @@ Two images, referenced from the top-level README.
 
 ## Reproducing `board.png`
 
-The board in the README is a real repo: several hundred commits, most by one agent, the rest by another.
-To photograph any repo the same way:
+To photograph any repo:
 
 ```bash
 cd /path/to/your-repo

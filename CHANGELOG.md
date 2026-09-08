@@ -21,14 +21,9 @@ The board stopped being only about the room and started being about the project.
 ### It reads your git history
 
 Point it at a repo and it shows every commit, who made it, and **which AI helped** — from the
-`Co-Authored-By` trailers Claude Code and Cursor already write. On a large repo that is several hundred
-commits read in about a second:
-
-```
-Claude Opus 5    most commits  many thousands of lines 
-Cursor           the rest  many thousands of lines  
-no agent recorded the remainder
-```
+`Co-Authored-By` trailers Claude Code and Cursor already write. A few hundred commits are read in
+about a second and split by agent — how much each one wrote, and how much carries no attribution
+at all.
 
 No MCP, no network, no vendor's private state — `.cursor/` holds configuration, not a commit
 ledger, and reading another tool's session database is not something this package will do. A commit
