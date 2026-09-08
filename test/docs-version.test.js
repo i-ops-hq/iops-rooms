@@ -87,3 +87,23 @@ test("the installed skill copy matches the packaged one", async () => {
     ".cursor/skills/rooms/SKILL.md has drifted from skills/rooms/SKILL.md — re-run `rooms mcp install`",
   );
 });
+
+test("every image the README points at exists in the repo", async () => {
+  // A missing screenshot is not a local annoyance: the README is the npm package page and the
+  // GitHub front door, and a broken image is the first thing a stranger sees. `docs/screenshots/
+  // board.png` was referenced for a release and never committed.
+  const readme = await readFile(join(root, "README.md"), "utf8");
+  const refs = [...readme.matchAll(/(?:src|\]\()="?([^"'()\s]+\.(?:png|jpg|jpeg|gif|svg))/g)].map((m) => m[1]);
+  const local = refs.filter((r) => !/^https?:/i.test(r));
+  assert.ok(local.length > 0, "the README shows the product at all");
+
+  const missing = [];
+  for (const rel of local) {
+    try {
+      await readFile(join(root, rel));
+    } catch {
+      missing.push(rel);
+    }
+  }
+  assert.deepEqual(missing, [], `README points at images that are not in the repo:\n  ${missing.join("\n  ")}`);
+});

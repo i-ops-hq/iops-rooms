@@ -55,7 +55,11 @@ rooms open
 ```
 
 <p align="center">
-  <img src="docs/screenshots/board.png" alt="The Rooms board: a branch graph with a dot per commit coloured by the agent that made it, and a Built by panel splitting the work between each agent and the commits with no agent recorded" width="820">
+  <img src="docs/screenshots/board.png" alt="The top of a Rooms board: five cards reading 107 commits, 2 people, 39% agent-assisted, 12 branches, and time since the last change — with a panel on the right showing who you are and what this checkout is connected to" width="860">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/graph.png" alt="The branch graph: main as a rail through the middle with branches curving above and below it, one dot per commit coloured by the agent that made it, a slider to move through history, and a row per branch showing who posted on it" width="860">
 </p>
 
 **Where that comes from, and what it is not.** Claude Code and Cursor both write a
