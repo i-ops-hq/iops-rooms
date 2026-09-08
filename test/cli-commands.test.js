@@ -302,8 +302,24 @@ test("live binds localhost, serves the board, and stops when killed", async () =
       }
       assert.match(html, /before live/, "the served board carries the room's events");
     } finally {
+      // Third time this shape has bitten: an unbounded await on a child exiting. `rooms live`
+      // blocks forever by design, Windows has no real SIGTERM, and a process that does not answer
+      // the polite signal leaves the test waiting rather than failing. Ask, then insist.
       child.kill();
-      await new Promise((r) => child.on("close", r));
+      await new Promise((resolve) => {
+        const force = setTimeout(() => {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            /* already gone */
+          }
+          resolve();
+        }, 3000);
+        child.on("close", () => {
+          clearTimeout(force);
+          resolve();
+        });
+      });
     }
   });
 });
