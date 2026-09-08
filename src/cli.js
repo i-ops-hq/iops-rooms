@@ -55,8 +55,8 @@ The board and the room:
   rooms sync-merge <bundle-dir>
   rooms post <message>
   rooms share-diff [--path <file>] [--note <text>] [--allow-outside]
-  rooms request-review [note]
-  rooms approve [note]
+  rooms request-review [note]   writes a row in the log; notifies nobody
+  rooms approve [note]          writes a row in the log; permits nothing
   rooms wait [--since <iso>] [--timeout 15000]
   rooms export [file.md]
   rooms export-room [dir]
@@ -450,14 +450,14 @@ async function main() {
       type: "review_requested",
       text: rest.join(" ") || "please review",
     });
-    process.stdout.write("review requested\n");
+    process.stdout.write("recorded: review requested — a row in the log. Nobody was notified.\n");
     return;
   }
 
   if (cmd === "approve") {
     const dir = await requireRoomDir();
     await postNote(dir, { type: "approved", text: rest.join(" ") || "approved" });
-    process.stdout.write("approved\n");
+    process.stdout.write("recorded: approved — a row in the log. This permits nothing.\n");
     return;
   }
 

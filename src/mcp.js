@@ -75,9 +75,18 @@ const TOOLS = [
       },
     },
   },
+  // These two write a row and nothing else.
+  //
+  // An agent reads these descriptions and decides what a tool DOES. "Mark the room as waiting for
+  // review" and "record an approval" both read like a gate: call approve, and the write is allowed.
+  // Nothing here permits anything — there is no policy, no check, no merge. Rooms answers who acted
+  // and which agent signed it; whether an action is allowed is a different question with a different
+  // answer, and a tool that blurs the two would let an agent believe it had cleared itself.
   {
     name: "request_review",
-    description: "Mark the room as waiting for a human or peer agent review.",
+    description:
+      "Write a 'review requested' row in this project's local log. This does not notify anyone, " +
+      "block anything, or gate a write — it is a note in a file that a person may read later.",
     inputSchema: {
       type: "object",
       properties: { note: { type: "string" } },
@@ -85,7 +94,10 @@ const TOOLS = [
   },
   {
     name: "approve",
-    description: "Record an approval in the local audit trail.",
+    description:
+      "Write an 'approved' row in this project's local log. This does NOT grant permission, " +
+      "authorise an action, or merge anything, and it is not a substitute for a human approving " +
+      "the work. It records that an approval was claimed, nothing more.",
     inputSchema: {
       type: "object",
       properties: { note: { type: "string" } },
@@ -204,12 +216,14 @@ async function callTool(name, args = {}) {
         type: "review_requested",
         text: args.note || "please review",
       });
-      return textResult("review requested");
+      return textResult("recorded: review requested (a row in the log — nobody was notified)");
     }
     case "approve": {
       const dir = await requireRoomDir();
       await postNote(dir, { type: "approved", text: args.note || "approved" });
-      return textResult("approved");
+      // Not "approved" on its own: an agent that reads that back will act as though something
+      // cleared it. What happened is that a row was written.
+      return textResult("recorded: approved (a row in the log — this permits nothing)");
     }
     case "read_transcript": {
       const dir = await requireRoomDir();
@@ -240,7 +254,7 @@ async function handle(msg) {
     return ok(id, {
       protocolVersion: params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "iops-rooms", version: "0.4.1" },
+      serverInfo: { name: "iops-rooms", version: "0.5.0" },
     });
   }
   if (method === "notifications/initialized" || method === "initialized") {

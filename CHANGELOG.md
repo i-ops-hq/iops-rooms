@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+### `approve` recorded a row and said "approved"
+
+An agent reads a tool's description to decide what it does, and hears its reply as the outcome.
+`approve` was described as "record an approval in the local audit trail" and answered `approved` —
+both of which read like a gate that opened. Nothing here permits anything: there is no policy, no
+check, no merge. Rooms answers who acted and which agent signed it. Whether an action is *allowed*
+is a different question with a different answer, and a tool that blurs the two lets an agent believe
+it has cleared itself to proceed.
+
+Both tools now say what they do, in the description, in the reply, in the CLI and in the skill: a
+row in a log. `approve` "does NOT grant permission, authorise an action, or merge anything, and is
+not a substitute for a human approving the work". `request_review` notifies nobody. Tests fail if
+either description drifts back toward "audit trail".
 
 ### Four commands that answer the question without opening anything
 

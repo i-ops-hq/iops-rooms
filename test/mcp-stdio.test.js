@@ -316,6 +316,36 @@ test("request_review and approve write the audit pair, using the argument the sc
   });
 });
 
+test("approve says it recorded something, not that something was approved", async () => {
+  // What an agent hears back is what it will act on. "approved" reads as a gate that opened; the
+  // tool wrote a row in a file. Rooms answers who acted and which agent signed it — whether an
+  // action is ALLOWED is a different question, and blurring the two lets an agent clear itself.
+  await withProject(async ({ client }) => {
+    const a = textOf(await client.call("approve", { note: "ok" }));
+    assert.match(a, /recorded/, "it says what actually happened");
+    assert.match(a, /permits nothing/, "and what did not");
+    assert.notEqual(a.trim(), "approved", "the old reply read as a gate that opened");
+
+    const r = textOf(await client.call("request_review", { note: "please look" }));
+    assert.match(r, /nobody was notified/i, "a review request notifies no one");
+  });
+});
+
+test("the tool descriptions do not describe a gate", async () => {
+  // An agent reads these to decide what a tool DOES, so this is the copy that matters most.
+  await withProject(async ({ client }) => {
+    const list = (await client.request("tools/list")).result.tools;
+    const byName = Object.fromEntries(list.map((t) => [t.name, t.description]));
+
+    assert.match(byName.approve, /does NOT grant permission/i);
+    assert.match(byName.approve, /not a substitute for a human/i);
+    assert.match(byName.request_review, /does not notify anyone/i);
+    for (const name of ["approve", "request_review"]) {
+      assert.doesNotMatch(byName[name], /audit trail/i, "'audit trail' oversells a line in a file");
+    }
+  });
+});
+
 test("read_transcript returns events and honours limit", async () => {
   await withProject(async ({ client }) => {
     for (let i = 0; i < 4; i += 1) await client.call("post_note", { text: `note ${i}` });
