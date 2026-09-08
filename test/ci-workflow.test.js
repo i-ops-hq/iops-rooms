@@ -79,3 +79,31 @@ test("the engines range and the tested range do not drift apart", () => {
     `package.json says node >=${floor} but the lowest tested is ${tested[0]}`,
   );
 });
+
+test("the README does not claim more testing than the matrix does", () => {
+  // The trim made "all nine combinations are tested on every change" false the moment it landed.
+  // A claim about how something is tested is exactly the kind that goes stale silently, because
+  // the person changing the matrix is not reading the README.
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const everyRun = new Set(lean.map((j) => j.os.replace("-latest", "")));
+
+  assert.doesNotMatch(readme, /(all nine|every combination) (are|is) tested on every change/i);
+  if (!everyRun.has("macos")) {
+    assert.match(
+      readme,
+      /macOS (runs|is tested) weekly/i,
+      "macOS is off the every-run matrix, so the README has to say when it does run",
+    );
+  }
+});
+
+test("the README shows no badge that needs a repo the reader cannot see", () => {
+  // A GitHub Actions badge 404s while the repo is private, and the README is the npm package page.
+  // A broken image is the first thing a stranger sees. It goes back when the repo goes public.
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  assert.doesNotMatch(
+    readme,
+    /actions\/workflows\/[^)\s]*badge\.svg/,
+    "the Actions badge only renders once the repository is public",
+  );
+});

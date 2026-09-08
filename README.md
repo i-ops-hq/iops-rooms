@@ -8,7 +8,6 @@
 [![license](https://img.shields.io/badge/license-MIT-0b7285)](LICENSE)
 [![node](https://img.shields.io/badge/node-20%20%7C%2022%20%7C%2024-0b7285)](package.json)
 [![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-tested-0b7285)](.github/workflows/tests.yml)
-[![tests](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml/badge.svg)](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-0-0b7285)](package.json)
 
 *One of the layers of [I-Ops](https://i-ops.dev), open sourced.*
@@ -72,8 +71,9 @@ On top of that, a **live room**: a branch graph with a dot per commit and per po
 transcript on disk that a team syncs through their own git remote. Terminal plus a static HTML
 board. Network off for individual use.
 
-Runs on macOS, Linux and Windows, on Node 20, 22 and 24 — all nine combinations are tested on every
-change.
+Runs on macOS, Linux and Windows, on Node 20, 22 and 24. Linux and Windows are tested on every
+change; macOS runs weekly and on demand, because it bills at ten times the minutes and is the
+platform this is developed on.
 
 Pin a version. Do not run `@latest`.
 
@@ -229,7 +229,7 @@ Verify it yourself: open the board as `file://` and watch the network tab stay e
 
 ## Requirements
 
-Node 20, 22 or 24 on macOS, Linux or Windows. Every combination is tested on every change.
+Node 20, 22 or 24 on macOS, Linux or Windows. Linux and Windows on every change, macOS weekly.
 No runtime dependencies.
 
 ## Not in this release
