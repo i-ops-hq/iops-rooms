@@ -22,7 +22,8 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 /**
  * Files that tell a reader which version to install, or where the repo lives.
  *
- * `Rooms by I-Ops context.md` used to be here. It was an private planning document, no longer part of this repository. Do not add it back.
+ * A private planning document used to be listed here and is no longer part of this repository.
+ * Do not add it back.
  */
 const DOCS = [
   "README.md",
