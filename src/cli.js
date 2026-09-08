@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import { statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { basename, relative, resolve } from "node:path";
+import { basename, relative, resolve, sep } from "node:path";
 import {
   actor,
   deviceId,
@@ -527,7 +527,11 @@ async function main() {
     const fromHere = (p) => {
       const abs = resolve(here, String(p));
       const rel = relative(dir, abs);
-      return rel && !rel.startsWith("..") ? rel : String(p);
+      // Forward slashes: a git pathspec uses them on every platform, and `relative` hands back
+      // `src\api\thing.js` on Windows. Git tolerates that for a bare path but pathspec magic —
+      // which `--not` produces as `:(exclude)…` — is specified with `/`, so this is not left to
+      // chance. It is also what the report prints, and a path is easier to read one way everywhere.
+      return rel && !rel.startsWith("..") ? rel.split(sep).join("/") : String(p);
     };
     const paths = argv.path ? [fromHere(argv.path)] : [];
     const exclude = argv.not

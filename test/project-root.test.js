@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { resolveProjectRoot } from "../src/git-info.js";
@@ -106,7 +106,9 @@ test("a report from a subdirectory is about the project, not the folder", async 
     assert.equal(here.code, 0, here.err);
     // `git log` already read the whole history from a subdirectory. What was wrong was the title:
     // "api · last 7d" for a repository called something else.
-    assert.match(here.out, new RegExp(`^${join(base).split("/").pop()} · last`), here.out);
+    // basename(), not split("/"): a Windows path has no forward slashes in it, so the old version
+    // built a regex out of the whole `C:\Users\…` path — backslash escapes and all.
+    assert.equal(here.out.split("\n")[0], `${basename(base)} · last 7d`, here.out);
     assert.doesNotMatch(here.out.split("\n")[0], /^api /);
   });
 });
@@ -117,7 +119,9 @@ test("a path you type is the file you meant, not the same name at the root", asy
     assert.equal(r.code, 0, r.err);
     // Typed in src/api/, so it means src/api/thing.js — rebased onto the root rather than
     // reinterpreted there, where it does not exist.
+    // Forward slashes on every platform, because that is what a git pathspec is.
     assert.match(r.out, /^src\/api\/thing\.js/);
+    assert.doesNotMatch(r.out, /src\\api/, "a Windows separator must not reach a pathspec");
     assert.match(r.out, /1 commit/);
   });
 });
