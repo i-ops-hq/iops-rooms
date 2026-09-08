@@ -95,7 +95,14 @@ export async function startLiveBoard(projectDir, opts = {}) {
     res.end("not found");
   });
 
-  const wantPort = opts.port === 0 ? 0 : Number(opts.port) || LIVE_DEFAULT_PORT;
+  // `--port 0` means "pick a free one", and it never worked: the CLI hands this a STRING, so the
+  // `=== 0` guard missed, and `Number("0") || 7840` fell through to the default because 0 is falsy.
+  // Two boards on one machine therefore both tried 7840 and the second was refused.
+  const requested = Number(opts.port);
+  const wantPort =
+    Number.isInteger(requested) && requested >= 0 && requested <= 65535
+      ? requested
+      : LIVE_DEFAULT_PORT;
 
   await new Promise((resolve, reject) => {
     server.once("error", reject);

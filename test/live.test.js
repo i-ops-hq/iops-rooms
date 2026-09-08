@@ -40,3 +40,23 @@ test("live board binds 127.0.0.1 and reflects a new post", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("--port 0 binds a free port, not the default", async () => {
+  // The CLI passes port as a STRING. `opts.port === 0` therefore missed, and
+  // `Number("0") || 7840` fell through to the default because 0 is falsy — so `--port 0` bound
+  // 7840, two boards on one machine collided, and the second was refused. Found by Windows CI.
+  const dir = await mkdtemp(join(tmpdir(), "iops-rooms-port-"));
+  try {
+    await initRoom({ cwd: dir, name: "port" });
+    const a = await startLiveBoard(dir, { port: "0" });
+    try {
+      assert.notEqual(a.port, 7840, "a string zero must still mean 'pick a free one'");
+      assert.ok(a.port > 0, "and it must be a real port");
+      assert.equal(a.host, "127.0.0.1");
+    } finally {
+      await a.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
