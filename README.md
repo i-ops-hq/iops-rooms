@@ -5,6 +5,7 @@
 **See who built your project — and which AI helped.**
 
 [![npm](https://img.shields.io/npm/v/iops-rooms?color=0b7285&label=npm)](https://www.npmjs.com/package/iops-rooms)
+[![tests](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml)
 [![license](https://img.shields.io/badge/license-MIT-0b7285)](LICENSE)
 [![node](https://img.shields.io/badge/node-20%20%7C%2022%20%7C%2024-0b7285)](package.json)
 [![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-tested-0b7285)](.github/workflows/tests.yml)

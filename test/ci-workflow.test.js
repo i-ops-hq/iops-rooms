@@ -97,13 +97,20 @@ test("the README does not claim more testing than the matrix does", () => {
   }
 });
 
-test("the README shows no badge that needs a repo the reader cannot see", () => {
-  // A GitHub Actions badge 404s while the repo is private, and the README is the npm package page.
-  // A broken image is the first thing a stranger sees. It goes back when the repo goes public.
+test("the tests badge points at the branch CI actually runs on", () => {
+  // It was pulled while the repository was private, because that badge 404s and the README is the
+  // npm package page — a broken image at the top of it is the first thing a stranger sees. Now that
+  // the repo is public it is back, and it has to name the branch the push trigger names: an
+  // unqualified badge shows whatever ran last, including a run on a tag or a fork's PR.
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
-  assert.doesNotMatch(
-    readme,
-    /actions\/workflows\/[^)\s]*badge\.svg/,
-    "the Actions badge only renders once the repository is public",
+  const badge = readme.match(/actions\/workflows\/([\w.-]+)\/badge\.svg(\?branch=([\w.\/-]+))?/);
+  assert.ok(badge, "the README shows the build state");
+  assert.equal(badge[1], "tests.yml", "and it is this workflow, not another one");
+
+  const push = yml.match(/on:\s*\n\s*push:\s*\n\s*branches:\s*\[([^\]]+)\]/);
+  const branches = push[1].split(",").map((b) => b.trim());
+  assert.ok(
+    branches.includes(badge[3]),
+    `the badge tracks "${badge[3]}" but CI runs on ${branches.join("/")}`,
   );
 });
