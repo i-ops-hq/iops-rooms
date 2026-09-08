@@ -102,6 +102,40 @@ The first four work on a repo that has never heard of Rooms, including for teamm
 install it — because every clone already carries the whole history. Only the last row needs anyone
 to post anything.
 
+### "Can't I just use `git log`?"
+
+Mostly, yes — and you should know how far it gets you before installing anything. This is the
+honest one-liner:
+
+```bash
+git log --format='%(trailers:key=Co-Authored-By,valueonly)' | grep . | sort | uniq -c
+```
+
+That gives you a tally per agent, and for many repos it is enough. Four things it gets wrong, all of
+which cost more than they look:
+
+**It has no denominator.** `--grep=Co-Authored-By` counts commits that *mention* a trailer. To turn
+that into a share you need the total under the same filter — and the moment you add `--since` or a
+path, the two commands have to agree or the percentage compares two different populations. On this
+repository the tally is 47; the total is 113.
+
+**A `Co-Authored-By` trailer is not proof of an agent.** Humans use it too — GitHub's own
+co-authoring flow writes one. The obvious fix is to match the email domain, and that is a trap:
+`users.noreply.github.com` is the address GitHub gives *every human with an account*, so matching
+`github.com` counts your colleagues as Copilot. This tool shipped that bug; matching the trailer
+**name** is the fix.
+
+**Merges report `+0 −0`.** git records no line changes for a merge, so anyone who lands other
+people's work looks like they wrote nothing. 34 of this repository's 113 commits are merges — nearly
+a third of the history, invisible to a naive line count.
+
+**One person with two email addresses is two people.** Every rollup counts them twice until someone
+writes a `.mailmap`.
+
+None of that makes `git log` wrong. It makes the number you get from it a starting point rather than
+an answer — which is the whole job here: the same facts, with the arithmetic done correctly and the
+caveats attached, in a form you can paste into a PR or a README.
+
 ### What this will not tell you
 
 - **Which lines an agent wrote.** Rooms reads commits, not keystrokes. Line-level provenance is a
