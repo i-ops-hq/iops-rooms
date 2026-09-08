@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
+import { statSync } from "node:fs";
 import {
   actor,
   deviceId,
@@ -14,6 +15,7 @@ import {
   readEvents,
   readMeta,
   refreshBoard,
+  findRoomDir,
   requireRoomDir,
   roomPaths,
   tool,
@@ -36,7 +38,7 @@ Usage:
   rooms doctor
   rooms rename <name>
   rooms open
-  rooms live [--port 7840]        (ROOMS_NO_OPEN=1 to skip launching a browser)
+  rooms live [--port N] [--tab]   own app window; --tab for a browser tab
   rooms branches
   rooms scm-status
   rooms sync-hint
@@ -91,18 +93,73 @@ function args(argv) {
   return out;
 }
 
-function openPath(path) {
-  // A headless box has nothing to open with, and an office VM — the deployment this is meant for —
-  // often has no browser at all. `rooms live` would spawn xdg-open and get an error nobody reads.
-  // ROOMS_NO_OPEN skips the launch; the caller still prints the path, which is also what makes
-  // `open` and `live` testable.
-  if (process.env.ROOMS_NO_OPEN) return;
+/**
+ * Chromium browsers that can open a URL as its own window rather than a tab.
+ * First one present wins; the order is "most likely to be installed" on each platform.
+ */
+const APP_BROWSERS = {
+  darwin: [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  ],
+  win32: [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  ],
+  linux: ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/microsoft-edge"],
+};
+
+function findAppBrowser() {
+  for (const bin of APP_BROWSERS[platform()] || []) {
+    try {
+      if (statSync(bin).isFile()) return bin;
+    } catch {
+      /* not installed */
+    }
+  }
+  return null;
+}
+
+/**
+ * Open a path or URL.
+ *
+ * With `app: true` and a Chromium browser present, the board gets its OWN WINDOW — no address bar,
+ * no tab strip, its own icon in the dock or taskbar, and the usual minimise/maximise/close. That is
+ * what a project board should feel like; a tab among thirty others is not.
+ *
+ * It is deliberately not Electron. A real desktop shell would mean per-OS binaries, code signing
+ * and a hundred megabytes, which would cost the thirty-second `npx` install and the zero-dependency
+ * claim — the two things this package is actually good at. When no Chromium browser is found it
+ * falls back to the default browser, which still works.
+ *
+ * ROOMS_NO_OPEN skips launching anything: headless boxes, CI, and office VMs with no browser at all.
+ */
+function openPath(target, { app = false } = {}) {
+  if (process.env.ROOMS_NO_OPEN) return { launched: false, mode: "suppressed" };
+
+  if (app && /^https?:\/\//.test(target)) {
+    const bin = findAppBrowser();
+    if (bin) {
+      const child = spawn(
+        bin,
+        [`--app=${target}`, "--window-size=1280,900", "--new-window"],
+        { detached: true, stdio: "ignore" },
+      );
+      child.unref();
+      return { launched: true, mode: "app", bin };
+    }
+  }
+
   const cmd = platform() === "darwin" ? "open" : platform() === "win32" ? "start" : "xdg-open";
   const child =
     platform() === "win32"
-      ? spawn("cmd", ["/c", "start", "", path], { detached: true, stdio: "ignore" })
-      : spawn(cmd, [path], { detached: true, stdio: "ignore" });
+      ? spawn("cmd", ["/c", "start", "", target], { detached: true, stdio: "ignore" })
+      : spawn(cmd, [target], { detached: true, stdio: "ignore" });
   child.unref();
+  return { launched: true, mode: "browser" };
 }
 
 async function status() {
@@ -164,6 +221,24 @@ async function shareDiff(opts) {
     text: opts.note || "shared a diff",
     extra: { path, diff, ...(truncated ? { truncated: true } : {}) },
   });
+}
+
+/**
+ * The room a command needs, created if this is the first run.
+ *
+ * `rooms open` used to fail with "No room in this directory. Run `rooms init`", which made getting
+ * started a three-command ritual — init, then open, then live — where two of the three exist only
+ * because the first one had not happened yet. Opening a board in a project that has no room yet has
+ * exactly one sensible meaning, so it does that and says so.
+ *
+ * `rooms init` stays, for naming a room or passing --share / --mcp deliberately.
+ */
+async function roomDirOrCreate() {
+  const existing = await findRoomDir();
+  if (existing) return existing;
+  const { meta, projectDir } = await initRoom({});
+  process.stdout.write(`created room ${meta.id} for ${meta.name}\n`);
+  return projectDir;
 }
 
 async function runGithubDeviceFlow(clientId) {
@@ -303,17 +378,21 @@ async function main() {
 
 
   if (cmd === "live") {
-    const dir = await requireRoomDir();
+    const dir = await roomDirOrCreate();
     const { startLiveBoard } = await import("./live.js");
     const live = await startLiveBoard(dir, { port: argv.port });
-    openPath(live.url);
-    process.stdout.write(`live  ${live.url}\n(bind ${live.host} only — Ctrl+C to stop)\n`);
+    const opened = openPath(live.url, { app: argv.app !== false && !argv.tab });
+    process.stdout.write(
+      `live  ${live.url}\n` +
+        `${opened.mode === "app" ? "window  its own app window (--tab for a browser tab instead)\n" : ""}` +
+        `(bind ${live.host} only — Ctrl+C to stop)\n`,
+    );
     await new Promise(() => {});
     return;
   }
 
   if (cmd === "open") {
-    const dir = await requireRoomDir();
+    const dir = await roomDirOrCreate();
     const board = await refreshBoard(dir);
     openPath(board);
     process.stdout.write(`opened ${board}\n`);

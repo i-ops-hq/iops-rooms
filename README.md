@@ -21,12 +21,9 @@ Point it at a git repo and it reads the history you already have: every commit, 
 it, and the agent that co-authored it.
 
 ```bash
-npx -y iops-rooms@0.4.1 init --name "my project"
-npx -y iops-rooms@0.4.1 open
+npm i -g iops-rooms
+rooms open
 ```
-
-That is the whole setup. No account, no model bill, no network. A few hundred commits read in about
-a second, and here is what you get:
 
 <p align="center">
   <img src="docs/screenshots/board.png" alt="The Rooms board: a branch graph with a dot per commit coloured by the agent that made it, and a Built by panel splitting the work between each agent and the commits with no agent recorded" width="820">
@@ -73,37 +70,26 @@ board tells you when it sees it.
 
 ## Start here
 
-**1. Point it at a repo.**
-
 ```bash
+npm i -g iops-rooms
 cd ~/your-project
-npx -y iops-rooms@0.4.1 init --name "your project"
+rooms open
 ```
 
-Creates `.room/` and adds it to `.gitignore`. Nothing leaves your machine.
+That is it. `rooms open` creates the room if there is not one, reads your history, and opens the
+board. Nothing leaves your machine.
 
-**2. Open the board.**
+To keep it open while you work — its own window, refreshing as things change:
 
 ```bash
-npx -y iops-rooms@0.4.1 open
+rooms live
 ```
 
-Your whole history is already there — every commit, who made it, which agent helped. You have not
-had to post anything yet.
+On macOS, Windows or Linux with Chrome, Brave or Edge installed, that opens as **its own app
+window**: no address bar, no tab strip, its own icon in the dock. `rooms live --tab` for an ordinary
+browser tab instead, and `ROOMS_NO_OPEN=1` to launch nothing at all.
 
-**3. Leave it running while you work.**
-
-```bash
-npx -y iops-rooms@0.4.1 live
-```
-
-Serves the board on `127.0.0.1` and refreshes it as things change. Leave the tab open.
-
-<p align="center">
-  <img src="docs/screenshots/install.png" alt="Installing and running Rooms from npm in a terminal: npx iops-rooms init, then open, then live" width="820">
-</p>
-
-That is the whole loop for one person. Two optional extras, in the order most people want them:
+Two optional extras, in the order most people want them:
 
 ```bash
 rooms auth github     # sign your posts, using the gh login you already have

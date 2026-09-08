@@ -70,10 +70,11 @@ const events = async (dir) =>
 test("every room-scoped command exits non-zero with a reason when there is no room", async () => {
   await withRoom(
     async (dir) => {
+      // `open` and `live` are deliberately NOT here — they create a room rather than refusing,
+      // because opening a board in a project with no room has exactly one sensible meaning.
       for (const argv of [
         ["post", "x"],
         ["status"],
-        ["open"],
         ["branches"],
         ["approve"],
         ["request-review"],
@@ -322,4 +323,24 @@ test("live binds localhost, serves the board, and stops when killed", async () =
       });
     }
   });
+});
+
+test("open creates the room when there is not one — the first run is one command", async () => {
+  // Getting started used to be init, then open, then live: three commands, two of which exist only
+  // because the first had not happened yet.
+  await withRoom(
+    async (dir) => {
+      const r = await run(dir, ["open"]);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.out, /created room [A-Z0-9]{6}/, "it says what it made");
+      assert.match(r.out, /opened .*board\.html/);
+      await readFile(join(dir, ".room", "room.json"), "utf8");
+
+      // Running it again must reuse the room, not make a second one.
+      const again = await run(dir, ["open"]);
+      assert.equal(again.code, 0);
+      assert.doesNotMatch(again.out, /created room/, "the second run joins what is already there");
+    },
+    { init: false },
+  );
 });
