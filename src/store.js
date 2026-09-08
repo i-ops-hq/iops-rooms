@@ -5,6 +5,7 @@ import { constants } from "node:fs";
 import { eventId, roomCode } from "./ids.js";
 import { writeBoard } from "./board.js";
 import {
+  authStatus,
   loadIdentity,
   stampEventIdentity,
   verifyEventIdentity,
@@ -275,7 +276,15 @@ export async function refreshBoard(projectDir) {
   } catch {
     history = null;
   }
-  await writeBoard(paths.board, meta, events, { projectDir, history });
+  // Passed in rather than read inside the renderer: `loadIdentity` writes device.json when it is
+  // missing, and rendering a view must not be the thing that mints an identity.
+  let auth = null;
+  try {
+    auth = await authStatus();
+  } catch {
+    auth = null;
+  }
+  await writeBoard(paths.board, meta, events, { projectDir, history, auth });
   return paths.board;
 }
 

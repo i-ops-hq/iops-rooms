@@ -871,6 +871,221 @@ export function renderBuiltBy(history) {
 </section>`;
 }
 
+/** "3d", "5w", "just now" — a duration short enough to be the value on a card. */
+export function shortSince(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const min = ms / 60_000;
+  if (min < 2) return "just now";
+  if (min < 60) return `${Math.round(min)}m`;
+  const hr = min / 60;
+  if (hr < 24) return `${Math.round(hr)}h`;
+  const day = hr / 24;
+  if (day < 14) return `${Math.round(day)}d`;
+  if (day < 60) return `${Math.round(day / 7)}w`;
+  if (day < 365) return `${Math.round(day / 30)}mo`;
+  return `${(day / 365).toFixed(day < 730 ? 1 : 0)}y`;
+}
+
+/** Cut to a word boundary and mark it, so a clipped sentence does not look like the whole one. */
+function clip(text, max) {
+  const t = String(text || "").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const sp = cut.lastIndexOf(" ");
+  return `${(sp > max * 0.6 ? cut.slice(0, sp) : cut).trimEnd()}…`;
+}
+
+function factCard({ value, label, detail }) {
+  return (
+    `<div class="fact">` +
+    `<b>${escapeHtml(String(value))}</b>` +
+    `<span>${escapeHtml(label)}</span>` +
+    (detail ? `<em>${escapeHtml(detail)}</em>` : "") +
+    `</div>`
+  );
+}
+
+/**
+ * The five numbers worth putting at the top of a project's board.
+ *
+ * The cards used to be facts about the TOOL: how many "posters", whether the network was off, that
+ * state lives in `.room`. None of that is why someone opens a board. They want to know about the
+ * PROJECT — how much work is in it, who did it, how much of it an agent helped with, how many
+ * lines of work are open, and whether any of it is recent. Every one of those comes from git
+ * history the repo already has, so the cards are full on a board's first run.
+ *
+ * Without git there is nothing to say about a project, so the room's own numbers stand in, labelled
+ * for what they are rather than dressed up as project figures.
+ */
+export function renderHeroFacts(history, events, git, now = Date.now()) {
+  const nonSystem = (events || []).filter((e) => e && e.type !== "system");
+  const lastPost = nonSystem.reduce((max, e) => (e.at > max ? e.at : max), "");
+
+  if (!history || !history.ok || !history.contributors?.length) {
+    const posters = new Set(nonSystem.map((e) => e.actor || "unknown")).size;
+    const t = parseAt(lastPost);
+    return (
+      `<div class="facts" data-source="room">` +
+      factCard({ value: posters, label: "posters", detail: "people and agents in this room" }) +
+      factCard({ value: nonSystem.length, label: "posts", detail: "notes and diffs on the board" }) +
+      factCard({
+        value: t == null ? "—" : shortSince(now - t),
+        label: "since the last post",
+        detail: t == null ? "nothing posted yet" : formatWhen(lastPost),
+      }) +
+      factCard({
+        value: git?.ok ? shortBranch(git.current || "—", 16) : "no git",
+        label: git?.ok ? "branch" : "history",
+        detail: git?.ok
+          ? "the checkout this board was written from"
+          : "run git init here and the board fills in",
+      }) +
+      `</div>`
+    );
+  }
+
+  const commits = [...history.trunk, ...history.branches.flatMap((b) => b.commits)];
+  const times = commits.map((c) => c.t).filter((t) => t != null);
+  const newest = times.length ? Math.max(...times) : null;
+  const oldest = times.length ? Math.min(...times) : null;
+  const lastCommit = commits.find((c) => c.t === newest);
+
+  const { attributed, plain, agents } = history.agents;
+  const seen = attributed + plain;
+  const pct = seen > 0 ? Math.round((attributed / seen) * 100) : 0;
+
+  const open = history.branches.filter((b) => b.open).length;
+  const merged = history.branches.length - open;
+
+  const top = history.contributors[0];
+  const trunkName = shortBranch(git?.current || "main", 18);
+  const postT = parseAt(lastPost);
+  // The freshest thing that happened, from either source — a room post counts as activity.
+  const freshest = Math.max(newest ?? -Infinity, postT ?? -Infinity);
+
+  return (
+    `<div class="facts" data-source="git">` +
+    factCard({
+      value: history.total,
+      label: history.total === 1 ? "commit" : "commits",
+      detail:
+        oldest != null && newest != null && newest > oldest
+          ? `first one ${shortSince(now - oldest)} ago`
+          : "in this checkout",
+    }) +
+    factCard({
+      value: history.contributors.length,
+      label: history.contributors.length === 1 ? "person" : "people",
+      detail: top ? `most by ${clip(top.name, 22)} (${top.commits})` : "",
+    }) +
+    factCard({
+      value: pct ? `${pct}%` : "none",
+      label: "agent-assisted",
+      // The number this tool exists to produce. It is a floor, not a measurement: an agent that
+      // writes no trailer leaves no trace, so the true share can only be higher.
+      detail: agents.length
+        ? `${agents.slice(0, 2).map((a) => a.label).join(" · ")}${agents.length > 2 ? ` +${agents.length - 2}` : ""}`
+        : "no Co-Authored-By trailers in this history",
+    }) +
+    factCard({
+      value: history.branches.length,
+      label: history.branches.length === 1 ? "branch" : "branches",
+      // Beside the trunk, not including it — "13 branches, all 12 merged in" was two counts of two
+      // different things sitting next to each other.
+      detail: open
+        ? `beside ${trunkName}, ${open} still open`
+        : merged
+          ? `all merged into ${trunkName}`
+          : "everything landed on one line",
+    }) +
+    factCard({
+      value: Number.isFinite(freshest) ? shortSince(now - freshest) : "—",
+      label: "since the last change",
+      // The name, not the subject: the subject is on the dot in the graph, and at this width it
+      // wraps to four lines and stretches every card in the row to match.
+      detail: lastCommit ? `${clip(lastCommit.author.name, 24)} on ${trunkName}` : "",
+    }) +
+    `</div>`
+  );
+}
+
+/** ✓ / ! / — as one small marked span, so the three states read without reading the words. */
+function sideFlag(state, text) {
+  return `<span class="side-flag" data-state="${escapeHtml(state)}">${escapeHtml(text)}</span>`;
+}
+
+/**
+ * Who you are and what this checkout is connected to.
+ *
+ * Both were missing from the board, and their absence read as a pending state: the page talked
+ * about verified identity and about branches without ever saying whether THIS machine had either.
+ * Neither panel goes looking for anything — `auth` is passed in by the caller that already loaded
+ * it, so opening a board cannot mint an identity as a side effect, and the git side is the snapshot
+ * already read for the branch panel.
+ */
+export function renderHeroSide({ git, auth, meta } = {}) {
+  const name = auth?.displayName || meta?.createdBy || "you";
+  const login = auth?.github?.login || auth?.gitlab?.username || "";
+  const host = auth?.github?.login ? "github.com" : auth?.gitlab?.username ? "gitlab.com" : "";
+
+  const you =
+    `<div class="side-card">` +
+    `<span class="side-title">You</span>` +
+    `<div class="side-who">` +
+    `<span class="side-avatar" style="--actor-hue: ${actorHue(name)}" aria-hidden="true">${escapeHtml(initials(name))}</span>` +
+    `<div class="side-who-text"><b>${escapeHtml(name)}</b>` +
+    (login
+      ? `<span class="side-sub">${escapeHtml(`${host}/${login}`)}</span>`
+      : `<span class="side-sub">not linked to an account</span>`) +
+    `</div></div>` +
+    (auth
+      ? (login
+          ? auth.verifiedDeviceId && auth.deviceId && auth.verifiedDeviceId !== auth.deviceId
+            ? sideFlag("warn", "linked on another device — re-run rooms auth github here")
+            : sideFlag("ok", "verified — your posts carry it")
+          : sideFlag("warn", "unverified — rooms auth github")) +
+        (auth.actorOverride ? sideFlag("warn", "name set by ROOMS_ACTOR, so nothing can check it") : "") +
+        sideFlag(
+          auth.privateKeyPresent ? "ok" : "warn",
+          auth.privateKeyPresent
+            ? `signing as device ${String(auth.deviceId || "").slice(0, 8)}`
+            : "no signing key on this device yet",
+        )
+      : sideFlag("none", "no identity loaded for this render")) +
+    `</div>`;
+
+  let gitCard;
+  if (!git || !git.ok) {
+    gitCard =
+      `<div class="side-card">` +
+      `<span class="side-title">Git</span>` +
+      `<p class="side-repo">not a git checkout</p>` +
+      sideFlag("none", "git init here and the history fills this board") +
+      `</div>`;
+  } else {
+    const ab = [];
+    if (git.ahead) ab.push(`${git.ahead} ahead`);
+    if (git.behind) ab.push(`${git.behind} behind`);
+    gitCard =
+      `<div class="side-card">` +
+      `<span class="side-title">Git</span>` +
+      `<p class="side-repo">${escapeHtml(git.remote ? git.remote.label : "local repository")}</p>` +
+      `<p class="side-branch"><b>${escapeHtml(shortBranch(git.current || "detached", 24))}</b>` +
+      (git.head ? ` <code>${escapeHtml(git.head)}</code>` : "") +
+      `</p>` +
+      sideFlag(
+        git.dirty ? "warn" : "ok",
+        git.dirty ? `${git.dirty} uncommitted change${git.dirty === 1 ? "" : "s"}` : "working tree clean",
+      ) +
+      (git.upstream
+        ? sideFlag(ab.length ? "warn" : "ok", ab.length ? `${ab.join(", ")} ${git.upstream}` : `in step with ${git.upstream}`)
+        : sideFlag("none", git.remote ? "this branch tracks nothing yet" : "no remote configured")) +
+      `</div>`;
+  }
+
+  return `<aside class="hero-side" aria-label="you and this checkout">${you}${gitCard}</aside>`;
+}
+
 export function buildTimelineModel(events, git = {}, opts = {}) {
   const nonSystem = (events || []).filter((e) => e && e.type !== "system");
   const byBranch = new Map();
@@ -1154,7 +1369,6 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   const { actors } = posterStats(events);
   // Non-system actors only — empty/system-only rooms show 0, not a fake "1 poster"
   const distinctPosters = actors.size;
-  const postersLabel = String(distinctPosters);
   const postersBlurb =
     distinctPosters === 0
       ? "No posts yet — join from another tool or machine with the room code."
@@ -1190,20 +1404,19 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
       ? "files stay in this folder"
       : "syncs only among your team’s devices — not I-Ops cloud";
 
-  const branchLabel = shortBranch(git.current || "—", 18);
+  // The room's own state, on one line under the lead. It was five of the top cards, which pushed
+  // every fact about the project below the fold; it is worth a sentence, not a quarter of the page.
+  const roomLine = `${postersBlurb} Network ${networkLabel} — ${networkDetail}.`;
   const projectName = boardProjectName(meta, projectDir);
   const boardTitle = `Rooms · ${projectName}`;
   const replacements = {
     "{{TITLE}}": escapeHtml(boardTitle),
+    "{{FACTS}}": renderHeroFacts(opts.history, events, git, now),
+    "{{HERO_SIDE}}": renderHeroSide({ git, auth: opts.auth || null, meta }),
+    "{{ROOM_LINE}}": escapeHtml(roomLine),
     "{{CODE}}": escapeHtml(meta.id || ""),
     "{{CREATED}}": escapeHtml(meta.createdAt || ""),
     "{{BY}}": escapeHtml(meta.createdBy || ""),
-    "{{COUNT}}": String(events.length),
-    "{{NETWORK}}": escapeHtml(networkLabel),
-    "{{NETWORK_DETAIL}}": escapeHtml(networkDetail),
-    "{{POSTERS}}": escapeHtml(postersLabel),
-    "{{POSTERS_BLURB}}": escapeHtml(postersBlurb),
-    "{{BRANCH}}": escapeHtml(branchLabel),
     "{{BRANCH_PANEL}}": renderBranchPanel(git, events),
     "{{TIMELINE}}": renderTimeline(events, git, { ...presenceOpts, history: opts.history }),
     "{{BUILT_BY}}": renderBuiltBy(opts.history),

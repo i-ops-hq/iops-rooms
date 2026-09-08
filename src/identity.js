@@ -489,6 +489,10 @@ export async function authStatus() {
     tool: idn.tool,
     envOverride: idn.envOverride,
     verified: hasGithub || hasGitlab,
+    // The device the account was linked ON. It can differ from the device in use — a restored
+    // identity.json, a copied home directory, a VM template — and a verified identity bound to a
+    // different device is not the same thing as being verified here.
+    verifiedDeviceId: verified?.deviceId || null,
     github: verified?.github || null,
     gitlab: verified?.gitlab || null,
     createdAt: verified?.createdAt || null,

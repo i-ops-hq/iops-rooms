@@ -17,6 +17,55 @@ async function git(cwd, args) {
   }
 }
 
+/**
+ * A remote URL, safe to put on a page.
+ *
+ * `git remote get-url` returns exactly what is configured, and a remote configured over HTTPS in CI
+ * or on a shared box is often `https://x-access-token:ghp_…@github.com/owner/repo`. The board is a
+ * file people screenshot and paste into issues, so the credential is stripped before it can be
+ * rendered — not at the point of rendering, where the next caller would have to remember.
+ *
+ * Returns `{ host, path, label }`; label is what to show. Never the password.
+ */
+export function sanitizeRemote(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return null;
+  // scp-style: git@github.com:owner/repo.git — no scheme, so URL() will not parse it.
+  const scp = raw.match(/^(?:([^@/]+)@)?([^:/]+):(.+)$/);
+  let host = "";
+  let path = "";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      host = u.hostname;
+      path = u.pathname;
+    } catch {
+      return null;
+    }
+  } else if (scp && !raw.includes("://")) {
+    host = scp[2];
+    path = scp[3];
+  } else {
+    return null;
+  }
+  path = path.replace(/^\/+/, "").replace(/\.git$/i, "");
+  if (!host || !path) return null;
+  return { host, path, label: `${host}/${path}` };
+}
+
+/** Ahead/behind against the configured upstream, or nulls when there is no upstream to compare to. */
+async function readTracking(projectDir) {
+  const upstream = await git(projectDir, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
+  if (!upstream) return { upstream: "", ahead: null, behind: null };
+  const counts = await git(projectDir, ["rev-list", "--left-right", "--count", `${upstream}...HEAD`]);
+  const [behind, ahead] = counts.split(/\s+/).map((n) => Number(n));
+  return {
+    upstream,
+    ahead: Number.isFinite(ahead) ? ahead : null,
+    behind: Number.isFinite(behind) ? behind : null,
+  };
+}
+
 /** Local git snapshot. Env ROOMS_BRANCH overrides current branch for smoke. */
 export async function readGitSnapshot(projectDir) {
   const envBranch = (process.env.ROOMS_BRANCH || "").trim();
@@ -46,12 +95,19 @@ export async function readGitSnapshot(projectDir) {
     : [];
   if (current && !branches.includes(current)) branches = [current, ...branches];
   branches = branches.slice(0, 16);
+  const remote = sanitizeRemote(await git(projectDir, ["remote", "get-url", "origin"]));
+  const porcelain = await git(projectDir, ["status", "--porcelain"]);
+  const dirty = porcelain ? porcelain.split(/\r?\n/).filter(Boolean).length : 0;
+  const tracking = await readTracking(projectDir);
   return {
     ok: true,
     current,
     branches,
     head,
-    note: "Local git only — remotes/PRs land in a later SCM slice.",
+    remote,
+    dirty,
+    ...tracking,
+    note: "Read from the local checkout. Nothing is fetched and nothing is pushed.",
   };
 }
 
