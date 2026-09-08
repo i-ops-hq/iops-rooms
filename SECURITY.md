@@ -113,7 +113,11 @@ identity.json shape (either or both providers):
 - **On Windows the key is not mode 0600.** POSIX permission bits do not exist there, so `chmod`
   is a no-op and the key is protected by the NTFS ACL on your user profile instead. That is a
   weaker, different guarantee than a 0600 file, and it is stated rather than assumed.
-- `rooms auth github` uses GitHub **device flow**. Set `ROOMS_GITHUB_CLIENT_ID` to an OAuth App client id.
+- `rooms auth github` reads your account from the **`gh` CLI** — a single `gh api user`, with your
+  own credential, requesting no scopes and storing no token. Nothing is registered on our side and
+  no application of ours appears in your GitHub authorised-apps list. `--device-flow` with
+  `ROOMS_GITHUB_CLIENT_ID` remains for machines without `gh`.
+- `rooms auth github --device-flow` uses GitHub **device flow**. Set `ROOMS_GITHUB_CLIENT_ID` to an OAuth App client id.
 - `rooms auth gitlab` uses GitLab **device authorization grant**. Set `ROOMS_GITLAB_CLIENT_ID` (Application ID). Optional `ROOMS_GITLAB_HOST` (default `https://gitlab.com`) for self-managed.
 - Auth only mints a **local** identity; it does not upload room events to I-Ops, GitHub, or GitLab. Access tokens are discarded after reading `/user`.
 - Posts/MCP attach `github.login` and/or `gitlab.username` + `publicKey` + `sig` over a canonical payload (actor, deviceId, id, type, text hash, provider claim) when a verified identity is present. GitHub-only payload stays backward-compatible.
