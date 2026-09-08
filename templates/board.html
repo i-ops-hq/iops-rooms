@@ -725,6 +725,19 @@
       .bg-dot[data-kind="approved"] .bg-core { fill: var(--green); }
       .bg-dot[data-kind="review"] .bg-core { fill: var(--amber); }
       .bg-dot[data-kind="review"] .bg-halo { fill: var(--amber); }
+      /* A commit is coloured by the agent that made it, not by its branch — the branch is already
+         said by the lane it sits on, and "which agent" is the thing this board exists to answer. */
+      .bg-dot[data-kind="commit"] .bg-core { fill: var(--ink-3); }
+      .bg-dot[data-kind="commit"] .bg-halo { fill: var(--ink-3); opacity: 0.1; }
+      .bg-dot[data-agent="claude"] .bg-core { fill: var(--violet); }
+      .bg-dot[data-agent="claude"] .bg-halo { fill: var(--violet); }
+      .bg-dot[data-agent="cursor"] .bg-core { fill: var(--blue); }
+      .bg-dot[data-agent="cursor"] .bg-halo { fill: var(--blue); }
+      .bg-dot[data-agent="codex"] .bg-core { fill: var(--green); }
+      .bg-dot[data-agent="copilot"] .bg-core { fill: var(--amber); }
+      /* A merge moves no lines, so it is drawn hollow rather than as a solid unit of work. */
+      .bg-dot[data-kind="merge"] .bg-core { fill: var(--bg); stroke: var(--ink-3); stroke-width: 1.6; }
+      .bg-dot[data-kind="merge"] .bg-halo { fill: var(--ink-3); opacity: 0.08; }
       .bg-dot { cursor: default; }
       .bg-dot:hover .bg-halo { opacity: 0.34; }
 
