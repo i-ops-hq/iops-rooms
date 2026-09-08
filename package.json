@@ -1,7 +1,7 @@
 {
   "name": "iops-rooms",
   "version": "0.3.1",
-  "description": "Rooms by I-Ops — local, inspectable shared rooms for agent sessions",
+  "description": "Rooms by I-Ops \u2014 local, inspectable shared rooms for agent sessions",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -25,7 +25,7 @@
   "scripts": {
     "rooms": "node src/cli.js",
     "mcp": "node src/mcp.js",
-    "test": "node --test test/*.test.js",
+    "test": "node --test --test-timeout=90000",
     "live": "node src/cli.js live",
     "smoke:solo": "node scripts/solo-smoke.mjs",
     "smoke:individual": "node scripts/solo-smoke.mjs",

@@ -95,7 +95,7 @@ Team leads may opt into **verified mode**. Solo can stay unsigned.
 ~/.iops-rooms/
   device.json      # deviceId + displayName
   identity.json    # github and/or gitlab claim, publicKey, createdAt (after auth)
-  device.key       # ed25519 private key, mode 0600 (shared)
+  device.key       # ed25519 private key, mode 0600 on macOS/Linux (shared)
 ```
 
 identity.json shape (either or both providers):
@@ -110,6 +110,9 @@ identity.json shape (either or both providers):
 }
 ```
 
+- **On Windows the key is not mode 0600.** POSIX permission bits do not exist there, so `chmod`
+  is a no-op and the key is protected by the NTFS ACL on your user profile instead. That is a
+  weaker, different guarantee than a 0600 file, and it is stated rather than assumed.
 - `rooms auth github` uses GitHub **device flow**. Set `ROOMS_GITHUB_CLIENT_ID` to an OAuth App client id.
 - `rooms auth gitlab` uses GitLab **device authorization grant**. Set `ROOMS_GITLAB_CLIENT_ID` (Application ID). Optional `ROOMS_GITLAB_HOST` (default `https://gitlab.com`) for self-managed.
 - Auth only mints a **local** identity; it does not upload room events to I-Ops, GitHub, or GitLab. Access tokens are discarded after reading `/user`.

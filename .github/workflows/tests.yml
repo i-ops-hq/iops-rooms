@@ -23,7 +23,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Windows is not a nice-to-have: a team has mixed laptops, and a room shared through
+        # git has to render the same picture on all of them.
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node: ["20", "22", "24"]
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +35,7 @@ jobs:
 
       # No dependencies to install — the package has none, which is part of the trust story.
       - name: There are still no runtime dependencies
+        shell: bash
         run: |
           DEPS=$(node -p "Object.keys(require('./package.json').dependencies || {}).length")
           if [ "$DEPS" != "0" ]; then
@@ -41,12 +44,15 @@ jobs:
           fi
 
       - name: Unit tests
+        shell: bash
         run: npm test
 
       - name: Solo smoke
+        shell: bash
         run: npm run smoke:solo
 
       - name: Two-device smoke
+        shell: bash
         run: npm run smoke:two-device
 
   coverage:
@@ -72,8 +78,7 @@ jobs:
             --test-coverage-exclude='test/**' \
             --test-coverage-lines=90 \
             --test-coverage-branches=73 \
-            --test-coverage-functions=89 \
-            test/*.test.js
+            --test-coverage-functions=89
 
   packaged:
     name: the packed tarball actually runs

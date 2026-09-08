@@ -93,8 +93,19 @@ function connect(cwd, env = {}) {
       return stderr;
     },
     async close() {
+      // Waiting unconditionally for `close` turned one non-exiting server into a CI job that ran
+      // for an hour instead of failing in seconds. Ask nicely, then insist.
       child.stdin.end();
-      await new Promise((r) => child.on("close", r));
+      await new Promise((resolve) => {
+        const done = setTimeout(() => {
+          child.kill();
+          resolve();
+        }, 3000);
+        child.on("close", () => {
+          clearTimeout(done);
+          resolve();
+        });
+      });
     },
   };
 }
@@ -193,7 +204,10 @@ test("Content-Length framing is accepted, not only newline-delimited", async () 
     assert.match(out, /Content-Length:/, "a framed request must get a framed reply");
     assert.match(out, /"id":1/);
   } finally {
+    // Windows refuses to rmdir a directory a running child still has as its cwd, so wait for the
+    // server to exit before cleaning up rather than racing it.
     child.stdin.end();
+    await new Promise((r) => child.on("close", r));
     await rm(base, { recursive: true, force: true });
   }
 });

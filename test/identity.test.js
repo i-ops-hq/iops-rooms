@@ -54,8 +54,14 @@ test("fixture identity store + private key mode 0600", async () => {
     const raw = JSON.parse(await readFile(identityFilePath(), "utf8"));
     assert.equal(raw.github.login, "ashwinth");
     const st = await stat(privateKeyPath());
-    // mode bits: expect owner read/write only when platform supports it
-    assert.equal(st.mode & 0o777, 0o600);
+    // POSIX mode bits do not exist on Windows: chmod is a no-op there, so the private key is
+    // protected by the NTFS ACL on the user's profile instead of by a 0600 mode. Asserting 0600
+    // everywhere would fail honestly on Windows; pretending the mode is set would be worse.
+    if (process.platform === "win32") {
+      assert.ok(st.isFile(), "the key exists; its protection on Windows is the profile ACL");
+    } else {
+      assert.equal(st.mode & 0o777, 0o600);
+    }
     const status = await authStatus();
     assert.equal(status.verified, true);
     assert.equal(status.github.login, "ashwinth");

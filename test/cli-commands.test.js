@@ -243,14 +243,16 @@ test("index scans and writes a page without touching the real home", async () =>
     const home = await mkdtemp(join(tmpdir(), "iops-rooms-idxhome-"));
     try {
       // Listing is the default; writing the page is gated behind --open, as the README shows.
-      const listed = await run(dir, ["index"], { HOME: home });
+      // os.homedir() reads USERPROFILE on Windows and HOME elsewhere — set both, or the
+      // test writes into the real home on one platform and passes for the wrong reason.
+      const listed = await run(dir, ["index"], { HOME: home, USERPROFILE: home });
       assert.equal(listed.code, 0, listed.err);
       await assert.rejects(
         () => readFile(join(home, ".iops-rooms", "index.html"), "utf8"),
         "plain `index` lists without writing a page",
       );
 
-      const r = await run(dir, ["index", "--open"], { HOME: home });
+      const r = await run(dir, ["index", "--open"], { HOME: home, USERPROFILE: home });
       assert.equal(r.code, 0, r.err);
       const page = await readFile(join(home, ".iops-rooms", "index.html"), "utf8");
       assert.ok(page.length > 100, "a page was written");
@@ -283,13 +285,41 @@ test("live binds localhost, serves the board, and stops when killed", async () =
       });
       assert.match(url, /^http:\/\/127\.0\.0\.1:/, "must bind loopback, never 0.0.0.0");
 
-      const res = await fetch(url);
-      assert.equal(res.status, 200);
-      const html = await res.text();
+      // The url is printed as soon as listen() resolves, but on Windows the first connection can
+      // still be refused or reset for a moment after that. Retry briefly rather than assert on a
+      // race — a flaky test that fails one run in five teaches people to re-run instead of read.
+      let html = "";
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        try {
+          const res = await fetch(url);
+          assert.equal(res.status, 200);
+          html = await res.text();
+          break;
+        } catch (err) {
+          if (attempt === 11) throw err;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
       assert.match(html, /before live/, "the served board carries the room's events");
     } finally {
+      // Third time this shape has bitten: an unbounded await on a child exiting. `rooms live`
+      // blocks forever by design, Windows has no real SIGTERM, and a process that does not answer
+      // the polite signal leaves the test waiting rather than failing. Ask, then insist.
       child.kill();
-      await new Promise((r) => child.on("close", r));
+      await new Promise((resolve) => {
+        const force = setTimeout(() => {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            /* already gone */
+          }
+          resolve();
+        }, 3000);
+        child.on("close", () => {
+          clearTimeout(force);
+          resolve();
+        });
+      });
     }
   });
 });
