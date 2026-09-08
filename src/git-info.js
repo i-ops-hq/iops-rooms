@@ -74,6 +74,7 @@ export async function readGitSnapshot(projectDir) {
     return {
       ok: false,
       current: "",
+      defaultBranch: "",
       branches: [],
       head: "",
       note: "Not a git checkout — branch stamps stay empty until you init git or set ROOMS_BRANCH.",
@@ -94,7 +95,17 @@ export async function readGitSnapshot(projectDir) {
     ? listRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
     : [];
   if (current && !branches.includes(current)) branches = [current, ...branches];
-  branches = branches.slice(0, 16);
+  // Was 16, which silently cut a real branch out of the list and left the board calling it "not a
+  // branch in this checkout". The panel groups finished branches behind a disclosure now, so a long
+  // list costs nothing; the bound is only here so a pathological repo cannot render forever.
+  branches = branches.slice(0, 500);
+  // Exactly one branch is the default. Asking git rather than matching /^(main|master)$/ — a repo
+  // part-way through a rename has both, and badging both "default" says the board does not know.
+  const originHead = await git(projectDir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+  let defaultBranch = originHead ? originHead.replace(/^origin\//, "") : "";
+  if (!defaultBranch || !branches.includes(defaultBranch)) {
+    defaultBranch = ["main", "master", "trunk", "develop"].find((n) => branches.includes(n)) || current || "";
+  }
   const remote = sanitizeRemote(await git(projectDir, ["remote", "get-url", "origin"]));
   const porcelain = await git(projectDir, ["status", "--porcelain"]);
   const dirty = porcelain ? porcelain.split(/\r?\n/).filter(Boolean).length : 0;
@@ -102,6 +113,7 @@ export async function readGitSnapshot(projectDir) {
   return {
     ok: true,
     current,
+    defaultBranch,
     branches,
     head,
     remote,

@@ -57,6 +57,25 @@ the tree is clean, and how far it is from its upstream. Three things came out of
 - **Rendering must not mint an identity.** `loadIdentity` writes `device.json` when it is missing, so
   a renderer that called it would make opening a board the thing that gives the machine an identity.
 
+### The Branches panel says what is still happening
+
+It listed every local ref as an equal row — twenty-four on this repo, twenty of which read "0 posts
+· —" and "no room posts yet". The default, the branch you have checked out, anything holding commits
+the default does not have, and anything anyone posted about keep their own row; the rest collapse
+into one line and a disclosure.
+
+A row now says which of three different things its silence means: `merged in #24`, `nothing on it
+that main does not have`, or `not a branch in this checkout` — a name that only ever appeared as a
+post stamp. All three used to render as "0 posts".
+
+**Exactly one branch is badged default, and git decides which.** The badge matched
+`/^(main|master)$/`, so a repo part-way through a rename had two of them — and a page that names two
+defaults has told the reader it does not know. It now comes from `origin/HEAD`, falling back to
+whichever of main/master/trunk/develop the repo actually has.
+
+The local branch list was also silently cut at sixteen refs, which is how a real branch ended up
+described as "not a branch in this checkout".
+
 ### The test suite was writing into your real identity store
 
 `npm test` resolved `ROOMS_HOME` to `~/.iops-rooms` in every file that did not set its own, which was

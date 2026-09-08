@@ -57,8 +57,20 @@ function branchHue(name) {
   return h % 360;
 }
 
-function isMainBranch(name) {
-  return /^(main|master)$/i.test(String(name || ""));
+/**
+ * Is this THE default branch?
+ *
+ * `git` carries the answer — `defaultBranch` comes from `origin/HEAD` and falls back to whichever
+ * of main/master/trunk/develop the repo actually has. Matching `/^(main|master)$/` instead put a
+ * "default" badge on both of them in a repo part-way through a rename, and a page that names two
+ * defaults has told the reader it does not know which.
+ *
+ * The name test is only the fallback for callers with no snapshot to hand.
+ */
+function isMainBranch(name, git) {
+  const n = String(name || "");
+  if (git && git.defaultBranch) return n === git.defaultBranch;
+  return /^(main|master)$/i.test(n);
 }
 
 function posterStats(events) {
@@ -140,7 +152,7 @@ function renderEmptyBanner() {
 </aside>`;
 }
 
-function renderEvents(events) {
+function renderEvents(events, git) {
   const nonSystem = events.filter((e) => e.type !== "system");
   if (nonSystem.length === 0) {
     return renderEmptyBanner();
@@ -172,7 +184,7 @@ function renderEvents(events) {
         : "";
       const verifyBit = renderVerifyBadge(ev);
       const hue = branch ? branchHue(ev.branch) : 210;
-      const mainAttr = isMainBranch(ev.branch) ? ' data-main="1"' : "";
+      const mainAttr = isMainBranch(ev.branch, git) ? ' data-main="1"' : "";
       const verifyAttr = eventVerifiedBadge(ev).kind;
       return `<article class="event" data-type="${kind}" data-tone="${kind}" data-branch="${branch}" data-verify="${verifyAttr}"${mainAttr} style="--branch-hue: ${hue}">
   <header>
@@ -193,7 +205,7 @@ function renderEvents(events) {
     .join("\n");
 }
 
-function renderBranchPanel(git, events) {
+export function renderBranchPanel(git, events, history) {
   const byBranch = new Map();
   for (const ev of events) {
     if (ev.type === "system") continue;
@@ -219,28 +231,66 @@ function renderBranchPanel(git, events) {
   <p class="branch-note">${escapeHtml(git.note || "No local git branches yet.")}</p>
 </section>`;
   }
-  const rows = named
-    .map((name) => {
-      const info =
-        byBranch.get(name) ||
-        { count: 0, actors: new Set(), devices: new Set(), lastAt: "", lastActor: "" };
-      const actors = [...info.actors].join(", ") || "—";
-      const devices = [...info.devices].map((d) => shortDevice(d)).filter(Boolean).join(", ");
-      const who = devices ? `${actors} · devices ${devices}` : actors;
-      const current = name === git.current ? ' data-current="1"' : "";
-      const mainAttr = isMainBranch(name) ? ' data-main="1"' : "";
-      const hue = branchHue(name);
-      const last = info.lastAt
-        ? `${escapeHtml(info.lastActor || "?")} · ${escapeHtml(formatWhen(info.lastAt))}`
-        : "no room posts yet";
-      return `<div class="branch-row"${current}${mainAttr} style="--branch-hue: ${hue}">
+  // What git knows about each branch, so a row can say whether anything is still on it rather than
+  // only whether anyone posted about it. Most branches in a long-lived repo are merged and finished.
+  const fromGit = new Map();
+  for (const b of history?.branches || []) fromGit.set(b.name, b);
+
+  const row = (name) => {
+    const info =
+      byBranch.get(name) ||
+      { count: 0, actors: new Set(), devices: new Set(), lastAt: "", lastActor: "" };
+    const g = fromGit.get(name);
+    const actors = [...info.actors].join(", ") || "—";
+    const devices = [...info.devices].map((d) => shortDevice(d)).filter(Boolean).join(", ");
+    const who = devices ? `${actors} · devices ${devices}` : actors;
+    const current = name === git.current ? ' data-current="1"' : "";
+    const isDefault = isMainBranch(name, git);
+    const mainAttr = isDefault ? ' data-main="1"' : "";
+    const hue = branchHue(name);
+    // Three different things were all being called "0 posts": a branch that merged, a ref that
+    // still exists with nothing unique on it, and a name that was only ever a post stamp.
+    const trunkLabel = escapeHtml(shortBranch(git.defaultBranch || "the default branch", 18));
+    const state = g
+      ? g.open
+        ? `${g.commits.length} commit${g.commits.length === 1 ? "" : "s"} not on ${trunkLabel}`
+        : `merged${g.pr ? ` in #${g.pr}` : ""}`
+      : isDefault
+        ? "the default branch"
+        : (git.branches || []).includes(name)
+          ? `nothing on it that ${trunkLabel} does not have`
+          : "not a branch in this checkout";
+    const posts = info.count
+      ? `${info.count} post${info.count === 1 ? "" : "s"} · ${escapeHtml(who)}`
+      : "no room posts";
+    const last = info.lastAt
+      ? `${escapeHtml(info.lastActor || "?")} · ${escapeHtml(formatWhen(info.lastAt))}`
+      : "";
+    return `<div class="branch-row"${current}${mainAttr} style="--branch-hue: ${hue}">
   <span class="branch-swatch" aria-hidden="true"></span>
-  <span class="branch-name" title="${escapeHtml(name)}">${escapeHtml(shortBranch(name, 28))}${isMainBranch(name) ? ' <span class="branch-badge">default</span>' : ""}</span>
-  <span class="branch-meta">${info.count} post${info.count === 1 ? "" : "s"} · ${escapeHtml(who)}</span>
+  <span class="branch-name" title="${escapeHtml(name)}">${escapeHtml(shortBranch(name, 28))}${isDefault ? ' <span class="branch-badge">default</span>' : ""}${name === git.current && !isDefault ? ' <span class="branch-badge">checked out</span>' : ""}</span>
+  <span class="branch-meta">${state} · ${posts}</span>
   <span class="branch-last">${last}</span>
 </div>`;
-    })
-    .join("\n");
+  };
+
+  // A branch is worth a row of its own if something is still happening on it: the default, the one
+  // you have checked out, anything with commits the default does not have, or anything anyone posted
+  // about. Everything else is finished work, and twenty finished rows above the graph is why the
+  // page was hard to read — they are one line and a disclosure instead.
+  const isLive = (name) =>
+    isMainBranch(name, git) ||
+    name === git.current ||
+    (byBranch.get(name)?.count || 0) > 0 ||
+    Boolean(fromGit.get(name)?.open);
+  const live = named.filter(isLive);
+  const done = named.filter((n) => !isLive(n));
+  const rows = live.map(row).join("\n");
+  const doneBlock = done.length
+    ? `<details class="branch-history"><summary>${done.length} finished branch${done.length === 1 ? "" : "es"} — merged or empty, with no room posts</summary>
+  <div class="branch-list">${done.map(row).join("\n")}</div>
+</details>`
+    : "";
   const hist = unknown
     ? `<details class="branch-history"><summary>Pre-stamp history (${unknown.count} post${unknown.count === 1 ? "" : "s"} without a branch field)</summary>
   <p class="branch-note">Older events from before branch awareness. Actors: ${escapeHtml([...unknown.actors].join(", ") || "—")}${unknown.devices.size ? ` · devices ${escapeHtml([...unknown.devices].map((d) => shortDevice(d)).join(", "))}` : ""}.</p>
@@ -253,8 +303,9 @@ function renderBranchPanel(git, events) {
   <h2 class="branch-heading">Branches</h2>
   ${cur}
   <p class="branch-note">${escapeHtml(git.note || "Local git + room posts. Remotes/PRs come later. Actors are people/tools; devices are machines.")}</p>
-  <p class="branch-legend"><span class="branch-swatch branch-swatch-main" aria-hidden="true"></span> green rail = main / master</p>
+  <p class="branch-legend"><span class="branch-swatch branch-swatch-main" aria-hidden="true"></span> green rail = the default branch</p>
   <div class="branch-list">${rows}</div>
+  ${doneBlock}
   ${hist}
 </section>`;
 }
@@ -1173,8 +1224,8 @@ export function buildTimelineModel(events, git = {}, opts = {}) {
     (n) => n !== "(unknown)",
   );
   named.sort((a, b) => {
-    const am = isMainBranch(a) ? 0 : 1;
-    const bm = isMainBranch(b) ? 0 : 1;
+    const am = isMainBranch(a, git) ? 0 : 1;
+    const bm = isMainBranch(b, git) ? 0 : 1;
     if (am !== bm) return am - bm;
     const la = byBranch.get(a)?.lastAt || "";
     const lb = byBranch.get(b)?.lastAt || "";
@@ -1233,7 +1284,7 @@ export function buildTimelineModel(events, git = {}, opts = {}) {
 
     return {
       name,
-      isMain: isMainBranch(name),
+      isMain: isMainBranch(name, git),
       isCurrent: name === git.current,
       eventCount: info.eventCount,
       tools: [...info.tools].sort(),
@@ -1417,11 +1468,11 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     "{{CODE}}": escapeHtml(meta.id || ""),
     "{{CREATED}}": escapeHtml(meta.createdAt || ""),
     "{{BY}}": escapeHtml(meta.createdBy || ""),
-    "{{BRANCH_PANEL}}": renderBranchPanel(git, events),
+    "{{BRANCH_PANEL}}": renderBranchPanel(git, events, opts.history),
     "{{TIMELINE}}": renderTimeline(events, git, { ...presenceOpts, history: opts.history }),
     "{{BUILT_BY}}": renderBuiltBy(opts.history),
     "{{TOOLS_STRIP}}": strip,
-    "{{EVENTS}}": renderEvents(events),
+    "{{EVENTS}}": renderEvents(events, git),
   };
   for (const [token, value] of Object.entries(replacements)) {
     template = template.replaceAll(token, value);
