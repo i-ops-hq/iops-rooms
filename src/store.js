@@ -10,7 +10,7 @@ import {
   stampEventIdentity,
   verifyEventIdentity,
 } from "./identity.js";
-import { resolveBranch } from "./git-info.js";
+import { resolveBranch, resolveProjectRoot } from "./git-info.js";
 
 export const ROOM_DIR_NAME = ".room";
 const META = "room.json";
@@ -337,7 +337,9 @@ export async function initRoom({
   share = false,
   homeFallback = false,
 } = {}) {
-  let projectDir = resolve(cwd);
+  // A repository is one project. Without this, `rooms init` in src/api/ made src/api/.room/ —
+  // a second room in the same repo, with its gitignore and merge driver in the wrong directory.
+  let projectDir = await resolveProjectRoot(resolve(cwd));
   const existing = await findRoomDir(projectDir);
   if (existing) {
     const meta = await readMeta(existing);

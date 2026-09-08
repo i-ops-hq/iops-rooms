@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import { statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { basename } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import {
   actor,
   deviceId,
@@ -72,6 +72,10 @@ The board and the room:
   rooms auth status
   rooms auth logout
   rooms help
+
+Run any of these from anywhere inside the project — a repository is one project, so
+a command typed in packages/web/src is about the whole repo, and the room lives at
+its root.
 
 Attribution comes from the Co-Authored-By trailers agents write themselves.
 "no agent recorded" is not "no agent used" — Cursor and Copilot often write
@@ -427,6 +431,9 @@ async function main() {
       `opened ${board}\n` +
         (opened.mode === "app" ? "window  its own app window (--tab for a browser tab instead)\n" : ""),
     );
+    // After the board, never before it. Someone who ignores this still got what they asked for.
+    const { offerGithubLink } = await import("./onboard.js");
+    await offerGithubLink();
     return;
   }
 
@@ -507,11 +514,25 @@ async function main() {
   // checkout that has never heard of this tool, and making someone create a room first would put a
   // write in front of a read.
   if (cmd === "week" || cmd === "branch" || cmd === "file" || cmd === "badge") {
-    const dir = process.cwd();
+    const { resolveProjectRoot } = await import("./git-info.js");
+    // Run from the repository root, whichever subdirectory the command was typed in. `git log` was
+    // already reading the whole history from a subdirectory, but the report was titled after the
+    // folder — `api · last 7d` for a repo called something else entirely.
+    const here = process.cwd();
+    const dir = await resolveProjectRoot(here);
     const { buildReport, formatWeek, formatBranch, formatFile, renderBadgeSvg, defaultBase } =
       await import("./report.js");
-    const paths = argv.path ? [String(argv.path)] : [];
-    const exclude = argv.not ? String(argv.not).split(",").map((x) => x.trim()).filter(Boolean) : [];
+    // A pathspec the user typed is relative to where they typed it, so it is rebased onto the root
+    // rather than reinterpreted there: `rooms file thing.js` inside src/api/ means that file.
+    const fromHere = (p) => {
+      const abs = resolve(here, String(p));
+      const rel = relative(dir, abs);
+      return rel && !rel.startsWith("..") ? rel : String(p);
+    };
+    const paths = argv.path ? [fromHere(argv.path)] : [];
+    const exclude = argv.not
+      ? String(argv.not).split(",").map((x) => x.trim()).filter(Boolean).map(fromHere)
+      : [];
     const name = basename(dir);
 
     if (cmd === "week") {
@@ -567,13 +588,15 @@ async function main() {
         process.exitCode = 1;
         return;
       }
-      const r = await buildReport(dir, { paths: [String(target)], exclude, since: argv.since || "" });
+      const r = await buildReport(dir, { paths: [fromHere(target)], exclude, since: argv.since || "" });
       if (!r.ok) return failNotGit(r);
       if (!r.seen) {
         process.stdout.write(`no commits touch ${target} in this window\n`);
         return;
       }
-      process.stdout.write(formatFile(r, { path: String(target), window: argv.since ? `last ${argv.since}` : "" }));
+      process.stdout.write(
+        formatFile(r, { path: fromHere(target), window: argv.since ? `last ${argv.since}` : "" }),
+      );
       return;
     }
 

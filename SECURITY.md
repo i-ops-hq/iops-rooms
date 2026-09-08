@@ -117,6 +117,12 @@ identity.json shape (either or both providers):
   own credential, requesting no scopes and storing no token. Nothing is registered on our side and
   no application of ours appears in your GitHub authorised-apps list. `--device-flow` with
   `ROOMS_GITHUB_CLIENT_ID` remains for machines without `gh`.
+- **The first `rooms open` in a project may offer to link your GitHub account.** It reads nothing
+  until you answer yes, and then only the one `gh api user` above. It is skipped entirely when
+  stdin or stdout is not a terminal (so it can never stall a pipe or a script), when `CI` or
+  `ROOMS_NO_PROMPT` is set, when an account is already linked, when `gh` cannot answer, and on
+  every run after a no — the answer is remembered in `prompt.json` beside the device file. It runs
+  after the board has been written and opened, so ignoring it costs nothing.
 - `rooms auth github --device-flow` uses GitHub **device flow**. Set `ROOMS_GITHUB_CLIENT_ID` to an OAuth App client id.
 - `rooms auth gitlab` uses GitLab **device authorization grant**. Set `ROOMS_GITLAB_CLIENT_ID` (Application ID). Optional `ROOMS_GITLAB_HOST` (default `https://gitlab.com`) for self-managed.
 - Auth only mints a **local** identity; it does not upload room events to I-Ops, GitHub, or GitLab. Access tokens are discarded after reading `/user`.

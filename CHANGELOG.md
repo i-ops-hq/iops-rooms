@@ -2,6 +2,37 @@
 
 ## 0.5.0
 
+### A repository is one project, from any directory inside it
+
+`rooms open` in `src/api/` created `src/api/.room/` and called the project "api". Two people in the
+same repo working from different subdirectories got two different rooms; the `.gitignore` and the
+union merge driver landed where git would not apply them to the events log at the root; and every
+board and report was titled after a folder.
+
+Everything now anchors to the repository root, so a command typed in `packages/web/src` is about the
+whole project. A path you type stays the file you meant — `rooms file app.ts` in that directory is
+`packages/web/src/app.ts`, rebased onto the root rather than reinterpreted there.
+
+The answer is also spelled the way you spelled it. `git rev-parse --show-toplevel` resolves
+symlinks, so a workspace under a symlinked home was told its project lives at a path its owner has
+never typed.
+
+### It offers, once, to link your GitHub account
+
+Verified identity was worth having and nobody was ever told how to get it: the board said
+"unverified — rooms auth github" and that was the whole of the onboarding. The first `rooms open` in
+a project now offers to link the account your `gh` CLI is already signed in to.
+
+Almost all of this feature is the refusal to ask. There is no prompt when stdin or stdout is not a
+terminal — a question in `npx … | tee log` is not a question, it is a hang — nor in CI, nor with
+`ROOMS_NO_PROMPT`, nor when an account is already linked, nor when `gh` cannot answer (offering and
+then failing is worse than never offering), nor ever again after a no. Walking away is not an answer
+and is not recorded as one.
+
+It runs after the board has been written and opened, so someone who ignores it still got what they
+asked for. And asking does not create an identity: the check reads the verified-identity file
+directly rather than going through the call that writes a device file when one is missing.
+
 ### A Windows clone reported its drive letter as the remote
 
 `C:\Users\me\origin.git` matches the scp-style remote shape — `host:path` — with a host of `C`. A

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { basename } from "node:path";
+import { basename, dirname, resolve } from "node:path";
+import { realpath } from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
 
@@ -125,6 +126,43 @@ export async function readGitSnapshot(projectDir) {
     ...tracking,
     note: "Read from the local checkout. Nothing is fetched and nothing is pushed.",
   };
+}
+
+/**
+ * The project a command is about, from anywhere inside it.
+ *
+ * Running `rooms open` in `src/api/` used to create `src/api/.room/` and call the project "api".
+ * Two people in the same repo working from different subdirectories got two different rooms, the
+ * `.gitignore` and merge driver landed in the wrong place, and the board was named after a folder.
+ * A repository is one project, so a command run anywhere inside it is about the whole thing.
+ *
+ * Falls back to the directory itself when there is no repo — a plain folder can still hold a room.
+ */
+export async function resolveProjectRoot(cwd = process.cwd()) {
+  const top = await git(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!top) return resolve(cwd);
+
+  // git reports the toplevel with symlinks resolved, which is often not the path the person typed:
+  // a workspace under a symlinked home, or macOS's /var -> /private/var, and `rooms open` answers
+  // with a directory they have never seen. Walk up from THEIR spelling to the first ancestor that
+  // is the same directory as the toplevel, and answer in that.
+  let realTop;
+  try {
+    realTop = await realpath(top);
+  } catch {
+    return top;
+  }
+  let here = resolve(cwd);
+  for (;;) {
+    try {
+      if ((await realpath(here)) === realTop) return here;
+    } catch {
+      /* a path that cannot be resolved cannot be the root */
+    }
+    const parent = dirname(here);
+    if (parent === here) return top;
+    here = parent;
+  }
 }
 
 export async function resolveBranch(projectDir) {

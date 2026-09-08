@@ -41,6 +41,10 @@ Four commands, all read-only, none of which needs a room:
 | `rooms file src/auth.ts` | who and which agent last touched a file that looks wrong |
 | `rooms badge --out agents.svg` | a stacked bar for your README |
 
+Run them from anywhere inside the project. A repository is one project, so a command typed in
+`packages/web/src` reports the whole repo — and `rooms file app.ts` still means the file next to
+you, not one of the same name at the root.
+
 **`no agent recorded` is not `no agent used`.** Cursor and Copilot often write no
 `Co-Authored-By` trailer at all, so a plain commit only means none was recorded. Every share here is
 a **floor**, never a measurement of how much of your code an AI wrote — and unlike a vendor
@@ -52,6 +56,12 @@ Then, when you want the picture rather than the number:
 npm i -g iops-rooms
 rooms open
 ```
+
+The room lands at the root of the repository however deep in it you were standing, so everyone on
+the project shares one. The first time, if you have the `gh` CLI signed in, it offers once to link
+your GitHub account so your posts carry a verified name — after the board has opened, never before,
+and never at all in a pipe, in CI, or a second time if you say no. `ROOMS_NO_PROMPT=1` turns it off
+outright. Nothing is uploaded either way.
 
 <p align="center">
   <img src="docs/screenshots/board.png" alt="The top of a Rooms board: five cards reading 107 commits, 2 people, 39% agent-assisted, 12 branches, and time since the last change — with a panel on the right showing who you are and what this checkout is connected to" width="860">
