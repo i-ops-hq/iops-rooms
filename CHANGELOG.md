@@ -2,6 +2,70 @@
 
 ## Unreleased
 
+### A human co-author was being counted as Copilot
+
+`attributeAgent` matched on the email DOMAIN, and `github.com` is not only where Copilot lives — it
+is the domain of `users.noreply.github.com`, the address GitHub gives every human with an account and
+sets as the commit email by default. On a normal GitHub repo **every human co-author was attributed
+to Copilot**, and the board's headline "agent-assisted" figure was inflated by exactly those people.
+The same trap was set for anyone with an `@anthropic.com`, `@openai.com` or `@cursor.com` address:
+their employees.
+
+The trailer NAME decides now, because the name is what an agent writes about itself. A domain can no
+longer match; only a specific mailbox a tool commits from, like `noreply@anthropic.com`, which no
+person holds. The two errors are not symmetric: missing an agent understates a figure the board
+already calls a floor, while calling a person an agent is a false statement about a named human.
+
+The old test used `ben@example.com` — a domain nothing matched — so it proved the matcher rejects
+unrelated addresses, not that it rejects a human at a matched one.
+
+### `rooms open` opened a tab; `rooms live` opened a window
+
+Same flag, same session, two different results. `--app=` takes a URL and a board is a filesystem
+path, so the guard — which only accepted `http(s)` — rejected every `rooms open` and fell through to
+the system opener, producing the browser tab app mode exists to avoid. `rooms live` worked because it
+already had a URL. Paths are converted now, and `open` prints which mode it got.
+
+### A slider under the graph
+
+The graph is wider than its window as soon as a history runs past about sixty commits, and nothing
+said so. Two things were wrong underneath: `flex-direction: row-reverse`, the usual CSS-only way to
+open a scroller at its right edge, reported `scrollLeft: 0` with the OLDEST commits in view — so the
+board opened on the wrong end of history; and `scrollbar-width: thin` makes Chrome ignore
+`::-webkit-scrollbar` entirely, leaving a macOS overlay bar that is invisible until you already knew
+to scroll and occupies no layout space.
+
+There is now a visible slider, keyboard-operable, that hides itself when the graph fits. The scroll
+position is set explicitly, which is also the only version that can be measured and tested.
+
+### Who posted where, instead of a second timeline
+
+Under the graph was a lane per branch, each with a rail and avatars positioned by **time** — beneath
+a graph on a **commit-order** axis. Two x-axes that could never agree, drawn as though they did. And
+a branch nobody had posted on still got a full-width row saying "no posters yet".
+
+It is a compact row per branch that somebody actually posted on: name, count, faces, with the same
+hover detail as before. One line says how many other branches are on the graph with no posts.
+
+### Doctor was a version behind the product
+
+A repo with a hundred commits and nobody posting renders a full board — commits, contributors, agent
+split, branch graph — and `rooms doctor` called it empty and exited 2. Telling someone their working
+tool is broken is worse than saying nothing. A board is empty when it has neither git history nor
+posts; posts on their own are optional, which is what they are.
+
+### CI costs about a fifth of what it did
+
+The matrix was 3 OS x 3 Node on every push and PR. GitHub bills macOS at 10x minutes and Windows at
+2x, so three macOS jobs were roughly three quarters of every run — for the one platform that gets
+tested by hand every day. macOS moved to a weekly run and `workflow_dispatch`; Windows stays on
+every run, because four of the bugs it found were real. Roughly 124 billed minutes a run to 26.
+
+**The push trigger said `master`.** After the rename to `main` nothing matched it, so from that day a
+push ran no checks at all — silently, with a green repo behind it. Fixed, and the matrix had to
+shrink first so turning it back on did not cost a full run per push. A test now fails if the trigger
+and the branch drift apart again, or if macOS creeps back onto the every-push list.
+
 ### One command, and a real window
 
 `rooms open` in a folder with no room creates one and opens it, instead of failing with

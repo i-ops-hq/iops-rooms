@@ -61,6 +61,35 @@ test("a human co-author is not mistaken for an unknown robot", () => {
   assert.equal(attributeAgent(""), null);
 });
 
+test("a person at an AI company's domain is a person", () => {
+  // This matched on DOMAIN, and github.com is not only where Copilot lives — it is the domain of
+  // users.noreply.github.com, the address GitHub hands every human with an account. On a normal
+  // GitHub repo every human co-author was counted as Copilot, and the board's headline
+  // "agent-assisted" figure was inflated by exactly those people.
+  for (const trailer of [
+    "Ada Lovelace <12345+ada@users.noreply.github.com>",
+    "Ben <ben@users.noreply.github.com>",
+    "octocat <octocat@github.com>",
+  ]) {
+    assert.equal(attributeAgent(trailer), null, `${trailer} is a person`);
+  }
+
+  // The same trap was set for the other four families: those domains have employees.
+  assert.equal(attributeAgent("Jane Doe <jane@anthropic.com>"), null);
+  assert.equal(attributeAgent("Sam <sam@openai.com>"), null);
+  assert.equal(attributeAgent("Pat <pat@cursor.com>"), null);
+});
+
+test("the agents themselves still land, by the name they write", () => {
+  // GitHub's own Copilot co-author trailer, which is where the domain rule came from.
+  const c = attributeAgent("Copilot <198982749+Copilot@users.noreply.github.com>");
+  assert.equal(c.id, "copilot");
+
+  // A mailbox no person can hold still counts, so an agent that renames itself is not lost.
+  assert.equal(attributeAgent("Opus <noreply@anthropic.com>").id, "claude");
+  assert.equal(attributeAgent("Agent <cursoragent@cursor.com>").id, "cursor");
+});
+
 // ------------------------------------------------------------------ reading history
 
 test("every commit is read, attributed or not, with its line counts", async () => {

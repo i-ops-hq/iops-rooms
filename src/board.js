@@ -833,11 +833,19 @@ export function renderBranchGraph(model) {
 
   // Input first so `~` can reach both the svg it resizes and the label it relabels; the label sits
   // after the svg so the control reads under the picture it opens.
-  return `<figure class="branch-graph">
+  // The slider is the answer to "the graph is wider than the window and nothing says so". A native
+  // scrollbar on macOS is an overlay: invisible until you already knew to scroll, which is exactly
+  // the wrong way round. The range input is always visible, is a control people recognise, and
+  // works from the keyboard. It hides itself when the graph fits.
+  const slider = `<input type="range" class="bg-slider" min="0" max="1000" value="1000" step="1"
+       aria-label="Scroll the branch graph through history" hidden>`;
+
+  return `<figure class="branch-graph" data-graph-width="${axis.w}">
   <input type="checkbox" class="bg-toggle" id="bg-toggle" hidden>
   <div class="bg-scroll">
     ${svg}
   </div>
+  ${slider}
   ${toggle}
 </figure>`;
 }
@@ -1334,21 +1342,22 @@ function renderTimeline(events, git, opts = {}) {
       ? `Current checkout <strong>${escapeHtml(shortBranch(model.current, 28))}</strong> @ <span class="device">${escapeHtml(model.head)}</span> (local git only).`
       : "Commit SHAs appear only for the current local checkout when git is available.";
 
-  const lanesHtml = model.lanes
+  // Only branches somebody actually posted on. A lane per branch with "no posters yet" written
+  // across it was a row of furniture for every branch in the repo — and it sat under a graph on a
+  // commit-order axis while positioning its avatars by time, so the two never lined up and looked
+  // like they were meant to. The graph is the picture; this says who is where.
+  const withPeople = model.lanes.filter((l) => l.people.length > 0);
+  const lanesHtml = withPeople
     .map((lane) => {
       const mainAttr = lane.isMain ? ' data-main="1"' : "";
       const curAttr = lane.isCurrent ? ' data-current="1"' : "";
       const avatars = lane.people
         .map((p) => {
           const tools = p.tools.length ? p.tools.join(",") : "cli";
-          const lastPost = p.lastText
-            ? `${p.lastType}: ${p.lastText}`
-            : "no post text";
-          // No title= on the button — native browser tip would stack with .tl-tooltip.
+          const lastPost = p.lastText ? `${p.lastType}: ${p.lastText}` : "no post text";
+          // No title= on the button — a native browser tip would stack with .tl-tooltip.
           const aria = `${p.actor} on ${lane.name}`;
           const verify = posterVerifyKind(p);
-          // Tip icons are rendered client-side from data-tools; keep avatar chrome light.
-          // No title= on .tl-verify — custom .tl-tooltip owns hover; native title stacks.
           const presenceState = p.presence?.state === "active" ? "active" : "idle";
           const presenceLabel = p.presence?.label || "idle · never";
           const toolPresenceBits = p.tools
@@ -1359,27 +1368,22 @@ function renderTimeline(events, git, opts = {}) {
               return `${tid}=${st}:${lb}`;
             })
             .join("|");
-          return `<button type="button" class="tl-avatar" style="left:${p.pct.toFixed(2)}%; --actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-tool-presence="${escapeHtml(toolPresenceBits)}" data-presence="${presenceState}" data-presence-label="${escapeHtml(presenceLabel)}" data-posts="${p.postCount}" data-diffs="${p.diffCount}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span><span class="tl-presence" data-presence="${presenceState}" aria-hidden="true"></span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
+          return `<button type="button" class="tl-avatar" style="--actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-tool-presence="${escapeHtml(toolPresenceBits)}" data-presence="${presenceState}" data-presence-label="${escapeHtml(presenceLabel)}" data-posts="${p.postCount}" data-diffs="${p.diffCount}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span><span class="tl-presence" data-presence="${presenceState}" aria-hidden="true"></span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
         })
-        .join("\n        ");
-      const empty =
-        !lane.people.length
-          ? `<span class="tl-lane-empty">no posters yet</span>`
-          : "";
-      return `<div class="tl-lane"${mainAttr}${curAttr} style="--branch-hue: ${lane.hue}" data-branch="${escapeHtml(lane.name)}">
-  <div class="tl-lane-label" title="${escapeHtml(lane.name)}">
-    <span class="branch-swatch" aria-hidden="true"></span>
-    <span class="tl-lane-name">${escapeHtml(shortBranch(lane.name, 22))}${lane.isMain ? ' <span class="branch-badge">default</span>' : ""}</span>
-    <span class="tl-lane-meta">${lane.eventCount} post${lane.eventCount === 1 ? "" : "s"}</span>
-  </div>
-  <div class="tl-lane-track" role="group" aria-label="${escapeHtml(lane.name)} lane">
-    <div class="tl-rail" aria-hidden="true"></div>
-    ${avatars}
-    ${empty}
-  </div>
+        .join("");
+      return `<div class="tl-who"${mainAttr}${curAttr} style="--branch-hue: ${lane.hue}" data-branch="${escapeHtml(lane.name)}">
+  <span class="branch-swatch" aria-hidden="true"></span>
+  <span class="tl-who-name" title="${escapeHtml(lane.name)}">${escapeHtml(shortBranch(lane.name, 24))}${lane.isMain ? ' <span class="branch-badge">default</span>' : ""}</span>
+  <span class="tl-who-meta">${lane.eventCount} post${lane.eventCount === 1 ? "" : "s"}</span>
+  <span class="tl-who-avatars">${avatars}</span>
 </div>`;
     })
     .join("\n");
+
+  const quiet = model.lanes.length - withPeople.length;
+  const quietLine = quiet > 0
+    ? `<p class="tl-quiet">${quiet} other branch${quiet === 1 ? " is" : "es are"} on the graph with no room posts — their commits are still drawn.</p>`
+    : "";
 
   const unk =
     model.unknownCount > 0
@@ -1392,19 +1396,16 @@ function renderTimeline(events, git, opts = {}) {
   return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
     <h2 class="timeline-heading">Timeline</h2>
-    <p class="timeline-note">Branches flow left→right in commit order — every commit takes the same step, so a quiet month and a busy hour are the same width and a short-lived branch is still readable. Real timestamps are on every dot and at both ends of the axis. Initials float on the lane of their last room post. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook) with green/gray active·idle dots (from .room posts within the active window), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
+    <p class="timeline-note">Branches flow left→right in commit order — every commit takes the same step, so a quiet month and a busy hour are the same width and a short-lived branch is still readable. Real timestamps are on every dot and at both ends of the axis. Drag the bar under the graph to move through history. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook) with green/gray active·idle dots (from .room posts within the active window), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
   </div>
-  <div class="timeline-scroll">
-    <div class="timeline-canvas">
-      <div class="tl-axis" aria-hidden="true">
-        <span class="tl-axis-mid">oldest <b>${t0}</b> → newest <b>${t1}</b> · one step per commit, scroll the graph to move through it</span>
-      </div>
+  <div class="tl-axis">
+    <span class="tl-axis-mid">oldest <b>${t0}</b> → newest <b>${t1}</b> · one step per commit</span>
+  </div>
 ${renderBranchGraph(model)}
-      <div class="tl-lanes">
+  <div class="tl-who-list">
 ${lanesHtml}
-      </div>
-    </div>
   </div>
+  ${quietLine}
   ${unk}
   <div class="tl-tooltip" id="tl-tooltip" role="tooltip" hidden></div>
 </section>`;

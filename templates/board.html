@@ -698,8 +698,10 @@
         font-family: var(--font-mono);
         font-size: 11px;
         color: var(--ink-3);
-        margin: 0 0 8px;
-        padding-left: 148px;
+        /* Was inset 148px to clear a label column that no longer exists. It now starts where the
+           graph starts, which is the whole point of putting it directly above the graph. */
+        margin: 0 0 6px;
+        padding-left: 2px;
       }
       .tl-axis-mid { letter-spacing: 0.02em; }
       .tl-axis-mid b { color: var(--ink-2); font-weight: 500; }
@@ -764,17 +766,109 @@
          drawing's own, at which point slice and meet are the same thing and every branch is shown.
          CSS only: the board is a file, and it has to work opened from disk. */
       /* The graph is as wide as the history is long, and scrolls on its own — dragging the whole
-         timeline sideways to read a branch would take the lane rows below with it. */
+         timeline sideways to read a branch would take the rows below with it.
+
+         The scrollbar is styled rather than left to the platform, which on macOS means overlay:
+         invisible until you already know to scroll. A graph wider than its window with no visible
+         way to move it reads as a graph that has been cut off. */
       /* row-reverse so the scroller opens at the RIGHT edge — the newest commits, which is what
          someone opening a board wants to see. Scrolling left walks back through history. */
       .bg-scroll {
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
-        display: flex;
-        flex-direction: row-reverse;
       }
       .bg-scroll > svg { flex: 0 0 auto; }
+      /* scrollbar-width and ::-webkit-scrollbar are mutually exclusive in Chrome: setting the
+         standard property makes it ignore the pseudo-elements, and on macOS `thin` is still an
+         overlay bar that occupies no layout space. So the styled bar is the default and the
+         standard properties are only for engines with no ::-webkit-scrollbar at all. */
+      @supports not selector(::-webkit-scrollbar) {
+        .bg-scroll { scrollbar-width: thin; scrollbar-color: var(--ink-3) var(--bg-soft); }
+      }
+      .bg-scroll::-webkit-scrollbar { height: 11px; }
+      /* The slider does everything the bar does and is visible without hovering, so once the script
+         has wired one up the bar is redundant. Without JS the class is never added and the styled
+         bar stays — the graph is still scrollable either way. */
+      .branch-graph[data-slider="on"] .bg-scroll::-webkit-scrollbar { height: 0; }
+      .bg-scroll::-webkit-scrollbar-track {
+        background: var(--bg-soft);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r-pill);
+      }
+      .bg-scroll::-webkit-scrollbar-thumb {
+        background: var(--ink-3);
+        border-radius: var(--r-pill);
+        border: 3px solid var(--card);
+      }
+      .bg-scroll::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
+
+      .bg-slider {
+        display: block;
+        width: 100%;
+        margin: 10px 0 0;
+        appearance: none;
+        background: transparent;
+        cursor: grab;
+      }
+      .bg-slider:active { cursor: grabbing; }
+      .bg-slider::-webkit-slider-runnable-track {
+        height: 6px;
+        border-radius: var(--r-pill);
+        background: var(--bg-soft);
+        border: 1px solid var(--line-2);
+      }
+      .bg-slider::-moz-range-track {
+        height: 6px;
+        border-radius: var(--r-pill);
+        background: var(--bg-soft);
+        border: 1px solid var(--line-2);
+      }
+      .bg-slider::-webkit-slider-thumb {
+        appearance: none;
+        width: 46px;
+        height: 14px;
+        margin-top: -5px;
+        border-radius: var(--r-pill);
+        background: var(--ink-3);
+        border: none;
+      }
+      .bg-slider::-moz-range-thumb {
+        width: 46px;
+        height: 14px;
+        border: none;
+        border-radius: var(--r-pill);
+        background: var(--ink-3);
+      }
+      .bg-slider:hover::-webkit-slider-thumb { background: var(--ink-2); }
+      .bg-slider:hover::-moz-range-thumb { background: var(--ink-2); }
+      .bg-slider:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+
+      /* Who posted where. Not a second timeline: the graph is on a commit-order axis and these
+         avatars are people, so putting them on a track of their own invited a comparison that was
+         never true. Name, count, faces. */
+      .tl-who-list { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+      .tl-who {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 12px;
+        border: 1px solid var(--line-2);
+        border-radius: 10px;
+        background: var(--bg-soft);
+      }
+      .tl-who[data-current="1"] { outline: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line)); }
+      .tl-who-name {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .tl-who[data-main="1"] .tl-who-name { color: var(--green); }
+      .tl-who-meta { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+      .tl-who-avatars { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+      .tl-who .tl-avatar { position: static; left: auto; }
+      .tl-quiet { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin: 8px 0 0; }
       .branch-graph svg {
         display: block;
         width: var(--vb-w, 1000px);
@@ -1022,8 +1116,8 @@
           grid-template-columns: 1fr;
           gap: 6px;
         }
-        .tl-axis { padding-left: 0; }
         .tl-axis-mid { white-space: normal; }
+        .tl-who { flex-wrap: wrap; }
         .timeline-canvas { min-width: 480px; }
       }
 
@@ -1077,6 +1171,66 @@
       {{EVENTS}}
     </main>
   
+    <script data-rooms-graph>
+    // The graph is wider than its window whenever the history is longer than about sixty commits.
+    // Two jobs: open at the newest end, and give that scroll a control people can see.
+    //
+    // `flex-direction: row-reverse` is the usual CSS-only way to anchor a scroller to its right
+    // edge. It did not work here — the container reported scrollLeft 0 with the oldest commits in
+    // view — so the position is set explicitly, which is also the only version that can be checked.
+    (function () {
+      document.querySelectorAll(".branch-graph").forEach(function (fig) {
+        var scroll = fig.querySelector(".bg-scroll");
+        var slider = fig.querySelector(".bg-slider");
+        if (!scroll || !slider) return;
+        var syncing = false;
+
+        function span() { return scroll.scrollWidth - scroll.clientWidth; }
+
+        function fit() {
+          var max = span();
+          // A graph that fits needs no control, and an empty slider is a control that lies.
+          slider.hidden = max <= 1;
+          // Only claimed once a slider is really on screen: the stylesheet hides the native
+          // scrollbar off this, and hiding both would leave a wide graph with no way to move it.
+          if (slider.hidden) fig.removeAttribute("data-slider");
+          else {
+            fig.setAttribute("data-slider", "on");
+            toEnd();
+          }
+        }
+
+        function toEnd() {
+          scroll.scrollLeft = span();
+          slider.value = slider.max;
+        }
+
+        slider.addEventListener("input", function () {
+          if (syncing) return;
+          syncing = true;
+          scroll.scrollLeft = (Number(slider.value) / Number(slider.max)) * span();
+          syncing = false;
+        });
+
+        scroll.addEventListener("scroll", function () {
+          if (syncing) return;
+          var max = span();
+          if (max <= 0) return;
+          syncing = true;
+          slider.value = String((scroll.scrollLeft / max) * Number(slider.max));
+          syncing = false;
+        });
+
+        // Opening the hidden branches makes the drawing taller, not wider, but the scrollbar
+        // appearing or leaving changes clientWidth — so the range is recomputed either way.
+        var toggle = fig.querySelector(".bg-toggle");
+        if (toggle) toggle.addEventListener("change", fit);
+        window.addEventListener("resize", fit);
+        fit();
+      });
+    })();
+    </script>
+
     <script data-rooms-timeline>
     (function () {
       var tip = document.getElementById("tl-tooltip");

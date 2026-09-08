@@ -176,6 +176,37 @@ test("six or fewer branches need no reveal control at all", () => {
   assert.match(svg, /--vb-full: 264/, "collapsed and open are the same picture");
 });
 
+test("a graph wider than its window ships a control that says so", async () => {
+  const events = [];
+  for (let i = 0; i < 200; i += 1) events.push(ev("main", "ada", i));
+  const svg = renderBranchGraph(buildTimelineModel(events, { branches: ["main"] }));
+  assert.match(svg, /class="bg-slider"/, "a range input, not only a scrollbar");
+  assert.match(svg, /aria-label="Scroll the branch graph through history"/);
+  assert.match(svg, /data-graph-width="2652"/, "and the drawing is genuinely wider than any window");
+
+  // Hidden in the markup: the script un-hides it only after measuring a real overflow, so a graph
+  // that fits never ships a slider that cannot move.
+  assert.match(svg, /class="bg-slider"[^>]*hidden/);
+});
+
+test("the script and the stylesheet agree about the slider and the scrollbar", async () => {
+  const tpl = await readFile(new URL("../templates/board.html", import.meta.url), "utf8");
+
+  // `flex-direction: row-reverse` is the usual CSS-only right-anchor. It reported scrollLeft 0 with
+  // the OLDEST commits in view, so the position is set in script where it can be measured.
+  assert.doesNotMatch(tpl, /\.bg-scroll\s*\{[^}]*row-reverse/s, "the hack that did not work");
+  assert.match(tpl, /scroll\.scrollLeft = span\(\)/, "opens at the newest end");
+
+  // scrollbar-width and ::-webkit-scrollbar are mutually exclusive in Chrome: the standard property
+  // makes it ignore the pseudo-elements, and on macOS `thin` is an overlay that occupies no space.
+  assert.match(tpl, /@supports not selector\(::-webkit-scrollbar\)[^}]*\{[^}]*scrollbar-width/s);
+
+  // The native bar is only hidden once a slider is really on screen.
+  assert.match(tpl, /\.branch-graph\[data-slider="on"\] \.bg-scroll::-webkit-scrollbar \{ height: 0; \}/);
+  assert.match(tpl, /fig\.setAttribute\("data-slider", "on"\)/);
+  assert.match(tpl, /fig\.removeAttribute\("data-slider"\)/);
+});
+
 test("the stylesheet actually hides what the markup marks as out of view", async () => {
   // Two files have to agree for the collapse to work. Nothing else notices when they stop agreeing.
   const css = await readFile(new URL("../templates/board.html", import.meta.url), "utf8");

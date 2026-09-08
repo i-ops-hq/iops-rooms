@@ -120,15 +120,33 @@ export async function runDoctor({
   const meta = await readMeta(projectDir);
   const events = await readEvents(projectDir);
   const nonSystem = events.filter((e) => e.type !== "system");
-  const empty = nonSystem.length === 0;
+
+  // Git history is the board.
+  //
+  // This check was written when a room's posts were the only thing on the page. Since the board
+  // started reading git, a repo with a hundred commits and nobody posting renders a full board —
+  // commits, contributors, agent split, branch graph — and doctor still called it empty and exited
+  // 2. Telling someone their working tool is broken is worse than saying nothing.
+  //
+  // So a board is empty when it has NEITHER source. Posts on their own stay optional, which is what
+  // they are: git history arrives for free, posting is a thing you choose to do.
+  let commits = 0;
+  try {
+    const { readCommits } = await import("./git-history.js");
+    const h = await readCommits(projectDir, { limit: 1 });
+    if (h.ok) commits = h.total;
+  } catch {
+    commits = 0;
+  }
+  const empty = nonSystem.length === 0 && commits === 0;
 
   checks.push({
-    id: "events",
+    id: "board",
     ok: !empty,
     hard: false,
     detail: empty
-      ? `${events.length} event(s) total, 0 non-system posts — board is empty because nothing was posted`
-      : `${events.length} event(s) (${nonSystem.length} non-system)`,
+      ? `no git history and 0 posts — there is nothing for the board to show yet`
+      : `${commits} commit${commits === 1 ? "" : "s"} of git history · ${nonSystem.length} room post${nonSystem.length === 1 ? "" : "s"}`,
   });
 
   let identityDetail = "";
@@ -270,11 +288,11 @@ export function formatDoctorReport({
   }
   lines.push("");
   if (severity === "warn") {
-    lines.push("Board looks empty — nothing meaningful was posted yet.");
+    lines.push("Working, with optional pieces not set up — see the WARN lines above.");
   } else if (severity === "fail") {
     lines.push("Unhealthy — fix the FAIL items above.");
   } else {
-    lines.push("Healthy — room has posts.");
+    lines.push("Healthy — the board has something to show.");
   }
   if (nextActions.length) {
     lines.push("");

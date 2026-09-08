@@ -344,3 +344,43 @@ test("open creates the room when there is not one — the first run is one comma
     { init: false },
   );
 });
+
+// ---------------------------------------------------------------- the window, not a tab
+
+test("open asks for an app window, and turns a board path into a URL for it", async () => {
+  // `--app=` takes a URL and a board is a filesystem path, so the old guard — which only accepted
+  // http(s) — rejected every `rooms open` and fell through to the system opener. That produced a
+  // browser TAB, which is the one thing app mode exists to avoid, while `rooms live` worked because
+  // it already had a URL to hand. Same flag, same session, two different windows.
+  const { openPath } = await import("../src/cli.js");
+  const prev = process.env.ROOMS_NO_OPEN;
+  delete process.env.ROOMS_NO_OPEN;
+  try {
+    const calls = [];
+    const launch = (bin, args) => {
+      calls.push({ bin, args });
+      return { unref() {} };
+    };
+    const r = openPath("/Users/x/proj/.room/board.html", {
+      app: true,
+      findBin: () => "/Applications/Some Browser",
+      launch,
+    });
+    assert.equal(r.mode, "app");
+    assert.equal(calls.length, 1);
+    assert.ok(
+      calls[0].args.some((a) => a === "--app=file:///Users/x/proj/.room/board.html"),
+      `a file path became a file:// URL, got ${JSON.stringify(calls[0].args)}`,
+    );
+
+    // A URL is passed through untouched — `rooms live` hands it one already.
+    const live = openPath("http://127.0.0.1:7840/", { app: true, findBin: () => "/b", launch });
+    assert.equal(live.url, "http://127.0.0.1:7840/");
+
+    // No app browser installed is not an error; it falls back to whatever opens files.
+    const fallback = openPath("/tmp/board.html", { app: true, findBin: () => null, launch });
+    assert.equal(fallback.mode, "browser");
+  } finally {
+    if (prev !== undefined) process.env.ROOMS_NO_OPEN = prev;
+  }
+});

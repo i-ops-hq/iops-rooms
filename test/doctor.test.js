@@ -60,11 +60,10 @@ test("doctor: empty / near-empty room → WARN + exit 2", async () => {
     assert.equal(report.ok, false);
     assert.equal(report.nonSystemCount, 0);
     const text = report.format();
-    assert.match(text, /empty because nothing was posted/i);
-    assert.match(text, /Board looks empty/);
+    assert.match(text, /no git history and 0 posts/i, "neither source has anything");
     assert.match(text, /rooms post/);
     assert.match(text, /hooks install/);
-    assert.match(text, /WARN\s+events/);
+    assert.match(text, /WARN\s+board/);
 
     const cliOut = await runCli(dir, ["doctor"]);
     assert.equal(cliOut.code, 2);
@@ -96,11 +95,38 @@ test("doctor: room with posts → healthy (exit 0)", async () => {
     const text = report.format();
     assert.match(text, /Healthy/);
     assert.match(text, /OK\s+room/);
-    assert.match(text, /OK\s+events/);
+    assert.match(text, /OK\s+board/);
     assert.match(text, /OK\s+mcp/);
 
     const cliOut = await runCli(dir, ["doctor"]);
     assert.equal(cliOut.code, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a repo with commits and no posts is healthy — git history IS the board", async () => {
+  // This check was written when a room's posts were the only thing on the page. Since the board
+  // started reading git, a repo with commits and nobody posting renders a full board — and doctor
+  // called it empty and exited 2. Telling someone their working tool is broken is the worse error.
+  const dir = await tmp();
+  const git = (args) =>
+    new Promise((resolve, reject) => {
+      const c = spawn("git", ["-c", "user.email=t@e.com", "-c", "user.name=T", ...args], { cwd: dir });
+      c.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`git ${args[0]} exited ${code}`))));
+    });
+  try {
+    await git(["init", "-q", "-b", "main"]);
+    await git(["commit", "-q", "--allow-empty", "-m", "real work happened here"]);
+    await git(["commit", "-q", "--allow-empty", "-m", "and more of it"]);
+    await initRoom({ cwd: dir, name: "history-only" });
+
+    const report = await runDoctor({ cwd: dir });
+    assert.equal(report.nonSystemCount, 0, "nobody posted anything");
+    const board = report.checks.find((c) => c.id === "board");
+    assert.equal(board.ok, true, "but the board has two commits to draw");
+    assert.match(board.detail, /2 commits of git history · 0 room posts/);
+    assert.doesNotMatch(report.format(), /nothing for the board to show/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

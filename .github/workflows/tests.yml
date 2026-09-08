@@ -10,11 +10,29 @@ name: tests
 # worked while the repo was broken. CI checks out from git, so packing and then running the CLI
 # from the installed tarball is what makes that divergence fail here instead of downstream.
 
+# BUDGET. GitHub bills macOS runners at 10x minutes and Windows at 2x. The full matrix was three
+# macOS jobs, three Windows and three Linux, and the macOS third of it was roughly three quarters of
+# the bill — for the one platform that gets tested by hand every day, because it is the machine this
+# is written on. macOS moved to a weekly run and to workflow_dispatch. If a macOS-only bug is ever
+# suspected, `gh workflow run tests.yml` is one command away.
+#
+# The push trigger said `master` and the branch is `main`, so from the rename until now a push ran
+# nothing at all and only PRs were checked. Fixed here, which is why the matrix had to shrink first.
 on:
   push:
-    branches: [master]
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
+  schedule:
+    # Sunday 06:00 UTC — the weekly macOS + full-matrix run.
+    - cron: "0 6 * * 0"
   workflow_dispatch:
+
+# A second push to the same branch cancels the first. Superseded runs were being paid for in full.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -22,11 +40,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Two lists, picked by how the run started. An `os` x `node` product with a conditional
+      # `include` would have run ubuntu/22 twice on an ordinary push, which is the opposite of
+      # the point — `include` does not deduplicate.
+      #
+      # Windows stays on every run. Four of the bugs it found were real, and it is the platform
+      # nobody here is holding. Node 20 and 24 are the ends of the supported range and are where
+      # the version-dependent breaks were: the `--test` glob on 20, the coverage thresholds on 22+.
       matrix:
-        # Windows is not a nice-to-have: a team has mixed laptops, and a room shared through
-        # git has to render the same picture on all of them.
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ["20", "22", "24"]
+        include: ${{ fromJSON(
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+          && '[{"os":"ubuntu-latest","node":"20"},{"os":"ubuntu-latest","node":"22"},{"os":"ubuntu-latest","node":"24"},{"os":"windows-latest","node":"20"},{"os":"windows-latest","node":"22"},{"os":"windows-latest","node":"24"},{"os":"macos-latest","node":"20"},{"os":"macos-latest","node":"22"},{"os":"macos-latest","node":"24"}]'
+          || '[{"os":"ubuntu-latest","node":"20"},{"os":"ubuntu-latest","node":"22"},{"os":"ubuntu-latest","node":"24"},{"os":"windows-latest","node":"20"},{"os":"windows-latest","node":"24"}]'
+          ) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

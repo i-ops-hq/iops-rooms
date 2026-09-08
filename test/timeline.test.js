@@ -135,7 +135,10 @@ test("board HTML includes timeline lane markers and initials", async () => {
     const html = await readFile(boardPath, "utf8");
     assert.match(html, /data-timeline="1"/);
     assert.match(html, /class="timeline"/);
-    assert.match(html, /tl-lane/);
+    assert.match(html, /tl-who/, "a row per branch somebody posted on");
+    // The avatars used to be absolutely positioned by time inside a track, under a graph on a
+    // commit-order axis — two x-axes that could never agree, drawn as if they did.
+    assert.doesNotMatch(html, /class="tl-avatar"[^>]*style="left:/, "no fake time positioning");
     assert.match(html, /data-branch="master"/);
     assert.match(html, /data-branch="board-timeline-viz"/);
     assert.match(html, /class="tl-avatar"/);

@@ -37,12 +37,30 @@ const TS = "\x1d"; // separator between several trailers on one commit
  * shows "Claude Opus 5" and "Claude Fable 5.1" as the distinct things they are rather than
  * flattening both to "Claude".
  */
+/**
+ * A company's domain is not an agent — it is also where that company's PEOPLE have their email.
+ *
+ * This matched on domain, and `github.com` is where GitHub's Copilot lives. It is also the domain of
+ * `users.noreply.github.com`, which is the DEFAULT commit address GitHub gives every human being
+ * with an account. Every human co-author on a normal GitHub repo was being counted as Copilot, and
+ * the board's headline "agent-assisted" figure was inflated by exactly those people. The same trap
+ * was set for anyone with an @anthropic.com, @openai.com or @cursor.com address: employees.
+ *
+ * So the NAME decides, because the name is what the agent writes about itself, and an `address` is
+ * only the specific mailbox a tool commits from — never a whole domain. A mailbox like
+ * `noreply@anthropic.com` cannot belong to a person; `jane@anthropic.com` can.
+ *
+ * The two errors are not symmetric. Missing an agent understates a figure the board already calls a
+ * floor. Claiming a person is an agent is a false statement about a named human, so the rule leans
+ * that way on purpose. It leans wrong for a co-author actually named Claude or Devin, which is the
+ * one case left and needs a person's name to collide with a model's.
+ */
 const FAMILIES = [
-  { id: "claude", domain: /(^|[@.])anthropic\.com$/i, name: /\bclaude\b/i, label: "Claude" },
-  { id: "cursor", domain: /(^|[@.])cursor\.(com|sh)$/i, name: /\bcursor\b/i, label: "Cursor" },
-  { id: "codex", domain: /(^|[@.])openai\.com$/i, name: /\b(codex|chatgpt|openai)\b/i, label: "Codex" },
-  { id: "copilot", domain: /(^|[@.])github\.com$/i, name: /\bcopilot\b/i, label: "Copilot" },
-  { id: "devin", domain: /(^|[@.])cognition(-?labs)?\.(ai|com)$/i, name: /\bdevin\b/i, label: "Devin" },
+  { id: "claude", name: /\bclaude\b/i, address: /^no-?reply@anthropic\.com$/i, label: "Claude" },
+  { id: "cursor", name: /\bcursor\b/i, address: /^cursor(agent|-agent)?@cursor\.(com|sh)$/i, label: "Cursor" },
+  { id: "codex", name: /\b(codex|chatgpt)\b/i, address: /^(codex|chatgpt)[^@]*@openai\.com$/i, label: "Codex" },
+  { id: "copilot", name: /\bcopilot\b/i, address: /^\d+\+copilot@users\.noreply\.github\.com$/i, label: "Copilot" },
+  { id: "devin", name: /\bdevin\b/i, address: /^devin[^@]*@cognition(-?labs)?\.(ai|com)$/i, label: "Devin" },
 ];
 
 /**
@@ -55,9 +73,8 @@ export function attributeAgent(trailer) {
   const m = raw.match(/^(.*?)\s*<([^>]*)>\s*$/);
   const label = (m ? m[1] : raw).trim();
   const email = (m ? m[2] : "").trim();
-  const domain = email.includes("@") ? email.slice(email.lastIndexOf("@") + 1) : "";
   for (const fam of FAMILIES) {
-    if ((domain && fam.domain.test(domain)) || fam.name.test(label)) {
+    if (fam.name.test(label) || (email && fam.address.test(email))) {
       return { id: fam.id, family: fam.label, label: label || fam.label, email };
     }
   }

@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import { statSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import {
   actor,
   deviceId,
@@ -137,19 +138,24 @@ function findAppBrowser() {
  *
  * ROOMS_NO_OPEN skips launching anything: headless boxes, CI, and office VMs with no browser at all.
  */
-function openPath(target, { app = false } = {}) {
+export function openPath(target, { app = false, findBin = findAppBrowser, launch = spawn } = {}) {
   if (process.env.ROOMS_NO_OPEN) return { launched: false, mode: "suppressed" };
 
-  if (app && /^https?:\/\//.test(target)) {
-    const bin = findAppBrowser();
+  if (app) {
+    // `--app=` takes a URL, and a board is a filesystem path. Without this the test below the
+    // condition failed for every `rooms open`, so it fell through and produced a browser TAB —
+    // the exact thing app mode exists to avoid — while `rooms live`, which already had a URL,
+    // worked. Two commands, one flag, two different windows.
+    const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(target) ? target : pathToFileURL(target).href;
+    const bin = findBin();
     if (bin) {
-      const child = spawn(
+      const child = launch(
         bin,
-        [`--app=${target}`, "--window-size=1280,900", "--new-window"],
+        [`--app=${url}`, "--window-size=1280,900", "--new-window"],
         { detached: true, stdio: "ignore" },
       );
       child.unref();
-      return { launched: true, mode: "app", bin };
+      return { launched: true, mode: "app", bin, url };
     }
   }
 
@@ -394,8 +400,11 @@ async function main() {
   if (cmd === "open") {
     const dir = await roomDirOrCreate();
     const board = await refreshBoard(dir);
-    openPath(board);
-    process.stdout.write(`opened ${board}\n`);
+    const opened = openPath(board, { app: argv.app !== false && !argv.tab });
+    process.stdout.write(
+      `opened ${board}\n` +
+        (opened.mode === "app" ? "window  its own app window (--tab for a browser tab instead)\n" : ""),
+    );
     return;
   }
 
