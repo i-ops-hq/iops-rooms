@@ -26,7 +26,7 @@
   "scripts": {
     "rooms": "node src/cli.js",
     "mcp": "node src/mcp.js",
-    "test": "node --test --test-timeout=90000",
+    "test": "node --import ./test/env-setup.js --test --test-timeout=90000",
     "live": "node src/cli.js live",
     "smoke:solo": "node scripts/solo-smoke.mjs",
     "smoke:individual": "node scripts/solo-smoke.mjs",

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile, access } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -7,7 +9,12 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const room = process.argv[2] || root;
 const cli = join(root, "src", "cli.js");
 
+// Identity lives in ROOMS_HOME, defaulting to ~/.iops-rooms. A smoke is a throwaway run, so it gets
+// a throwaway home — otherwise `npm run smoke:solo` on a developer's machine renames their device.
+const SMOKE_HOME = mkdtempSync(join(tmpdir(), "iops-rooms-smoke-"));
+
 const ENV = {
+  ROOMS_HOME: process.env.ROOMS_HOME || SMOKE_HOME,
   ROOMS_ACTOR: process.env.ROOMS_ACTOR || "Solo",
   ROOMS_TOOL: process.env.ROOMS_TOOL || "cli",
   ROOMS_DEVICE_ID: process.env.ROOMS_DEVICE_ID || "smoke-solo",
