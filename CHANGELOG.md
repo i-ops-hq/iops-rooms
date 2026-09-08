@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1
+
+**`rooms auth github` works with no setup.** It reads your account from the `gh` CLI you already
+have — one read-only `gh api user`, with your own credential. No OAuth App to register, nothing of
+ours in your GitHub authorised-apps list, no token stored. `--device-flow` with
+`ROOMS_GITHUB_CLIENT_ID` remains for machines without `gh`.
+
+Before this, `rooms auth github` threw unless you had registered an OAuth App and exported its
+client id — so the first thing a new user hit was a wall.
+
+**A shorter README.** 371 lines to 191. It now opens with what the tool does, gives one plain
+three-step flow for a single person, and says honestly that individual is the finished path and
+teams are newer. The reference material that made the front page hard to read is gone or collapsed.
+
 ## 0.4.0
 
 The board stopped being only about the room and started being about the project.
