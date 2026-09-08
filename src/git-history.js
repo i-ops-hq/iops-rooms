@@ -1,9 +1,9 @@
 // Who actually built this project, read from git and nothing else.
 //
 // The question "which AI made this commit" has an honest answer already sitting in the repo:
-// Claude Code and Cursor both write a `Co-Authored-By` trailer. On such a repo, most commits carry
-// one — most by one agent, the rest by another. That signal is portable, it is in every clone, and reading
-// it needs no MCP, no network and no vendor's private state.
+// Claude Code and Cursor both write a `Co-Authored-By` trailer, so on a repo built with either of
+// them the majority of commits already carry one. That signal is portable, it is in every clone,
+// and reading it needs no MCP, no network and no vendor's private state.
 //
 // The tempting alternative does not work and would be wrong anyway. `.cursor/` holds mcp.json,
 // rules and ide_state.json — configuration, not a commit ledger. Cursor's session history lives in
@@ -76,8 +76,9 @@ async function git(cwd, args, { timeout = 20_000, maxBuffer = 64 * 1024 * 1024 }
 /**
  * Every commit reachable from HEAD, newest first, with its author, its agents and its line counts.
  *
- * `truncated` and `total` are returned rather than silently capping: a board that draws the newest 500
- * commits and says nothing has quietly changed the answer to "how much of this did Cursor build".
+ * `truncated` and `total` are returned rather than silently capping: a board that draws the newest
+ * 500 of a longer history and says nothing has quietly changed the answer to "how much of this did
+ * Cursor build".
  */
 export async function readCommits(projectDir, { limit = DEFAULT_COMMIT_LIMIT } = {}) {
   const inside = (await git(projectDir, ["rev-parse", "--is-inside-work-tree"], { timeout: 4000 })).trim();
@@ -207,11 +208,11 @@ function branchNameFromMerge(subject, shortSha) {
 /**
  * The whole project as a graph: a trunk, and the branches that merged into it.
  *
- * Two histories look completely different and both are normal. a repo working on main has several hundred commits and ZERO
- * merges, because its rule is to work on main — so it is one rail. iops-rooms has 69 commits and
- * 26 merges, so it is a rail with 26 branches hanging off it. Reading merge commits is what makes
- * the second one drawable at all: a branch that was merged and deleted adds nothing to
- * `<branch> --not main`, but `<merge>^2 --not <merge>^1` is exactly what it contributed.
+ * Two histories look completely different and both are normal. A repo whose rule is to work on
+ * main has no merges at all, so it is one rail. A repo that merges pull requests is a rail with a
+ * branch hanging off it per merge. Reading merge commits is what makes the second drawable at all:
+ * a branch that was merged and deleted adds nothing to `<branch> --not main`, but
+ * `<merge>^2 --not <merge>^1` is exactly what it contributed.
  */
 export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMIT, maxBranches = 12 } = {}) {
   const all = await readCommits(projectDir, { limit });

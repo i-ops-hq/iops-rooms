@@ -1,8 +1,8 @@
 // Reading who built a project out of git, with no MCP, no network and no vendor's private state.
 //
-// The signal is the `Co-Authored-By` trailer that Claude Code and Cursor already write. In I-Ops
-// most commits carry one — most by one agent, the rest by another — so a repo has this history before
-// it has ever heard of Rooms. A commit with no trailer is the person's own, not an unknown.
+// The signal is the `Co-Authored-By` trailer that Claude Code and Cursor already write, so a repo
+// built with either has this history before it has ever heard of Rooms. A commit with no trailer is
+// the person's own, not an unknown.
 
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -150,7 +150,7 @@ test("a merged branch is reconstructed from its merge commit, even after the bra
 });
 
 test("a linear history has no branches, and that is not a failure", async () => {
-  // a repo working on main is exactly this: several hundred commits, zero merges, because its rule is to work on main.
+  // A repo whose rule is to work on main is exactly this: every commit on one rail, no merges.
   await repo(async ({ dir, commit }) => {
     await commit("a.txt", "1\n", "one", CLAUDE);
     await commit("b.txt", "2\n", "two");
