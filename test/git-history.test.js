@@ -257,3 +257,40 @@ test("markup in an agent trailer is escaped — a trailer is free text and reach
     assert.match(html, /&lt;img src=x/, "shown as text instead");
   });
 });
+
+test("a branch that was never merged still appears — on a repo that never merges it is all there is", async () => {
+  // Reading only merge commits missed the branches that matter most. A project working on main has
+  // zero merges and can still have a dozen live branches; a board saying "no branches" while
+  // `git branch -r` lists eleven of them is simply wrong.
+  await repo(async ({ dir, git, commit }) => {
+    await commit("base.txt", "base\n", "base");
+    await git("checkout", "-q", "-b", "release/v2");
+    await commit("rel.txt", "release work\n", "prepare the release", CLAUDE);
+    await git("checkout", "-q", "main");
+
+    const g = await readHistoryGraph(dir);
+    const rel = g.branches.find((b) => b.name === "release/v2");
+    assert.ok(rel, `unmerged branch missing — saw ${JSON.stringify(g.branches.map((b) => b.name))}`);
+    assert.equal(rel.open, true, "and it is marked as still open");
+    assert.equal(rel.commits.length, 1);
+    assert.equal(g.branches.filter((b) => b.name === "main").length, 0, "the trunk is not its own branch");
+  });
+});
+
+test("a branch tracked both locally and on a remote is drawn once", async () => {
+  await repo(async ({ dir, git, commit }) => {
+    await commit("base.txt", "base\n", "base");
+    await git("checkout", "-q", "-b", "feature");
+    await commit("f.txt", "x\n", "work");
+    await git("checkout", "-q", "main");
+    // Stand in for `origin/feature` without needing a real remote.
+    await git("update-ref", "refs/remotes/origin/feature", "refs/heads/feature");
+
+    const g = await readHistoryGraph(dir);
+    assert.equal(
+      g.branches.filter((b) => b.name === "feature").length,
+      1,
+      "main and origin/main are one branch, and so are feature and origin/feature",
+    );
+  });
+});

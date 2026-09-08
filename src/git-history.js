@@ -214,6 +214,54 @@ function branchNameFromMerge(subject, shortSha) {
  * a branch that was merged and deleted adds nothing to `<branch> --not main`, but
  * `<merge>^2 --not <merge>^1` is exactly what it contributed.
  */
+/**
+ * Every branch this checkout knows about — local and remote — as one deduplicated list.
+ *
+ * Reading only merge commits missed the branches that matter most on a repo that does not merge.
+ * A project working on main has zero merges and can still have a dozen live branches: releases,
+ * deployments, dependabot, work in progress. They exist as refs, and a board that says "no
+ * branches" while `git branch -r` lists eleven of them is simply wrong.
+ *
+ * `main` and `origin/main` are one branch, so the remote is only kept when there is no local ref
+ * for the same short name.
+ */
+async function listBranchRefs(projectDir) {
+  const raw = await git(projectDir, [
+    "for-each-ref",
+    "--sort=-committerdate",
+    `--format=%(refname:short)${FS}%(refname)${FS}%(committerdate:iso-strict)`,
+    "refs/heads/",
+    "refs/remotes/",
+  ]);
+  const seen = new Set();
+  const out = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    const [shortName, fullRef, at] = line.split(FS);
+    if (!shortName || shortName.endsWith("/HEAD")) continue;
+    const isRemote = fullRef.startsWith("refs/remotes/");
+    // origin/feature -> feature, so a branch tracked both ways is not drawn twice.
+    const bare = isRemote ? shortName.replace(/^[^/]+\//, "") : shortName;
+    if (seen.has(bare)) continue;
+    seen.add(bare);
+    out.push({ name: bare, ref: shortName, remote: isRemote, at: at || "" });
+  }
+  return out;
+}
+
+/** Which ref the project treats as its trunk, asked rather than assumed. */
+async function resolveTrunk(projectDir, refs) {
+  const head = (await git(projectDir, ["symbolic-ref", "--short", "HEAD"], { timeout: 4000 })).trim();
+  const originHead = (await git(projectDir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { timeout: 4000 }))
+    .trim()
+    .replace(/^[^/]+\//, "");
+  const names = new Set(refs.map((r) => r.name));
+  for (const candidate of [originHead, head, "main", "master"]) {
+    if (candidate && names.has(candidate)) return candidate;
+  }
+  return head || "main";
+}
+
 export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMIT, maxBranches = 12 } = {}) {
   const all = await readCommits(projectDir, { limit });
   if (!all.ok) return { ok: false, trunk: [], branches: [], ...all };
@@ -248,6 +296,36 @@ export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMI
 
   // The trunk is what first-parent walks: a merged branch shows as its merge point rather than
   // replaying its commits on the rail as well.
+  // Branches that still EXIST, merged or not. On a repo that never merges this is the only source.
+  const refs = await listBranchRefs(projectDir);
+  const trunkName = await resolveTrunk(projectDir, refs);
+  const already = new Set(branches.map((b) => b.name));
+  for (const ref of refs) {
+    if (ref.name === trunkName || already.has(ref.name) || branches.length >= maxBranches) continue;
+    const raw = await git(projectDir, [
+      "log",
+      "--use-mailmap",
+      `--max-count=${maxBranches * 20}`,
+      "--numstat",
+      `--format=${RS}${["%H", "%h", "%aN", "%aE", "%aI", "%s", "%P", `%(trailers:key=Co-Authored-By,valueonly,separator=${TS})`].join(FS)}`,
+      ref.ref,
+      "--not",
+      trunkName,
+    ]);
+    const commits = parseLog(raw);
+    // A branch with nothing the trunk lacks is fully merged and already drawn, or is a duplicate.
+    if (!commits.length) continue;
+    branches.push({
+      name: ref.name,
+      pr: null,
+      mergeSha: "",
+      mergedAt: "",
+      remote: ref.remote,
+      open: true,
+      commits,
+    });
+  }
+
   const branchShas = new Set(branches.flatMap((b) => b.commits.map((c) => c.sha)));
   const trunk = all.commits.filter((c) => !branchShas.has(c.sha));
 
