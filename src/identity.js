@@ -2,6 +2,8 @@ import { mkdir, readFile, writeFile, unlink, chmod, access } from "node:fs/promi
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   randomBytes,
   generateKeyPairSync,
@@ -24,6 +26,8 @@ export function deviceFilePath() {
 export function identityFilePath() {
   return join(roomsHomeDir(), "identity.json");
 }
+
+const execFileAsync = promisify(execFile);
 
 export function privateKeyPath() {
   return join(roomsHomeDir(), "device.key");
@@ -500,6 +504,60 @@ export async function authStatus() {
  *
  * Docs: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow
  */
+/**
+ * Verified GitHub identity from the `gh` CLI the user already has.
+ *
+ * The device flow below needs an OAuth App registered by whoever ships this package, and its client
+ * id compiled in. That is a real cost for something small: every user then authorises an I-Ops
+ * application against their GitHub account, and it appears in their authorised-apps list forever —
+ * which sits badly beside this product's claim not to be in the middle of anything.
+ *
+ * `gh` sidesteps all of it. The developer audience for this tool has it installed and logged in
+ * already, the credential is theirs, they can revoke it without us, and nothing needs registering.
+ * It is the same binary `scm-status` already uses for PR reads.
+ *
+ * `exec` is injectable so the tests never depend on whether the machine running them has gh.
+ */
+export async function authGithubCli({ exec = execFileAsync } = {}) {
+  let raw;
+  try {
+    const { stdout } = await exec("gh", ["api", "user"], { timeout: 15_000, maxBuffer: 1_000_000 });
+    raw = String(stdout || "");
+  } catch (err) {
+    const why = String(err?.stderr || err?.message || err);
+    if (/not found|ENOENT/i.test(why)) {
+      throw new Error(
+        "gh is not installed. Install the GitHub CLI and run `gh auth login`, or set " +
+          "ROOMS_GITHUB_CLIENT_ID to use the OAuth device flow instead.",
+      );
+    }
+    throw new Error(
+      `gh could not read your GitHub account (${why.trim().split("\n")[0]}). ` +
+        "Run `gh auth login`, or set ROOMS_GITHUB_CLIENT_ID to use the device flow instead.",
+    );
+  }
+
+  let user;
+  try {
+    user = JSON.parse(raw);
+  } catch {
+    throw new Error("gh api user did not return JSON. Try `gh auth status`.");
+  }
+  if (!user?.login) {
+    throw new Error("gh api user returned no login. Try `gh auth status`.");
+  }
+
+  // Same store the device flow writes to, so a board cannot tell which route minted the identity —
+  // and nothing downstream has to care.
+  const saved = await saveVerifiedIdentity({
+    login: user.login,
+    id: user.id ?? null,
+    email: user.email ?? null,
+    provider: "github",
+  });
+  return { user: { login: user.login, id: user.id ?? null, email: user.email ?? null }, saved, via: "gh" };
+}
+
 export async function authGithubDeviceFlow({
   clientId = process.env.ROOMS_GITHUB_CLIENT_ID,
   fetchImpl = globalThis.fetch,

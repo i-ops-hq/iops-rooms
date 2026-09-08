@@ -166,6 +166,18 @@ async function shareDiff(opts) {
   });
 }
 
+async function runGithubDeviceFlow(clientId) {
+  const { authGithubDeviceFlow } = await import("./identity.js");
+  process.stdout.write("GitHub device flow — local identity only (no room upload).\n");
+  return authGithubDeviceFlow({
+    clientId,
+    openUrl: (url) => openPath(url),
+    onUserCode: ({ userCode, verificationUri }) => {
+      process.stdout.write(`Open ${verificationUri} and enter code: ${userCode}\n`);
+    },
+  });
+}
+
 async function main() {
   const argv = args(process.argv.slice(2));
   const cmd = argv._[0] || "help";
@@ -443,21 +455,27 @@ async function main() {
     } = await import("./identity.js");
     if (sub === "github") {
       const clientId = argv["client-id"] || process.env.ROOMS_GITHUB_CLIENT_ID;
+      // `gh` first, because it needs nothing from anyone: the credential is already the user's,
+      // no OAuth App has to exist, and nothing of ours appears in their authorised-apps list.
+      // The device flow stays for machines without gh, and is used first when a client id is
+      // given explicitly, since that is someone asking for it by name.
+      let result;
+      if (clientId && argv["device-flow"]) {
+        result = await runGithubDeviceFlow(clientId);
+      } else {
+        try {
+          const { authGithubCli } = await import("./identity.js");
+          process.stdout.write("Reading your GitHub account from `gh` — local identity only.\n");
+          result = await authGithubCli();
+        } catch (err) {
+          if (!clientId) throw err;
+          process.stdout.write(`${err.message}\nFalling back to the device flow.\n`);
+          result = await runGithubDeviceFlow(clientId);
+        }
+      }
       process.stdout.write(
-        "GitHub device flow — local identity only (no room upload).\n",
-      );
-      const result = await authGithubDeviceFlow({
-        clientId,
-        openUrl: (url) => openPath(url),
-        onUserCode: ({ userCode, verificationUri }) => {
-          process.stdout.write(
-            `Open ${verificationUri} and enter code: ${userCode}\n`,
-          );
-        },
-      });
-      process.stdout.write(
-        `verified github @${result.user.login}\n` +
-          `stored    ${roomsHomeDir()}/identity.json + device.key (0600)\n` +
+        `verified github @${result.user.login}${result.via === "gh" ? "  (via gh)" : ""}\n` +
+          `stored    ${roomsHomeDir()}/identity.json + device.key\n` +
           `(solo can stay unsigned; team leads opt into verified mode)\n`,
       );
       return;

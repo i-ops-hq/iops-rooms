@@ -255,16 +255,8 @@ Green = **active**, gray = **idle**. A tool/actor is active when their last non-
 
 Solo can stay unsigned. Team leads can opt into verified mode — local only.
 
-> **This needs an OAuth App you register yourself.** There is no client id shipped with the
-> package, so `rooms auth github` fails until `ROOMS_GITHUB_CLIENT_ID` is set. Everything on the
-> board — commits, agents, contributors, the graph — works without it; verified identity only adds
-> a signed claim about *who posted*. Register a
-> [GitHub OAuth App](https://docs.github.com/apps/oauth-apps) with device flow enabled and use its
-> client id.
-
 ```bash
-export ROOMS_GITHUB_CLIENT_ID=Iv1.your_oauth_app_client_id
-rooms auth github    # GitHub device flow → ~/.iops-rooms/identity.json + device.key
+rooms auth github    # uses your own `gh` login → ~/.iops-rooms/identity.json + device.key
 
 export ROOMS_GITLAB_CLIENT_ID=your_gitlab_oauth_app_id
 # optional: export ROOMS_GITLAB_HOST=https://gitlab.example.com
@@ -274,6 +266,14 @@ rooms auth status
 rooms post "…"       # stamps github/gitlab claim + ed25519 sig when verified
 rooms auth logout
 ```
+
+**It uses the `gh` CLI you already have.** One read-only call — `gh api user` — with your own
+credential. There is no OAuth App to register, nothing of ours in your authorised-applications
+list, and no token for anyone to ship. If `gh` is missing you can still use the OAuth device flow
+by setting `ROOMS_GITHUB_CLIENT_ID` to a client id of your own and passing `--device-flow`.
+
+Everything else on the board — commits, agents, contributors, the graph — works with no auth at
+all. Verified identity only adds a signed claim about *who posted*.
 
 Auth mints a **local** verified identity. It does **not** upload `.room/` events. Unsigned solo posts stay quiet on the board (no amber badge). `ROOMS_ACTOR` and claimed-login-without-sig show **unverified**. `ROOMS_DEVICE_ID` only names the machine — required in VMs — so it still signs, and the event records `deviceAsserted`. See SECURITY.md for warn-only sync-merge and residual spoofability.
 
