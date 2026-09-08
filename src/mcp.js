@@ -325,4 +325,11 @@ process.stdin.on("data", (chunk) => {
   }
 });
 
-process.stdin.on("end", () => process.exit(0));
+// A stdio server lives exactly as long as its client's pipe. `end` is the clean case; `close`
+// covers a parent that went away without a tidy EOF, and an errored pipe is not recoverable
+// either. Listening only for `end` left the process alive on platforms where a closed pipe does
+// not raise it — an orphaned node process for the user, and a test that hangs rather than fails.
+const stop = () => process.exit(0);
+process.stdin.on("end", stop);
+process.stdin.on("close", stop);
+process.stdin.on("error", stop);

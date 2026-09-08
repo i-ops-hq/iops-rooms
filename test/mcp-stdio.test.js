@@ -93,8 +93,19 @@ function connect(cwd, env = {}) {
       return stderr;
     },
     async close() {
+      // Waiting unconditionally for `close` turned one non-exiting server into a CI job that ran
+      // for an hour instead of failing in seconds. Ask nicely, then insist.
       child.stdin.end();
-      await new Promise((r) => child.on("close", r));
+      await new Promise((resolve) => {
+        const done = setTimeout(() => {
+          child.kill();
+          resolve();
+        }, 3000);
+        child.on("close", () => {
+          clearTimeout(done);
+          resolve();
+        });
+      });
     },
   };
 }

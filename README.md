@@ -1,8 +1,60 @@
 # Rooms by I-Ops
 
-Local rooms for agent sessions. Share a transcript **on disk**. Terminal + a static HTML board. No account. No model bill. Network off for individual use.
+**See who built your project — and which AI helped.** Point it at a git repo and it reads the
+history you already have: every commit, the person who made it, and the agent that co-authored it.
+
+```bash
+npx -y iops-rooms@0.3.1 init --name "my project"
+npx -y iops-rooms@0.3.1 open
+```
+
+That is the whole setup. No account, no model bill, no network. On a large repo it reads several hundred
+commits in about a second and says:
+
+```
+Claude Opus 5    most commits  many thousands of lines 
+Cursor           the rest  many thousands of lines  
+no agent recorded the remainder
+```
+
+**Where that comes from, and what it is not.** Claude Code and Cursor both write a
+`Co-Authored-By` trailer on the commits they help with, so the attribution is already in your repo
+and in every clone of it. Rooms reads git and nothing else — not `.cursor/`, not Claude's session
+files, not any tool's private state. A commit with no trailer is shown as **the person's own**, not
+as an unknown.
+
+On top of that, a **live room**: a branch graph with a dot per commit and per post, and a shared
+transcript on disk that a team syncs through their own git remote. Terminal plus a static HTML
+board. Network off for individual use.
+
+Runs on macOS, Linux and Windows, on Node 20, 22 and 24 — all nine combinations are tested on every
+change.
 
 Pin a version. Do not run `@latest`.
+
+## What the board shows about your project
+
+| | from | needs |
+|---|---|---|
+| Every commit, its author, its `+`/`−` lines | `git log` | nothing |
+| Which agent co-authored it — Claude Opus 5, Fable, Cursor, Codex | `Co-Authored-By` trailers | nothing |
+| Branches splitting from main and rejoining, with PR numbers | merge commits | nothing |
+| Per-person totals: commits, merges, lines, which agent they lean on | `git log` | nothing |
+| Live posts, presence, who is on which branch right now | `.room/` | the CLI or MCP |
+
+The first four work on a repo that has never heard of Rooms, including for teammates who never
+install it — because every clone already carries the whole history. Only the last row needs anyone
+to post anything.
+
+**Two histories both look right.** A repo that works on `main` with no merges draws as one rail
+with every commit on it. A repo that merges pull requests draws a rail plus a lane per branch —
+including branches that were merged and deleted, because the merge commit still records what they
+contributed and what they were called.
+
+**One caveat worth knowing.** If the same person commits under two email addresses, they are listed
+twice. That is deliberate: [`.mailmap`](https://git-scm.com/docs/gitmailmap) is git's own way to
+merge identities, and a heuristic that guessed would eventually merge two different people. The
+board tells you when it sees it.
 
 ## Individual vs team
 
@@ -30,7 +82,9 @@ Individual first: prove one poster can init → post → see the board. Team lat
 - It does **not** watch every save by default.
 - Git commits auto-post **only** if you opt in with `rooms hooks install` (local hooks — not IDE telemetry).
 - Unposted edits stay invisible to the room until someone `post`s a note, `share-diff`s a patch, or an installed hook fires.
-- Network stays **off** for solo; team “own devices” sync is a later slice — still not I-Ops cloud.
+- Network stays **off**. Team sync rides **your** git remote (`init --share`), not an I-Ops cloud —
+  see the `--share` notes below for the merge driver that makes concurrent posts merge instead of
+  conflicting.
 - Still **not** full IDE telemetry — agents only appear when MCP is enabled and they post.
 
 
@@ -200,6 +254,13 @@ Green = **active**, gray = **idle**. A tool/actor is active when their last non-
 ## Verified GitHub / GitLab identity (optional)
 
 Solo can stay unsigned. Team leads can opt into verified mode — local only.
+
+> **This needs an OAuth App you register yourself.** There is no client id shipped with the
+> package, so `rooms auth github` fails until `ROOMS_GITHUB_CLIENT_ID` is set. Everything on the
+> board — commits, agents, contributors, the graph — works without it; verified identity only adds
+> a signed claim about *who posted*. Register a
+> [GitHub OAuth App](https://docs.github.com/apps/oauth-apps) with device flow enabled and use its
+> client id.
 
 ```bash
 export ROOMS_GITHUB_CLIENT_ID=Iv1.your_oauth_app_client_id
