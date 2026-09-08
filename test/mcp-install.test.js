@@ -1,4 +1,5 @@
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import { spawn } from "node:child_process";
@@ -16,6 +17,17 @@ import {
 } from "../src/mcp-install.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+
+// What `mcp install` pins is package.json's version. Hardcoding it here made three tests fail on
+// every release for no reason and taught nothing — the assertion worth holding is that the
+// installer and the manifest agree, not that either equals a literal typed last week.
+const PKG_VERSION = JSON.parse(
+  readFileSync(join(root, "package.json"), "utf8"),
+).version;
+
+// An arbitrary version for the pure merge tests. Deliberately NOT the real one, so a reader can
+// see at a glance which assertions are about merging and which are about the release.
+const FIXTURE_VERSION = "9.9.9";
 const cli = join(root, "src", "cli.js");
 
 async function tmp() {
@@ -43,26 +55,26 @@ test("mergeMcpConfig keeps unrelated servers", () => {
       "iops-rooms": { command: "old", args: [] },
     },
   };
-  const { config, created } = mergeMcpConfig(existing, mcpServerEntry("0.3.1"));
+  const { config, created } = mergeMcpConfig(existing, mcpServerEntry(FIXTURE_VERSION));
   assert.equal(created, false);
   assert.deepEqual(config.mcpServers.other, { command: "echo", args: ["hi"] });
   assert.deepEqual(config.mcpServers["iops-rooms"], {
     command: "npx",
-    args: ["-y", "iops-rooms@0.3.1", "mcp"],
+    args: ["-y", `iops-rooms@${FIXTURE_VERSION}`, "mcp"],
   });
 });
 
 test("mergeMcpConfig creates mcpServers when missing", () => {
-  const { config, created } = mergeMcpConfig({}, mcpServerEntry("0.3.1"));
+  const { config, created } = mergeMcpConfig({}, mcpServerEntry(FIXTURE_VERSION));
   assert.equal(created, true);
   assert.equal(config.mcpServers["iops-rooms"].command, "npx");
 });
 
 test("mergeCodexConfigToml upserts stdio block", () => {
-  const first = mergeCodexConfigToml("", mcpServerEntry("0.3.1"));
+  const first = mergeCodexConfigToml("", mcpServerEntry(FIXTURE_VERSION));
   assert.match(first.text, /\[mcp_servers\.iops-rooms\]/);
-  assert.match(first.text, /iops-rooms@0\.3\.1/);
-  const second = mergeCodexConfigToml(first.text + "\n[other]\nx = 1\n", mcpServerEntry("0.3.1"));
+  assert.match(first.text, new RegExp(`iops-rooms@${FIXTURE_VERSION}`));
+  const second = mergeCodexConfigToml(first.text + "\n[other]\nx = 1\n", mcpServerEntry(FIXTURE_VERSION));
   assert.equal((second.text.match(/\[mcp_servers\.iops-rooms\]/g) || []).length, 1);
   assert.match(second.text, /\[other\]/);
 });
@@ -71,9 +83,9 @@ test("installMcp writes Cursor + Claude + Codex and copies skills", async () => 
   const dir = await tmp();
   try {
     const ver = await resolvePinnedVersion();
-    assert.equal(ver, "0.3.1");
+    assert.equal(ver, PKG_VERSION);
     const result = await installMcp({ cwd: dir });
-    assert.equal(result.version, "0.3.1");
+    assert.equal(result.version, PKG_VERSION);
     assert.equal(result.fileExisted, false);
     assert.equal(result.serverCreated, true);
     assert.equal(result.skill.copied, true);
@@ -84,7 +96,7 @@ test("installMcp writes Cursor + Claude + Codex and copies skills", async () => 
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.deepEqual(body.mcpServers["iops-rooms"], {
       command: "npx",
-      args: ["-y", "iops-rooms@0.3.1", "mcp"],
+      args: ["-y", `iops-rooms@${PKG_VERSION}`, "mcp"],
     });
     const claude = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf8"));
     assert.deepEqual(claude.mcpServers["iops-rooms"], body.mcpServers["iops-rooms"]);
@@ -116,7 +128,10 @@ test("installMcp merges without wiping other servers", async () => {
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.ok(body.mcpServers.filesystem);
     assert.ok(body.mcpServers["iops-rooms"]);
-    assert.match(body.mcpServers["iops-rooms"].args.join(" "), /iops-rooms@0\.3\.1/);
+    assert.match(
+      body.mcpServers["iops-rooms"].args.join(" "),
+      new RegExp(`iops-rooms@${PKG_VERSION.replace(/\./g, "\\.")}`),
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -130,7 +145,7 @@ test("cli: rooms mcp install creates mcp.json", async () => {
     assert.match(out.stdout, /cursor/);
     assert.match(out.stdout, /claude/);
     assert.match(out.stdout, /codex/);
-    assert.match(out.stdout, /iops-rooms@0\.3\.1/);
+    assert.match(out.stdout, new RegExp(`iops-rooms@${PKG_VERSION.replace(/\./g, "\\.")}`));
     const body = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf8"));
     assert.equal(body.mcpServers["iops-rooms"].command, "npx");
   } finally {
