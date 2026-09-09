@@ -13,9 +13,9 @@ To photograph any repo:
 
 ```bash
 cd /path/to/your-repo
-npx -y iops-rooms@0.5.0 init --name "your project"
-npx -y iops-rooms@0.5.0 post "first note"      # so the timeline is not empty
-npx -y iops-rooms@0.5.0 live --port 7842
+npx -y iops-rooms@0.5.1 init --name "your project"
+npx -y iops-rooms@0.5.1 post "first note"      # so the timeline is not empty
+npx -y iops-rooms@0.5.1 live --port 7842
 ```
 
 Then capture `http://127.0.0.1:7842/` at roughly 1280px wide, from the hero down to the end of the
