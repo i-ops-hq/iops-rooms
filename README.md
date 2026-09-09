@@ -40,11 +40,17 @@ Four commands, all read-only, none of which needs a room:
 | `rooms week` | what shipped this week and which agent helped, against last week |
 | `rooms branch` | the mix for the commits on this branch — read it before you open the PR |
 | `rooms file src/auth.ts` | who and which agent last touched a file that looks wrong |
-| `rooms badge --out agents.svg` | a stacked bar for your README |
+| `rooms badge --out agents.svg` | a stacked bar for your README — like the one below |
 
 Run them from anywhere inside the project. A repository is one project, so a command typed in
 `packages/web/src` reports the whole repo — and `rooms file app.ts` still means the file next to
 you, not one of the same name at the root.
+
+<p align="center">
+  <img src="docs/screenshots/agents.svg" alt="A stacked bar badge reading: agents — Claude Opus 5 42%, Cursor 1%, unrecorded 57%">
+</p>
+
+<p align="center"><em>This one is real, generated from this repository by <code>rooms badge</code>.</em></p>
 
 **`no agent recorded` is not `no agent used`.** Cursor and Copilot often write no
 `Co-Authored-By` trailer at all, so a plain commit only means none was recorded. Every share here is
