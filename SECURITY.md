@@ -113,6 +113,12 @@ identity.json shape (either or both providers):
 - **On Windows the key is not mode 0600.** POSIX permission bits do not exist there, so `chmod`
   is a no-op and the key is protected by the NTFS ACL on your user profile instead. That is a
   weaker, different guarantee than a 0600 file, and it is stated rather than assumed.
+- **`rooms live` serves localhost only, and checks the name it was asked for.** Binding to
+  127.0.0.1 stops another machine reaching the socket; it does not stop a page the user is visiting
+  from reaching it by DNS rebinding, because the browser then treats the attacker's origin as
+  same-origin and CORS never applies. The `Host` header is validated against `localhost`,
+  `127.0.0.1` and `[::1]` on the port actually bound, and anything else is refused with 403 before
+  the board is read. There are no CORS headers, and no route takes a path from the request.
 - `rooms auth github` reads your account from the **`gh` CLI** — a single `gh api user`, with your
   own credential, requesting no scopes and storing no token. Nothing is registered on our side and
   no application of ours appears in your GitHub authorised-apps list. `--device-flow` with

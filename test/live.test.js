@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { initRoom, postNote } from "../src/store.js";
+import { request as httpRequest } from "node:http";
 import { LIVE_HOST, startLiveBoard } from "../src/live.js";
 
 async function tmp() {
@@ -59,4 +60,68 @@ test("--port 0 binds a free port, not the default", async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+/**
+ * One request with an arbitrary Host header.
+ *
+ * `fetch` cannot do this: Host is a forbidden header name, so undici drops it silently and the
+ * request goes out claiming localhost — the test would pass against a server with no check at all.
+ */
+function requestWithHost(port, path, host) {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: LIVE_HOST, port, path, method: "GET", headers: { Host: host } },
+      (res) => {
+        let body = "";
+        res.on("data", (d) => (body += d));
+        res.on("end", () => resolve({ status: res.statusCode, body }));
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/** A live board on a free port, torn down afterwards. Shared by the rebinding tests below. */
+async function withLiveBoard(fn) {
+  const dir = await tmp();
+  let live;
+  try {
+    await initRoom({ cwd: dir, name: "rebind" });
+    live = await startLiveBoard(dir, { port: 0 });
+    await fn({ url: live.url, port: live.port });
+  } finally {
+    if (live) await live.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------- DNS rebinding
+
+test("a request that did not ask for localhost is refused", async () => {
+  // Binding to 127.0.0.1 stops another HOST reaching the socket. It does not stop a PAGE the user
+  // is visiting: point evil.example.com at 127.0.0.1 with a short TTL, and the browser treats
+  // http://evil.example.com:7840/ as same-origin with the attacker's page — so CORS never applies
+  // and the reply is readable. The board is the project's whole git history: contributor names,
+  // addresses, branches, commit subjects. Only the Host header separates that from a real visit.
+  await withLiveBoard(async ({ port }) => {
+    for (const host of ["evil.example.com", `evil.example.com:${port}`, "attacker.test"]) {
+      const res = await requestWithHost(port, "/", host);
+      assert.equal(res.status, 403, `Host: ${host} must not be served`);
+      assert.doesNotMatch(res.body, /<html|branch-graph|built-by/i, "and nothing of the board leaks");
+    }
+  });
+});
+
+test("localhost by any of its names still works", async () => {
+  await withLiveBoard(async ({ port }) => {
+    for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1"]) {
+      const res = await requestWithHost(port, "/", host);
+      assert.equal(res.status, 200, `Host: ${host} is this machine and must be served`);
+    }
+    // A right name on the wrong port is a different server, so it is not this one.
+    const wrong = await requestWithHost(port, "/", `localhost:${port + 1}`);
+    assert.equal(wrong.status, 403);
+  });
 });

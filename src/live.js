@@ -13,6 +13,30 @@ export const LIVE_DEFAULT_PORT = 7840;
  * Local-only live board. Binds 127.0.0.1 only — never LAN/internet.
  * Watches .room/, regenerates board.html, SSE-pushes open tabs to reload.
  */
+/**
+ * Only this machine, asked for by a name that means this machine.
+ *
+ * Binding to 127.0.0.1 stops another host reaching the socket. It does NOT stop a web page the user
+ * is visiting: an attacker points `evil.example.com` at 127.0.0.1 (a short TTL and a second lookup —
+ * DNS rebinding), the browser then treats `http://evil.example.com:7840/` as same-origin with the
+ * attacker's page, and same-origin means CORS never applies. The board is the whole git history of
+ * the project, so the reply is the contributor names, addresses, branches and commit subjects.
+ *
+ * The Host header is what distinguishes the two, and nothing was reading it. A request that did not
+ * ask for localhost was not meant for this server.
+ */
+export function hostIsLocal(hostHeader, port) {
+  const raw = String(hostHeader || "").trim().toLowerCase();
+  if (!raw) return false; // HTTP/1.1 requires Host; a request without one is not a browser's
+  // Strip the port, taking care with the bracketed IPv6 form `[::1]:7840`.
+  const host = raw.startsWith("[") ? raw.slice(0, raw.indexOf("]") + 1) : raw.split(":")[0];
+  const named = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+  if (!named) return false;
+  const declared = raw.startsWith("[") ? raw.slice(raw.indexOf("]") + 1).replace(/^:/, "") : raw.split(":")[1];
+  // A right name on the wrong port is still not this server.
+  return !declared || Number(declared) === Number(port);
+}
+
 export async function startLiveBoard(projectDir, opts = {}) {
   const paths = roomPaths(projectDir);
   await refreshBoard(projectDir);
@@ -47,6 +71,13 @@ export async function startLiveBoard(projectDir, opts = {}) {
   }
 
   const server = createServer(async (req, res) => {
+    // Before anything is read or served. A rebound name reaches this socket exactly as localhost
+    // does, and only the Host header tells them apart.
+    if (!hostIsLocal(req.headers.host, server.address()?.port ?? wantPort)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("this board is served to localhost only\n");
+      return;
+    }
     const url = new URL(req.url || "/", `http://${LIVE_HOST}`);
 
     if (url.pathname === "/stream") {

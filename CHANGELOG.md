@@ -2,6 +2,21 @@
 
 ## 0.5.1
 
+### The live board answered to any hostname (DNS rebinding)
+
+`rooms live` binds 127.0.0.1, which stops another *machine* reaching the socket. It does not stop a
+*page* the user is visiting. An attacker points `evil.example.com` at 127.0.0.1 with a short TTL,
+the browser then treats `http://evil.example.com:7840/` as same-origin with the attacker's page —
+and same-origin means CORS never applies. The board is the project's entire git history, so the
+reply is every contributor name and address, every branch, every commit subject, and any room posts.
+
+Nothing was reading the `Host` header, which is the only thing separating that from a real visit.
+Verified against the running server before and after: a request claiming `Host: evil.example.com`
+was served 178 KB including the repo identity, and is now refused with 403 before anything is read.
+`localhost`, `127.0.0.1` and `[::1]` are served as before; a correct name on the wrong port is not.
+
+Anyone who has run `rooms live` on an untrusted network, or while browsing, should take 0.5.1.
+
 **A git pathspec uses forward slashes on every platform.** `relative()` returns
 `src\api\thing.js` on Windows, and while git tolerates that for a bare path, pathspec magic —
 which `--not` produces as `:(exclude)…` — is specified with `/`. 0.5.0 left that to chance, so
