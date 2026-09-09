@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1
+
+**A git pathspec uses forward slashes on every platform.** `relative()` returns
+`src\api\thing.js` on Windows, and while git tolerates that for a bare path, pathspec magic —
+which `--not` produces as `:(exclude)…` — is specified with `/`. 0.5.0 left that to chance, so
+`rooms file` and `rooms week --not` could behave differently on Windows than everywhere else. It is
+also what the report prints, so a path now reads the same way on every platform.
+
+No other shipped code changed. The README gained a section answering "can't I just use `git log`?"
+with this repository's own numbers, and the screenshots were refreshed.
+
 ## 0.5.0
 
 ### A repository is one project, from any directory inside it

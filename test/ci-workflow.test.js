@@ -24,10 +24,15 @@ const lean = matrixList("\\|\\|");
 const full = matrixList("&&");
 
 test("the push trigger names the branch this repo actually uses", () => {
-  const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+  // The repo's DEFAULT branch, not the checked-out one. Comparing against HEAD failed on every
+  // feature branch — which this project now always has, because the work goes through PRs. A test
+  // that only passes on main is a test that fails for the reason you are working correctly.
+  const head = execFileSync("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], {
     cwd: new URL("..", import.meta.url),
     encoding: "utf8",
-  }).trim();
+  })
+    .trim()
+    .replace(/^origin\//, "");
   const push = yml.match(/on:\s*\n\s*push:\s*\n\s*branches:\s*\[([^\]]+)\]/);
   assert.ok(push, "there is a push trigger");
   const branches = push[1].split(",").map((b) => b.trim());
