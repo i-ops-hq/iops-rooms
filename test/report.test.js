@@ -358,3 +358,43 @@ test("a flag that takes a value refuses to be a boolean, and unknown flags are s
     assert.equal(bogus.code, 0, "unknown flags warn; refusing them would break a newer flag");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Found by installing the published 0.5.2 and probing it as an outsider would,
+// rather than by reading the diff that shipped it. Both are regressions the
+// 0.5.2 fixes introduced.
+// ---------------------------------------------------------------------------
+
+test("a repository with no commits yet says so, instead of reporting a git failure", async () => {
+  await repo(async ({ dir }) => {
+    // Nothing committed: HEAD is an unborn branch and every git call below exits 128. Making git's
+    // errors loud was right for an unknown ref and wrong here — `git init` then `rooms week` met
+    // `fatal: ambiguous argument 'HEAD'`, where 0.5.1 had correctly said "0 commits".
+    const r = await buildReport(dir);
+    assert.equal(r.ok, true, "an empty repository is a state, not a failure");
+    assert.equal(r.seen, 0);
+    assert.equal(r.rows.length, 0);
+
+    const run = await runCli(dir, ["week"]);
+    assert.equal(run.code, 0);
+    assert.match(run.stdout, /0 commits/);
+    assert.doesNotMatch(run.stdout + run.stderr, /fatal|ambiguous/);
+
+    // The loud path must survive: an explicit range that does not resolve is still an error.
+    const bad = await runCli(dir, ["branch", "nonexistent-base"]);
+    assert.equal(bad.code, 1);
+  });
+});
+
+test("--version prints the version, and it is the one in package.json", async () => {
+  await repo(async ({ dir }) => {
+    const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    for (const argv of [["--version"], ["version"]]) {
+      const run = await runCli(dir, argv);
+      assert.equal(run.code, 0, argv.join(" "));
+      assert.equal(run.stdout.trim(), pkg.version);
+      // It used to print the whole help text and warn that --version was unknown.
+      assert.doesNotMatch(run.stderr, /unknown flag/);
+    }
+  });
+});

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { basename, relative, resolve, sep } from "node:path";
 import {
@@ -101,7 +101,7 @@ const VALUE_FLAGS = new Set([
   "code", "provider", "host", "client-id", "window-size",
 ]);
 const BOOL_FLAGS = new Set([
-  "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help",
+  "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
 ]);
 
 /**
@@ -110,6 +110,15 @@ const BOOL_FLAGS = new Set([
  * `_bad` is fatal (a value flag with nothing after it); `_unknown` is a warning, because refusing an
  * unrecognised flag outright would break anyone who passes a flag a newer version added.
  */
+/** Read from package.json at runtime, so there is no second copy of the number to drift. */
+const VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
 function args(argv) {
   const out = { _: [], _bad: [], _unknown: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -348,6 +357,11 @@ async function main() {
   }
   if (argv._unknown.length) {
     process.stderr.write(`unknown flag ${argv._unknown.join(", ")} — ignored. \`rooms help\` lists them.\n`);
+  }
+
+  if (cmd === "version" || argv.version) {
+    process.stdout.write(`${VERSION}\n`);
+    return;
   }
 
   if (cmd === "help" || cmd === "-h" || cmd === "--help") {

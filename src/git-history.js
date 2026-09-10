@@ -191,6 +191,20 @@ export async function readCommits(
   }
 
   const rev = String(range || "").trim() || "HEAD";
+
+  // A repository with no commits yet is not a failure, and 0.5.2 reported it as one.
+  //
+  // Making git's errors loud was right for `rooms branch nonexistent-base`, which was printing
+  // "0 commits" over an exit-128 failure. It was wrong for `git init` with nothing committed: HEAD
+  // is an unborn branch, every command below exits 128, and a brand new repo answered `rooms week`
+  // with `fatal: ambiguous argument 'HEAD'`. 0.5.1 said "0 commits" there, which is the truth.
+  //
+  // Only for the default HEAD. An explicit range the caller named is their assertion, and a range
+  // that does not resolve is still an error worth hearing about.
+  if (rev === "HEAD" && !(await git(projectDir, ["rev-parse", "-q", "--verify", "HEAD"], { timeout: 4000 })).ok) {
+    return { ok: true, commits: [], total: 0, truncated: 0, note: "" };
+  }
+
   const sinceFlag = sinceArg(since) ? [`--since=${sinceArg(since)}`] : [];
   const pathsel = pathArgs({ paths, exclude });
 
