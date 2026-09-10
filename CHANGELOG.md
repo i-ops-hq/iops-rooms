@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.5.2
+
+Everything here came from three reports filed against 0.5.1 by an outside reader who ran the tool
+and read the source. Each one is a case where the output was confident and wrong, which is the
+failure this project exists to argue against. All three reproduced exactly as filed.
+
+### git failures were reported as "0 commits", with exit 0
+
+`git()` caught every error and returned an empty string, which `readCommits` turned into a total of
+zero — indistinguishable from a window that really has no commits. `rooms branch nonexistent-base`
+printed `0 commits` and exited 0 while git itself was exiting 128. The same silence covered a 20s
+timeout, a `maxBuffer` overflow, and git disappearing from `PATH` between the checkout probe and the
+log. A CI step pasting that into a PR published a wrong number with nothing to signal it.
+
+git's own message is now the answer, and the commands exit 1. The "run them inside a repository"
+hint is scoped back to the one case where it is true.
+
+### `--since` with no value silently became `--since=true`
+
+The parser took any following token that did not start with `-` as a value, so `rooms week --since`
+set `since` to boolean true and passed `--since=true` to git. git's date parser does not reject
+that — it reads it as *now*, so the window silently became "nothing before this instant". The same
+rule ate legitimate values: `--since -5d` lost its `-5d`, which git parses perfectly well.
+
+The parser now knows which flags take values. A missing value is refused with exit 2; a value may
+look like a short flag but never like a long one; and an unknown `--flag` prints a warning instead
+of being accepted and ignored.
+
+### Trailers from five widely used agents read as "no agent recorded"
+
+Gemini CLI, Jules, aider, Amazon Q and Windsurf were not in the table, so their commits were shown
+under a label the README defines as "the person's own". aider has appended
+`Co-authored-by: aider (<model>)` to every commit it makes for years, so a repo built with it read
+0% agent-assisted with the evidence sitting in `git log`.
+
+All five are added, by name first and mailbox second — a company's domain is still never an agent,
+because that is also where its people have their email. Beyond the table, a trailer no family claims
+now gets its own row, `co-author, not a known agent`, so the next tool to appear lowers no floor
+silently.
+
+### A commit with two agent trailers was counted twice
+
+Every trailer added one to an agent row, so a commit carrying the same trailer twice — an amend that
+re-ran the tool, a squash repeating its parents' trailers — counted twice for that agent, and a
+commit with two different agents counted in both rows. The rows then summed past the commit count
+and the percentages past 100, in output whose header, bars and badge all read as shares of one
+whole. `rooms badge` draws those rows as adjacent segments of a fixed-width bar, so the segments ran
+off the end of it.
+
+Duplicate trailers are now one agent on one commit. A commit with two different agents appears in
+both counts, because both of them were there, but contributes half of itself to each percentage —
+so the rows are a partition again, the badge fits its own bar, and the output says how many commits
+were split rather than leaving a reader to notice.
+
 ## 0.5.1
 
 ### The live board answered to any hostname (DNS rebinding)

@@ -236,3 +236,125 @@ test("badge --out writes the file and hands back the markdown line", async () =>
     assert.match(svg, /^<svg/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The three defects an outside reader found in 0.5.1, each with the number that
+// was wrong. Reproduced from the filed reports before anything was changed.
+// ---------------------------------------------------------------------------
+
+test("a trailer repeated on one commit is one agent on one commit, not two", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit("a.txt", "1\n", "amended twice", `${CLAUDE}\n${CLAUDE}`);
+    await commit("b.txt", "2\n", "plain");
+
+    const r = await buildReport(dir);
+    const by = Object.fromEntries(r.rows.map((row) => [row.id, row]));
+    assert.equal(by.claude.commits, 1, "one commit, however many times the tool appended itself");
+    assert.equal(r.rows.reduce((n, row) => n + row.commits, 0), r.seen);
+  });
+});
+
+test("rows never sum past 100%, and a two-agent commit is split and said out loud", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit("a.txt", "1\n", "claude only", CLAUDE);
+    await commit("b.txt", "2\n", "both", `${CLAUDE}\n${CURSOR}`);
+    await commit("c.txt", "3\n", "plain");
+
+    const r = await buildReport(dir);
+    const by = Object.fromEntries(r.rows.map((row) => [row.id, row]));
+    // The count is commits the agent appears on: true, and allowed to overlap.
+    assert.equal(by.claude.commits, 2);
+    assert.equal(by.cursor.commits, 1);
+    // The percentage is that commit split between them, so the three rows are a partition.
+    assert.equal(
+      r.rows.reduce((n, row) => n + row.pct, 0),
+      100,
+      "the header, the bars and the badge all read as shares of one whole",
+    );
+    assert.equal(r.multi, 1);
+    assert.match(formatMix(r), /records more than one agent/);
+
+    // The badge is a stacked bar: its segments must fit inside the bar they are drawn in.
+    const svg = renderBadgeSvg(r);
+    const width = Number(svg.match(/<svg[^>]*width="(\d+)"/)[1]);
+    const segs = [...svg.matchAll(/<rect class="seg"[^>]*x="([\d.]+)"[^>]*width="([\d.]+)"/g)];
+    const end = Math.max(...segs.map((m) => Number(m[1]) + Number(m[2])));
+    assert.ok(end <= width + 0.5, `segments end at ${end}, badge is ${width} wide`);
+  });
+});
+
+test("a trailer no family recognises is named, not folded into 'no agent recorded'", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit("a.txt", "1\n", "aider", "Co-authored-by: aider (gpt-4o) <aider@aider.chat>");
+    await commit("b.txt", "2\n", "gemini", "Co-authored-by: Gemini CLI <gemini-cli@google.com>");
+    await commit("c.txt", "3\n", "jules", "Co-authored-by: google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>");
+    await commit("d.txt", "4\n", "q", "Co-authored-by: Amazon Q <q@amazon.com>");
+    await commit("e.txt", "5\n", "windsurf", "Co-authored-by: Windsurf <windsurf@codeium.com>");
+    await commit("f.txt", "6\n", "a person", "Co-authored-by: Jane Dev <jane@example.com>");
+    await commit("g.txt", "7\n", "nothing at all");
+
+    const r = await buildReport(dir);
+    const by = Object.fromEntries(r.rows.map((row) => [row.id, row]));
+    for (const id of ["aider", "gemini", "jules", "amazonq", "windsurf"]) {
+      assert.equal(by[id]?.commits, 1, `${id} was read as an agent`);
+    }
+    // A human co-author is neither an agent nor "the person's own work with nothing recorded".
+    assert.equal(by.coauthor.commits, 1);
+    assert.equal(by.unrecorded.commits, 1);
+    assert.equal(r.rows.reduce((n, row) => n + row.pct, 0), 100);
+  });
+});
+
+test("a company address is still not an agent, now that five more families exist", async () => {
+  await repo(async ({ dir, commit }) => {
+    // Google, Amazon and Codeium employ people. None of these is a bot.
+    await commit("a.txt", "1\n", "one", "Co-authored-by: Sundar P <sundar@google.com>");
+    await commit("b.txt", "2\n", "two", "Co-authored-by: Someone <someone@amazon.com>");
+    await commit("c.txt", "3\n", "three", "Co-authored-by: Dev <dev@codeium.com>");
+
+    const r = await buildReport(dir);
+    const by = Object.fromEntries(r.rows.map((row) => [row.id, row]));
+    assert.equal(by.coauthor.commits, 3);
+    assert.equal(r.agents.agents.length, 0, "no person was relabelled as a robot");
+  });
+});
+
+test("a git failure is the answer, not a confident zero", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit("a.txt", "1\n", "one");
+
+    const r = await buildReport(dir, { range: "nonexistent-base..HEAD" });
+    assert.equal(r.ok, false, "an unknown ref is not an empty window");
+    assert.match(r.note, /nonexistent-base/);
+
+    const run = await runCli(dir, ["branch", "nonexistent-base"]);
+    assert.equal(run.code, 1, "exit 0 here is a wrong number pasted into a PR");
+    assert.match(run.stderr, /unknown revision|ambiguous argument/);
+    assert.doesNotMatch(run.stdout, /0 commits/);
+    // The "run it inside a repository" hint is only true when that is the problem.
+    assert.doesNotMatch(run.stderr, /run them inside a repository/);
+  });
+});
+
+test("a flag that takes a value refuses to be a boolean, and unknown flags are said", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit("a.txt", "1\n", "one");
+
+    // git reads --since=true as "since now" and silently drops history, so this must not run.
+    const bare = await runCli(dir, ["week", "--since"]);
+    assert.equal(bare.code, 2);
+    assert.match(bare.stderr, /--since needs a value/);
+
+    const beforeAnother = await runCli(dir, ["week", "--since", "--json"]);
+    assert.equal(beforeAnother.code, 2, "the next long flag is not a value");
+
+    // A value is allowed to look like a short flag: git parses -5d perfectly well.
+    const negative = await runCli(dir, ["week", "--since", "-5d"]);
+    assert.equal(negative.code, 0);
+    assert.match(negative.stdout, /last -5d/);
+
+    const bogus = await runCli(dir, ["week", "--bogus"]);
+    assert.match(bogus.stderr, /unknown flag --bogus/);
+    assert.equal(bogus.code, 0, "unknown flags warn; refusing them would break a newer flag");
+  });
+});

@@ -24,6 +24,38 @@ export function compact(n) {
 }
 
 /**
+ * Whole percentages that sum to exactly 100.
+ *
+ * Rounding each row on its own does not: three rows of one third round to 33 and sum to 99, and the
+ * badge is a stacked bar whose segments are drawn from these numbers, so a missing point is a
+ * visible gap and a spare point runs off the end. Largest remainder hands the leftover points to
+ * the rows that lost the most in rounding, which is the standard fix and is stable for a given
+ * input. A row with any share at all keeps at least 1%, because a segment of width zero reads as
+ * "not present" rather than "small".
+ */
+export function allocatePercent(rows, seen) {
+  if (!seen || !rows.length) return rows.map((row) => ({ ...row, pct: 0 }));
+  const exact = rows.map((row) => (row.share / seen) * 100);
+  const out = rows.map((row, i) => ({ ...row, pct: Math.max(exact[i] > 0 ? 1 : 0, Math.floor(exact[i])) }));
+  let left = 100 - out.reduce((n, row) => n + row.pct, 0);
+  const order = rows
+    .map((_, i) => i)
+    .sort((a, b) => (exact[b] - Math.floor(exact[b])) - (exact[a] - Math.floor(exact[a])));
+  for (let k = 0; left > 0 && k < order.length * 2; k++) {
+    out[order[k % order.length]].pct += 1;
+    left -= 1;
+  }
+  // Over 100 only when the 1% floor was applied to more rows than there were spare points.
+  for (let k = order.length - 1; left < 0 && k >= 0; k--) {
+    if (out[order[k]].pct > 1) {
+      out[order[k]].pct -= 1;
+      left += 1;
+    }
+  }
+  return out;
+}
+
+/**
  * The numbers every surface here shares.
  *
  * `seen` is the denominator for every percentage: the commits this window actually read. Dividing by
@@ -40,19 +72,29 @@ export async function buildReport(projectDir, opts = {}) {
   const deletions = r.commits.reduce((n, c) => n + c.deletions, 0);
   const seen = r.commits.length;
 
-  // One row per agent plus one for the commits that recorded none, so callers never have to
-  // remember to add the unrecorded slice back in. It is the same kind of row as the others.
-  const rows = [
-    ...agents.agents.map((a) => ({ id: a.id, label: a.label, commits: a.commits })),
-    { id: "unrecorded", label: "no agent recorded", commits: agents.plain },
-  ]
-    .filter((row) => row.commits > 0)
-    .map((row) => ({ ...row, pct: seen ? Math.round((row.commits / seen) * 100) : 0 }));
+  // One row per agent, plus a row for co-authored commits no family claims, plus one for the
+  // commits that recorded nothing at all — so callers never have to remember to add a slice back
+  // in. All three are the same kind of row.
+  //
+  // The middle row exists because "no agent recorded" is a claim, not a leftover: folding an
+  // unrecognised trailer into it says a commit was the person's own when the commit says otherwise.
+  // A human co-author lands here too, which is exactly what the label says of them.
+  const rows = allocatePercent(
+    [
+      ...agents.agents.map((a) => ({ id: a.id, label: a.label, commits: a.commits, share: a.share })),
+      { id: "coauthor", label: "co-author, not a known agent", commits: agents.coauthored, share: agents.coauthored },
+      { id: "unrecorded", label: "no agent recorded", commits: agents.plain, share: agents.plain },
+    ].filter((row) => row.commits > 0),
+    seen,
+  );
 
   return {
     ok: true,
     seen,
     total: r.total,
+    // How many commits carry more than one agent, so every surface can say the rows overlap
+    // rather than leaving a reader to discover the counts sum past the header.
+    multi: agents.multi,
     truncated: r.truncated,
     insertions,
     deletions,
@@ -90,7 +132,22 @@ export function formatMix(report, { delta = null } = {}) {
         : "";
       return `  ${r.label.padEnd(w)}  ${String(r.commits).padStart(cw)}  ${bar(r.pct)} ${String(r.pct).padStart(3)}%${d}`;
     })
-    .join("\n") + "\n";
+    .join("\n") + "\n" + splitNote(report);
+}
+
+/**
+ * Said out loud, because the count column and the percentage column answer different questions
+ * once a commit has two agents on it: the counts are "commits this agent appears on" and can
+ * overlap, the percentages are that commit split between them and always total 100.
+ */
+function splitNote(report) {
+  const n = Number(report.multi) || 0;
+  if (!n) return "";
+  const text =
+    `${n} commit${n === 1 ? "" : "s"} record${n === 1 ? "s" : ""} more than one agent. ` +
+    "The counts are commits an agent appears on, so they overlap. The percentages split each " +
+    "such commit evenly, so they still total 100.";
+  return `\n${wrap(text, 74, "  ")}\n`;
 }
 
 function header(name, window, report) {
@@ -167,6 +224,14 @@ const BADGE_COLOURS = {
   codex: "#1e9e5a",
   copilot: "#d98324",
   devin: "#e5484d",
+  gemini: "#4285f4",
+  jules: "#a142f4",
+  aider: "#00897b",
+  amazonq: "#ff9900",
+  windsurf: "#0ea5a4",
+  // Two greys, deliberately close: neither is a claim about a tool, and a reader should see them
+  // as the same kind of thing — a commit whose agent this table cannot name.
+  coauthor: "#6f7480",
   unrecorded: "#8a8f99",
 };
 
