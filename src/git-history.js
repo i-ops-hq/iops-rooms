@@ -14,8 +14,9 @@
 //
 // Identity is resolved with `--use-mailmap` and %aN/%aE, which is git's own mechanism for the
 // problem rather than a heuristic of ours. It matters here: a repo working on main has one human appearing as three
-// authors, because 277 commits carry a malformed email (`…kondapalli.com`, missing the @gmail)
-// beside 233 with the correct one and 22 more under a different name. A `.mailmap` merges them;
+// authors, because 277 commits carry a typo'd address — the same local part against a domain with
+// the provider missing, `…@example.com` where `…@mail.example.com` was meant — beside 233 with the
+// correct one and 22 more under a different name. A `.mailmap` merges them;
 // guessing which addresses are the same person would sometimes merge two people, which is worse
 // than showing one person twice.
 
