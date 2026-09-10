@@ -23,16 +23,34 @@ const matrixList = (marker) => {
 const lean = matrixList("\\|\\|");
 const full = matrixList("&&");
 
-test("the push trigger names the branch this repo actually uses", () => {
+test("the push trigger names the branch this repo actually uses", (t) => {
   // The repo's DEFAULT branch, not the checked-out one. Comparing against HEAD failed on every
   // feature branch — which this project now always has, because the work goes through PRs. A test
   // that only passes on main is a test that fails for the reason you are working correctly.
-  const head = execFileSync("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], {
-    cwd: new URL("..", import.meta.url),
-    encoding: "utf8",
-  })
-    .trim()
-    .replace(/^origin\//, "");
+  //
+  // `origin/HEAD` is a local convenience ref that `git clone` writes and almost nothing else does.
+  // actions/checkout fetches one ref and never sets it, so `symbolic-ref` exits 1 and execFileSync
+  // THREW — not an assertion failure, an error out of the test body. Every push and pull_request
+  // run on this repo was red for that reason from 0.5.1 onward, and the only green run in that
+  // window was a manual workflow_dispatch. A red suite nobody can act on is a suite nobody reads.
+  //
+  // Skipped rather than passed when the ref is absent: this test cannot establish what the default
+  // branch is there, and quietly returning green would be the same "answered a question it could
+  // not ask" this project exists to argue against. On a developer's clone the ref is present and
+  // the check runs.
+  let head = "";
+  try {
+    head = execFileSync("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], {
+      cwd: new URL("..", import.meta.url),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .trim()
+      .replace(/^origin\//, "");
+  } catch {
+    t.skip("origin/HEAD is not set in this checkout, so the default branch cannot be read");
+    return;
+  }
   const push = yml.match(/on:\s*\n\s*push:\s*\n\s*branches:\s*\[([^\]]+)\]/);
   assert.ok(push, "there is a push trigger");
   const branches = push[1].split(",").map((b) => b.trim());
