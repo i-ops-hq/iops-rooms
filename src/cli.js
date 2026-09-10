@@ -87,8 +87,31 @@ Hooks are local opt-in only — never auto-installed; not IDE telemetry.
 Auth mints a local verified GitHub/GitLab identity only — does not upload room events.
 `;
 
+/**
+ * Flags that take a value, and flags that do not.
+ *
+ * The parser used to need neither: any token after a flag became its value unless it started with
+ * `-`. That is wrong in both directions. `rooms week --since` silently became `--since=true`, which
+ * git accepts as a date it cannot parse and answers with nothing — "0 commits" for a window nobody
+ * asked for. And `--since -5d` lost its value to the same rule, because a value is allowed to look
+ * like a flag. Knowing which flags take values is what separates the two cases.
+ */
+const VALUE_FLAGS = new Set([
+  "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
+  "code", "provider", "host", "client-id", "window-size",
+]);
+const BOOL_FLAGS = new Set([
+  "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help",
+]);
+
+/**
+ * argv into a flag bag, with the two silent failures made loud.
+ *
+ * `_bad` is fatal (a value flag with nothing after it); `_unknown` is a warning, because refusing an
+ * unrecognised flag outright would break anyone who passes a flag a newer version added.
+ */
 function args(argv) {
-  const out = { _: [] };
+  const out = { _: [], _bad: [], _unknown: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--") {
@@ -96,13 +119,32 @@ function args(argv) {
       break;
     }
     if (a.startsWith("--")) {
-      const key = a.slice(2);
+      const eq = a.indexOf("=");
+      const key = eq === -1 ? a.slice(2) : a.slice(2, eq);
+      if (eq !== -1) {
+        // --since=2w — unambiguous, and the only form that can carry a value starting with "--".
+        const value = a.slice(eq + 1);
+        if (!value && VALUE_FLAGS.has(key)) out._bad.push(`--${key} needs a value`);
+        else out[key] = value;
+        if (!VALUE_FLAGS.has(key) && !BOOL_FLAGS.has(key)) out._unknown.push(`--${key}`);
+        continue;
+      }
       const next = argv[i + 1];
-      if (next && !next.startsWith("-")) {
-        out[key] = next;
-        i++;
+      if (VALUE_FLAGS.has(key)) {
+        // A value may look like a flag (--since -5d) but never like a long one (--since --json).
+        if (next === undefined || next.startsWith("--")) out._bad.push(`--${key} needs a value`);
+        else {
+          out[key] = next;
+          i++;
+        }
       } else {
-        out[key] = true;
+        if (!BOOL_FLAGS.has(key)) out._unknown.push(`--${key}`);
+        if (next && !next.startsWith("-")) {
+          out[key] = next;
+          i++;
+        } else {
+          out[key] = true;
+        }
       }
     } else {
       out._.push(a);
@@ -185,11 +227,19 @@ export function openPath(target, { app = false, findBin = findAppBrowser, launch
   return { launched: true, mode: "browser" };
 }
 
-/** All four git commands fail the same way, because they fail for the same reason. */
+/**
+ * All four git commands fail the same way — but not always for the same reason.
+ *
+ * The hint below is only true for the case it was written for. Once git's own failures started
+ * being reported instead of swallowed, "run them inside a repository" began appearing under
+ * `fatal: ambiguous argument 'nonexistent-base'`, where the reader is already in one.
+ */
 function failNotGit(r) {
+  const note = r.note || "not a git checkout";
+  const notACheckout = note === "not a git checkout";
   process.stderr.write(
-    `${r.note || "not a git checkout"}\n` +
-      "These commands read git history — run them inside a repository.\n",
+    `${note}\n` +
+      (notACheckout ? "These commands read git history — run them inside a repository.\n" : ""),
   );
   process.exitCode = 1;
 }
@@ -289,6 +339,16 @@ async function main() {
   const argv = args(process.argv.slice(2));
   const cmd = argv._[0] || "help";
   const rest = argv._.slice(1);
+
+  // A flag that was accepted and then ignored is the failure this tool exists to argue against.
+  if (argv._bad.length) {
+    process.stderr.write(`${argv._bad.join("\n")}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  if (argv._unknown.length) {
+    process.stderr.write(`unknown flag ${argv._unknown.join(", ")} — ignored. \`rooms help\` lists them.\n`);
+  }
 
   if (cmd === "help" || cmd === "-h" || cmd === "--help") {
     process.stdout.write(HELP);

@@ -867,7 +867,9 @@ function shortNum(n) {
  */
 export function renderBuiltBy(history) {
   if (!history || !history.ok || !history.contributors?.length) return "";
-  const { agents, plain } = history.agents;
+  const { agents } = history.agents;
+  const plain = Number(history.agents.plain) || 0;
+  const coauthored = Number(history.agents.coauthored) || 0;
   const totalShown = history.trunk.length + history.branches.reduce((n, b) => n + b.commits.length, 0);
 
   const agentChips = agents
@@ -876,6 +878,11 @@ export function renderBuiltBy(history) {
         `<span class="bb-agent" data-family="${escapeHtml(a.id)}"><span class="bb-swatch" aria-hidden="true"></span>${escapeHtml(a.label)} <b>${a.commits}</b><span class="bb-lines">+${shortNum(a.insertions)} −${shortNum(a.deletions)}</span></span>`,
     )
     .join("");
+  // A trailer no family recognises is its own chip. Folding it into "no agent recorded" would
+  // say the commit was the person's own while the commit itself names a co-author.
+  const coauthorChip = coauthored
+    ? `<span class="bb-agent" data-family="coauthor"><span class="bb-swatch" aria-hidden="true"></span>co-author, not a known agent <b>${coauthored}</b></span>`
+    : "";
   const plainChip = plain
     ? `<span class="bb-agent" data-family="human"><span class="bb-swatch" aria-hidden="true"></span>no agent recorded <b>${plain}</b></span>`
     : "";
@@ -923,7 +930,7 @@ export function renderBuiltBy(history) {
   return `<section class="built-by" aria-label="who built this project">
   <h2 class="bb-heading">Built by</h2>
   <p class="bb-note">From <strong>${history.total}</strong> commit${history.total === 1 ? "" : "s"} of git history — attribution comes from <code>Co-Authored-By</code> trailers the agents write themselves. Nothing is read from Cursor's or Claude's private state.</p>
-  <div class="bb-agent-row">${agentChips}${plainChip}</div>
+  <div class="bb-agent-row">${agentChips}${coauthorChip}${plainChip}</div>
   <ul class="bb-people">${people}</ul>
   ${split}
   ${truncated}
@@ -1009,8 +1016,18 @@ export function renderHeroFacts(history, events, git, now = Date.now()) {
   const oldest = times.length ? Math.min(...times) : null;
   const lastCommit = commits.find((c) => c.t === newest);
 
-  const { attributed, plain, agents } = history.agents;
-  const seen = attributed + plain;
+  const { agents } = history.agents;
+  // Every commit lands in exactly one of the three, so this is the commit count and the
+  // denominator stays whole. It was attributed + plain, which stopped covering all of them the
+  // day co-authored-but-not-an-agent became its own bucket.
+  //
+  // Each term is coerced because one missing field must not turn the denominator into NaN: that
+  // renders as "none agent-assisted", which is a false claim about the repo rather than a gap in
+  // the page. Zero is the honest reading of an absent count.
+  const attributed = Number(history.agents.attributed) || 0;
+  const coauthored = Number(history.agents.coauthored) || 0;
+  const plain = Number(history.agents.plain) || 0;
+  const seen = attributed + coauthored + plain;
   const pct = seen > 0 ? Math.round((attributed / seen) * 100) : 0;
 
   const open = history.branches.filter((b) => b.open).length;

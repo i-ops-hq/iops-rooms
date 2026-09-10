@@ -57,6 +57,16 @@ you, not one of the same name at the root.
 a **floor**, never a measurement of how much of your code an AI wrote — and unlike a vendor
 dashboard, it is blind to which vendor you use.
 
+**A trailer this tool does not recognise gets its own row**, `co-author, not a known agent`, rather
+than being folded into `no agent recorded`. Ten agents are recognised by name today — Claude,
+Cursor, Codex, Copilot, Devin, Gemini, Jules, aider, Amazon Q, Windsurf — and the eleventh will
+appear in that row instead of quietly lowering the floor. Human co-authors land there too, which is
+exactly what the label says of them.
+
+**Counts can overlap; percentages cannot.** A commit with two agents on it appears in both of their
+counts, because both of them were there. The percentages split that commit evenly so the rows always
+total 100, and the output says how many commits were split.
+
 Then, when you want the picture rather than the number:
 
 ```bash
@@ -221,7 +231,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.1 mcp install
+npx -y iops-rooms@0.5.2 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -234,7 +244,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.1", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.2", "mcp"] } } }
 ```
 
 ## Commands

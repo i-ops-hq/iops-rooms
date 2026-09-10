@@ -61,7 +61,28 @@ const FAMILIES = [
   { id: "codex", name: /\b(codex|chatgpt)\b/i, address: /^(codex|chatgpt)[^@]*@openai\.com$/i, label: "Codex" },
   { id: "copilot", name: /\bcopilot\b/i, address: /^\d+\+copilot@users\.noreply\.github\.com$/i, label: "Copilot" },
   { id: "devin", name: /\bdevin\b/i, address: /^devin[^@]*@cognition(-?labs)?\.(ai|com)$/i, label: "Devin" },
+  // Added after a reader pointed out that aider has appended `Co-authored-by: aider (<model>)` to
+  // every commit it makes for years — so repos built with it read 0% agent-assisted with the
+  // evidence sitting in `git log`. The floor was lower than the trailers supported.
+  { id: "gemini", name: /\bgemini\b/i, address: /^gemini-cli@google\.com$/i, label: "Gemini" },
+  { id: "jules", name: /\bjules\b/i, address: /^\d+\+google-labs-jules\[bot\]@users\.noreply\.github\.com$/i, label: "Jules" },
+  // `^aider\b` and not `\baider\b`: the trailer is written by the tool as "aider (gpt-4o)", and a
+  // person named e.g. "Zaider" should not become a robot on a word-boundary accident.
+  { id: "aider", name: /^aider\b/i, address: /^aider@aider\.chat$/i, label: "aider" },
+  { id: "amazonq", name: /\b(amazon q|kiro)\b/i, address: /^q@amazon\.com$/i, label: "Amazon Q" },
+  { id: "windsurf", name: /\bwindsurf\b/i, address: /^windsurf@codeium\.com$/i, label: "Windsurf" },
 ];
+
+/** The name half of a `Name <email>` trailer, for a co-author no family claims. */
+export function coauthorOf(trailer) {
+  const raw = String(trailer || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/^(.*?)\s*<([^>]*)>\s*$/);
+  const label = (m ? m[1] : raw).trim();
+  const email = (m ? m[2] : "").trim();
+  if (!label && !email) return null;
+  return { label: label || email, email };
+}
 
 /**
  * Split a `Name <email>` trailer into an agent, or null when it names a person.
@@ -81,12 +102,44 @@ export function attributeAgent(trailer) {
   return null;
 }
 
+/**
+ * Why a git call failed, in a sentence a reader can act on.
+ *
+ * The three that actually happen are not the ones stderr explains well: a timeout kills the child
+ * and leaves stderr empty, a maxBuffer overflow reports an internal Node code, and a missing git
+ * reports ENOENT. Each gets its own sentence; everything else defers to git's own first line,
+ * which is usually the best available ("fatal: ambiguous argument 'x'").
+ */
+function describeGitError(err, args, timeout) {
+  if (!err) return "git failed";
+  if (err.code === "ENOENT") return "git is not on PATH";
+  if (err.killed || err.signal === "SIGTERM") return `git timed out after ${Math.round(timeout / 1000)}s`;
+  if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+    return "git produced more output than rooms can read at once — narrow the window with --since or --path";
+  }
+  const stderr = String(err.stderr || "").trim().split("\n").find((l) => l.trim());
+  if (stderr) return stderr.trim();
+  const message = String(err.message || "").trim();
+  return message || `git ${String(args?.[0] || "")} failed`;
+}
+
+/**
+ * One git call, with the failure kept rather than thrown away.
+ *
+ * This used to `return ""` on any error, which is indistinguishable from a repo that really has no
+ * commits. `rooms branch nonexistent-base` printed "0 commits" and exited 0 while git itself was
+ * exiting 128 — a wrong number, pasted into a PR, with no signal anything went wrong. The same
+ * silence covered a 20s timeout, a maxBuffer overflow and git vanishing from PATH.
+ *
+ * Callers that genuinely tolerate absence (an optional probe like `symbolic-ref` on a detached
+ * HEAD) read `.out` and carry on. Callers that report a NUMBER check `.ok` first.
+ */
 async function git(cwd, args, { timeout = 20_000, maxBuffer = 64 * 1024 * 1024 } = {}) {
   try {
     const { stdout } = await execFileAsync("git", args, { cwd, timeout, maxBuffer });
-    return String(stdout || "");
-  } catch {
-    return "";
+    return { ok: true, out: String(stdout || ""), err: "" };
+  } catch (err) {
+    return { ok: false, out: "", err: describeGitError(err, args, timeout) };
   }
 }
 
@@ -129,8 +182,13 @@ export async function readCommits(
   projectDir,
   { limit = DEFAULT_COMMIT_LIMIT, since = "", paths = [], exclude = [], range = "" } = {},
 ) {
-  const inside = (await git(projectDir, ["rev-parse", "--is-inside-work-tree"], { timeout: 4000 })).trim();
-  if (inside !== "true") return { ok: false, commits: [], total: 0, truncated: 0, note: "not a git checkout" };
+  // Outside a repo git exits 128 with its own "fatal: not a git repository". That one case keeps
+  // the shorter sentence, because the CLI pairs it with a hint that is only true here.
+  const probe = await git(projectDir, ["rev-parse", "--is-inside-work-tree"], { timeout: 4000 });
+  if (!probe.ok || probe.out.trim() !== "true") {
+    const note = !probe.ok && !/not a git repository/i.test(probe.err) ? probe.err : "not a git checkout";
+    return { ok: false, commits: [], total: 0, truncated: 0, note };
+  }
 
   const rev = String(range || "").trim() || "HEAD";
   const sinceFlag = sinceArg(since) ? [`--since=${sinceArg(since)}`] : [];
@@ -138,16 +196,15 @@ export async function readCommits(
 
   // The total is counted under the SAME filters. Counting all of HEAD and then reporting a filtered
   // sample would make "38% of 104" a ratio of two different populations.
-  const totalRaw = (
-    await git(projectDir, ["rev-list", "--count", rev, ...sinceFlag, ...pathsel], { timeout: 8000 })
-  ).trim();
-  const total = Number(totalRaw) || 0;
+  const counted = await git(projectDir, ["rev-list", "--count", rev, ...sinceFlag, ...pathsel], { timeout: 8000 });
+  if (!counted.ok) return { ok: false, commits: [], total: 0, truncated: 0, note: counted.err };
+  const total = Number(counted.out.trim()) || 0;
 
   const fmt =
     RS +
     ["%H", "%h", "%aN", "%aE", "%aI", "%s", "%P", `%(trailers:key=Co-Authored-By,valueonly,separator=${TS})`].join(FS);
 
-  const raw = await git(projectDir, [
+  const logged = await git(projectDir, [
     "log",
     rev,
     "--use-mailmap",
@@ -158,7 +215,8 @@ export async function readCommits(
     ...pathsel,
   ]);
 
-  const commits = parseLog(raw);
+  if (!logged.ok) return { ok: false, commits: [], total: 0, truncated: 0, note: logged.err };
+  const commits = parseLog(logged.out);
 
   return {
     ok: true,
@@ -194,10 +252,34 @@ function parseLog(raw) {
       if (parts[1] !== "-") deletions += Number(parts[1]) || 0;
     }
 
-    const agents = String(trailers || "")
-      .split(TS)
-      .map((t) => attributeAgent(t))
-      .filter(Boolean);
+    // Trailers are de-duplicated per commit, and the ones no family claims are kept separately.
+    //
+    // Both halves were reported as bugs. A commit carrying the same trailer twice — an amend that
+    // re-ran the tool, a squash that repeated its parents' trailers — counted twice for that agent,
+    // so the rows summed past the commit count and the badge's segments ran off the end of the bar.
+    // And a trailer from a tool the table does not know was folded into "no agent recorded", which
+    // the README defines as "shown as the person's own": untrue for a commit that did record one.
+    const agents = [];
+    const coauthors = [];
+    const seenAgent = new Set();
+    const seenCoauthor = new Set();
+    for (const t of String(trailers || "").split(TS)) {
+      if (!t.trim()) continue;
+      const agent = attributeAgent(t);
+      if (agent) {
+        const key = agent.label.toLowerCase();
+        if (seenAgent.has(key)) continue;
+        seenAgent.add(key);
+        agents.push(agent);
+        continue;
+      }
+      const person = coauthorOf(t);
+      if (!person) continue;
+      const key = (person.email || person.label).toLowerCase();
+      if (seenCoauthor.has(key)) continue;
+      seenCoauthor.add(key);
+      coauthors.push(person);
+    }
 
     commits.push({
       sha,
@@ -210,6 +292,7 @@ function parseLog(raw) {
       // authored work made a maintainer who merges 26 PRs look like they had written nothing.
       isMerge: String(parents || "").trim().split(/\s+/).filter(Boolean).length > 1,
       agents,
+      coauthors,
       // The commit belongs to the person either way; agents say who helped.
       byAgent: agents.length > 0,
       insertions,
@@ -247,7 +330,7 @@ export async function readBranchCommits(projectDir, { branches = [], main = "", 
     else args.push(name);
 
     const raw = await git(projectDir, args);
-    out.set(name, parseLog(raw));
+    out.set(name, parseLog(raw.out));
   }
   return out;
 }
@@ -285,7 +368,7 @@ function branchNameFromMerge(subject, shortSha) {
  * for the same short name.
  */
 async function listBranchRefs(projectDir) {
-  const raw = await git(projectDir, [
+  const listed = await git(projectDir, [
     "for-each-ref",
     "--sort=-committerdate",
     `--format=%(refname:short)${FS}%(refname)${FS}%(committerdate:iso-strict)`,
@@ -294,7 +377,7 @@ async function listBranchRefs(projectDir) {
   ]);
   const seen = new Set();
   const out = [];
-  for (const line of raw.split("\n")) {
+  for (const line of listed.out.split("\n")) {
     if (!line.trim()) continue;
     const [shortName, fullRef, at] = line.split(FS);
     if (!shortName || shortName.endsWith("/HEAD")) continue;
@@ -310,8 +393,8 @@ async function listBranchRefs(projectDir) {
 
 /** Which ref the project treats as its trunk, asked rather than assumed. */
 async function resolveTrunk(projectDir, refs) {
-  const head = (await git(projectDir, ["symbolic-ref", "--short", "HEAD"], { timeout: 4000 })).trim();
-  const originHead = (await git(projectDir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { timeout: 4000 }))
+  const head = (await git(projectDir, ["symbolic-ref", "--short", "HEAD"], { timeout: 4000 })).out.trim();
+  const originHead = (await git(projectDir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { timeout: 4000 })).out
     .trim()
     .replace(/^[^/]+\//, "");
   const names = new Set(refs.map((r) => r.name));
@@ -325,7 +408,7 @@ export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMI
   const all = await readCommits(projectDir, { limit });
   if (!all.ok) return { ok: false, trunk: [], branches: [], ...all };
 
-  const mergeRaw = await git(projectDir, [
+  const merged = await git(projectDir, [
     "log",
     "--first-parent",
     "--merges",
@@ -334,7 +417,7 @@ export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMI
   ]);
 
   const branches = [];
-  for (const line of mergeRaw.split("\n")) {
+  for (const line of merged.out.split("\n")) {
     if (!line.trim()) continue;
     const [sha, shortSha, at, subject] = line.split(FS);
     if (!sha) continue;
@@ -348,7 +431,7 @@ export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMI
       `--not`,
       `${sha}^1`,
     ]);
-    const commits = parseLog(raw);
+    const commits = parseLog(raw.out);
     if (!commits.length) continue;
     branches.push({ name, pr, mergeSha: shortSha, mergedAt: at || "", commits });
   }
@@ -371,7 +454,7 @@ export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMI
       "--not",
       trunkName,
     ]);
-    const commits = parseLog(raw);
+    const commits = parseLog(raw.out);
     // A branch with nothing the trunk lacks is fully merged and already drawn, or is a duplicate.
     if (!commits.length) continue;
     branches.push({
@@ -471,22 +554,42 @@ export function rollUpContributors(commits) {
 }
 
 /** Project-wide agent totals, for the "who built this" line. */
+/**
+ * One row per agent, plus the counts every surface needs to describe the whole.
+ *
+ * `commits` is how many commits an agent APPEARS ON, which is the true and useful number and which
+ * can legitimately sum past the commit count — a commit with Claude and Cursor on it really did
+ * have both. `share` is the same commit split evenly between them, so shares sum to exactly the
+ * commit count and a stacked bar drawn from them is a real partition rather than a bar that
+ * overflows its own width. `multi` is how many commits needed splitting, so the output can say so
+ * instead of leaving a reader to notice that the rows add up to 133%.
+ */
 export function rollUpAgents(commits) {
   const agents = new Map();
   let attributed = 0;
+  let coauthored = 0;
+  let multi = 0;
   for (const c of commits || []) {
     if (c.agents.length) attributed += 1;
+    else if ((c.coauthors || []).length) coauthored += 1;
+    if (c.agents.length > 1) multi += 1;
+    const weight = c.agents.length ? 1 / c.agents.length : 0;
     for (const a of c.agents) {
-      const row = agents.get(a.label) || { label: a.label, id: a.id, family: a.family, commits: 0, insertions: 0, deletions: 0 };
+      const row = agents.get(a.label) || {
+        label: a.label, id: a.id, family: a.family, commits: 0, share: 0, insertions: 0, deletions: 0,
+      };
       row.commits += 1;
+      row.share += weight;
       row.insertions += c.insertions;
       row.deletions += c.deletions;
       agents.set(a.label, row);
     }
   }
   return {
-    agents: [...agents.values()].sort((a, b) => b.commits - a.commits),
+    agents: [...agents.values()].sort((a, b) => b.commits - a.commits || a.label.localeCompare(b.label)),
     attributed,
-    plain: (commits || []).length - attributed,
+    coauthored,
+    multi,
+    plain: (commits || []).length - attributed - coauthored,
   };
 }
