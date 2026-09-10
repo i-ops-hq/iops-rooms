@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.3
+
+Found by installing the published 0.5.2 from npm and probing it the way an outside tester would,
+rather than by re-reading the diff that shipped it. Both are defects 0.5.2 introduced.
+
+### A repository with no commits reported a git failure
+
+0.5.2 stopped swallowing git's errors, which was right for `rooms branch nonexistent-base` and wrong
+for `git init` with nothing committed. HEAD is an unborn branch there, so every git call exits 128,
+and a brand new repository answered `rooms week` with `fatal: ambiguous argument 'HEAD'` and exit 1.
+0.5.1 said "0 commits", which is the truth.
+
+An unborn HEAD is now read as the empty repository it is. Only for the default HEAD: a range the
+caller named is still their assertion, and one that does not resolve is still an error.
+
+### `--version`
+
+There was none. `rooms --version` printed the whole help text and warned that `--version` was an
+unknown flag. It prints the version now, read from `package.json` at runtime so there is no second
+copy of the number to drift.
+
 ## 0.5.2
 
 Everything here came from three reports filed against 0.5.1 by an outside reader who ran the tool
