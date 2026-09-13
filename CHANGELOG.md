@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.5.4
+
+Found by installing the published 0.5.3 and pointing it at six repositories that have never heard of
+it — Anthropic's, OpenAI's, LangChain's, Astral's, Vercel's and tinygrad's, 3,000 commits. Every
+defect below is about what the output *reads as*, which is not something a fixture can catch.
+
+### Human maintainers were filed under a heading that said "agent"
+
+On `astral-sh/uv` the row `co-author, not a known agent` sat at 47% with a long bar directly above
+`no agent recorded` at 51%, so the block said — to any eye scanning it — that half the repository was
+agent-written. Inside that row: Zanie Blue with 157 commits, Charlie Marsh with 14, `zaniebot`,
+`astral-automations-bot`, `github-actions`. Not one AI agent in the top twelve. The label was
+literally true and the number read as something else, which is the failure this tool exists to
+refuse.
+
+It is now two rows, and neither says "agent": `co-author that says it is a bot` and `co-author, no
+bot marker — usually a person`. The split is on `[bot]`, which GitHub appends to every App account,
+so it is the platform's own marker rather than a guess from anybody's name. A release bot that does
+not mark itself lands with the people, which understates automation rather than overstating it —
+the safe direction, and the alternative reads a person named Abbot as a robot.
+
+### One agent appeared as five, so the agent nobody could see was the main one
+
+`anthropic-sdk-python` reported `Claude` 26, `Claude Opus 4.6` 1, `Claude Opus 4.7` 1, `Claude Opus
+4.7 (1M context)` 1 and `Claude Code (${CLAUDE_PROJECT_DIR})` 1 — five rows, all Claude Code, and
+the number a reader wanted (30) was nowhere on the page. Rows were keyed on the trailer's own text,
+and Claude Code writes the model into it. **The agent and the model are two questions.** Rows are
+now keyed by family, with the models listed beneath, and a commit carrying two trailers of one
+family counts once.
+
+### An unexpanded shell variable was printed as an agent's name
+
+`Claude Code (${CLAUDE_PROJECT_DIR})` is a hook that wrote its template instead of its value. The
+variable is not information about the agent, so it is stripped from the display name.
+
+### The README promised a first run the tool will not deliver
+
+Its example was this repository's own output — 37% attributed — while the realistic result on a
+stranger's repository is `no agent recorded 100%`. Across the six repositories above, 1.5% of
+commits carried an attributable trailer. The README now shows both, and says which one to expect.
+
+
 ## 0.5.3
 
 Found by installing the published 0.5.2 from npm and probing it the way an outside tester would,

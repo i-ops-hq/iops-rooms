@@ -13,6 +13,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   attributeAgent,
+  marksItselfABot,
   readCommits,
   readHistoryGraph,
   rollUpAgents,
@@ -41,6 +42,10 @@ async function repo(fn) {
 
 const CLAUDE = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>";
 const CURSOR = "Co-Authored-By: Cursor <cursoragent@cursor.com>";
+// Assembled rather than written whole, so the `${...}` survives being read by anything that
+// interpolates — which is the same accident that put it in the commit in the first place.
+const LEAKED_TEMPLATE =
+  "Co-Authored-By: Claude Code (" + "$" + "{CLAUDE_PROJECT_DIR}) <noreply@anthropic.com>";
 
 // ------------------------------------------------------------------ attribution
 
@@ -199,7 +204,87 @@ test("agent totals separate attributed work from work with no agent recorded", a
     const { agents, attributed, plain } = rollUpAgents((await readCommits(dir)).commits);
     assert.equal(attributed, 2);
     assert.equal(plain, 1, "a plain commit is not evidence that no agent was used, only unrecorded");
-    assert.deepEqual(agents.map((a) => a.label).sort(), ["Claude Opus 5", "Cursor"]);
+    // The row is the AGENT. The trailer said "Claude Opus 5" and Claude Code is what wrote it —
+    // keying rows on the trailer text split one agent into a row per model, and anthropic-sdk-python
+    // showed Claude Code five times with nobody able to see how much it had done.
+    assert.deepEqual(agents.map((a) => a.label).sort(), ["Claude", "Cursor"]);
+    assert.deepEqual(
+      agents.find((a) => a.label === "Claude").variants,
+      [{ label: "Claude Opus 5", commits: 1 }],
+      "the model is kept underneath, because it is a detail of the agent and not a second agent",
+    );
+  });
+});
+
+const CLAUDE_47 = "Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>";
+
+test("two models of one agent are one row, and one commit", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit("a.txt", "1\n", "one", CLAUDE);
+    await commit("b.txt", "2\n", "two", CLAUDE_47);
+    // Both trailers on a single commit: still one commit, and still one agent on it.
+    await commit("c.txt", "3\n", "three", `${CLAUDE}\n${CLAUDE_47}`);
+    const { agents, attributed, multi } = rollUpAgents((await readCommits(dir)).commits);
+    assert.equal(agents.length, 1, "one agent");
+    assert.equal(agents[0].commits, 3, "on three commits, not four");
+    assert.equal(attributed, 3);
+    assert.equal(multi, 0, "two models of one agent is not two agents, so nothing is split");
+    // Counts, not just labels. Each model is on two of the three commits — its own and the shared
+    // one — and asserting only the names would miss a variant tally that double-counted.
+    assert.deepEqual(
+      [...agents[0].variants].sort((a, b) => a.label.localeCompare(b.label)),
+      [{ label: "Claude Opus 4.7", commits: 2 }, { label: "Claude Opus 5", commits: 2 }],
+    );
+  });
+});
+
+test("a co-author that marks itself a bot is counted apart from one that does not", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit("a.txt", "1\n", "one", "Co-Authored-By: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>");
+    await commit("b.txt", "2\n", "two", "Co-Authored-By: Zanie Blue <contact@zanie.dev>");
+    await commit("c.txt", "3\n", "three", "Co-Authored-By: Charlie Marsh <charlie@astral.sh>");
+    const { coauthoredByBot, coauthoredByPerson, coauthored } = rollUpAgents(
+      (await readCommits(dir)).commits,
+    );
+    // On astral-sh/uv these three sat in ONE row labelled "co-author, not a known agent" at 47%,
+    // beside the agent rows. The bucket was maintainers and release bots and it read as agent work.
+    assert.equal(coauthoredByBot, 1);
+    assert.equal(coauthoredByPerson, 2);
+    assert.equal(coauthored, 3, "the total is still there for anything that wants the sum");
+  });
+});
+
+test("a commit with a person and a bot on it goes with the people", async () => {
+  await repo(async ({ dir, commit }) => {
+    await commit(
+      "a.txt", "1\n", "one",
+      "Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>\n" +
+        "Co-Authored-By: Ada Lovelace <ada@team.invalid>",
+    );
+    const { coauthoredByBot, coauthoredByPerson } = rollUpAgents((await readCommits(dir)).commits);
+    // One bucket per commit, so it has to pick. The human is the more informative half.
+    assert.equal(coauthoredByPerson, 1);
+    assert.equal(coauthoredByBot, 0);
+  });
+});
+
+test("marksItselfABot reads GitHub's marker and does not guess from a name", async () => {
+  assert.equal(marksItselfABot({ label: "dependabot[bot]", email: "x@y" }), true);
+  assert.equal(marksItselfABot({ label: "x", email: "1+renovate[bot]@users.noreply.github.com" }), true);
+  // Would be automation on a suffix rule, and is not marked. Understating automation is the safe
+  // direction; the alternative also reads a person named Abbot as a robot.
+  assert.equal(marksItselfABot({ label: "zaniebot", email: "z@example.com" }), false);
+  assert.equal(marksItselfABot({ label: "Talbot Reid", email: "t@example.com" }), false);
+});
+
+test("an unexpanded shell variable is not shown as the agent's name", async () => {
+  await repo(async ({ dir, commit }) => {
+    // Real, from anthropic-sdk-python: a hook wrote the template instead of the value, and rooms
+    // printed `Claude Code (${CLAUDE_PROJECT_DIR})` as an agent.
+    await commit("a.txt", "1\n", "one", LEAKED_TEMPLATE);
+    const { agents } = rollUpAgents((await readCommits(dir)).commits);
+    assert.equal(agents.length, 1);
+    assert.deepEqual(agents[0].variants, [{ label: "Claude Code", commits: 1 }]);
   });
 });
 
