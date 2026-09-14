@@ -1,0 +1,108 @@
+name: publish
+
+# RELEASING: package.json is the version. The tag only triggers, and it must agree.
+#   1. bump "version" in package.json   2. add the CHANGELOG heading
+#   3. commit                           4. git tag v<X.Y.Z> && git push origin v<X.Y.Z>
+#
+# Authentication is OIDC only, and there is deliberately no NPM_TOKEN secret in this repository.
+# A long-lived publish credential sitting in a settings page is a standing risk that nothing here
+# needs to take.
+#
+# This exists because 0.5.3 and everything before it was published from a laptop, which cannot
+# generate provenance — so the published tarballs have no signed link back to the commit that
+# produced them, and a reader has to take the repository's word that they match. `iops-rollcall`
+# has had that link since its second release; this is the same workflow, adapted.
+#
+# It does nothing until a trusted publisher is configured on npmjs.com for this repository and this
+# workflow file:  https://www.npmjs.com/package/iops-rooms/access
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      # Provenance: a signed, verifiable link from the published tarball back to the commit that
+      # produced it. It is the one part of "audit it yourself" a reader cannot check by reading, so
+      # it is attested rather than asserted.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # Node 22 bundles npm 10.9.x, and OIDC needs 11.5.1 or later. An older npm does not say so:
+      # it quietly falls back to token authentication, finds no token, and the registry answers
+      # 404 on the upload — which reads as "the package does not exist" and sent three rollcall
+      # runs chasing a trusted-publisher config that had been correct the whole time.
+      - name: npm new enough for OIDC, checked rather than assumed
+        run: |
+          npm install -g npm@latest
+          export NPM_VERSION=$(npm --version)
+          echo "npm $NPM_VERSION"
+          node -e "
+            const [maj, min, patch] = process.env.NPM_VERSION.split('.').map(Number);
+            const ok = maj > 11 || (maj === 11 && (min > 5 || (min === 5 && patch >= 1)));
+            if (!ok) {
+              console.error('::error::npm ' + process.env.NPM_VERSION + ' cannot authenticate by OIDC; 11.5.1 or later is required. Without it the publish fails with a 404 that names the wrong problem.');
+              process.exit(1);
+            }
+          "
+
+      - name: The tag must agree with package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME would publish $VERSION. package.json is the version; the tag only triggers."
+            exit 1
+          fi
+          echo "publishing $VERSION"
+
+      - name: The CHANGELOG names this version
+        # A release whose changelog heading is still the previous version ships a description of
+        # work it does not contain, and nobody reading the npm page can tell.
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if ! grep -q "^## $VERSION$" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $VERSION' heading."
+            exit 1
+          fi
+
+      - name: Zero runtime dependencies, checked before it ships rather than claimed after
+        run: |
+          node -e "
+            const p = require('./package.json');
+            const n = Object.keys(p.dependencies || {}).length;
+            if (n) { console.error(n + ' dependencies declared; this ships zero'); process.exit(1); }
+          "
+
+      # The whole suite, not a subset. `docs-version.test.js` is the one that matters most here: it
+      # fails when any version pinned in README, SECURITY.md, the skill mirrors or examples/mcp.json
+      # disagrees with package.json, and those are instructions telling a reader what to install.
+      - run: npm test
+
+      - name: Already on the registry?
+        id: published
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./package.json').name")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "$VERSION is already published; nothing to do."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish with provenance
+        if: steps.published.outputs.already == 'false'
+        # No NODE_AUTH_TOKEN. The npm CLI detects the OIDC environment and authenticates with it,
+        # and if no trusted publisher is configured this fails loudly rather than falling back to
+        # a credential nobody meant to store.
+        run: npm publish --provenance --access public
