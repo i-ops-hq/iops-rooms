@@ -1,0 +1,51 @@
+name: An agent is not recognised
+description: A tool wrote a trailer and it landed in the unrecognised bucket.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ten agents are recognised by name. The eleventh lands in the co-author rows rather than
+        quietly lowering the floor, which is the intended behaviour — but if it is a real coding
+        agent, it should have its own row.
+
+  - type: input
+    id: tool
+    attributes:
+      label: Which tool
+      placeholder: open-swe, Continue, Windsurf, …
+    validations:
+      required: true
+
+  - type: textarea
+    id: trailer
+    attributes:
+      label: The trailer it actually writes
+      description: >
+        **Copied from a real commit, not from the vendor's documentation.** What a tool writes and
+        what its docs say it writes are often different, and a family row matching a trailer nobody
+        emits is a signature covering nothing.
+      render: text
+      placeholder: "Co-authored-by: open-swe[bot] <open-swe@users.noreply.github.com>"
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: A public commit carrying it
+      description: A permalink, so the row can be checked against something real rather than against this issue.
+      placeholder: https://github.com/owner/repo/commit/abc1234
+    validations:
+      required: false
+
+  - type: textarea
+    id: variation
+    attributes:
+      label: How much the trailer varies
+      description: >
+        Does it embed a model name or a version? Claude Code writes the model into the name, which
+        is why rows are keyed by family with the models listed underneath. Knowing whether yours
+        does the same decides how the row is written.
+    validations:
+      required: false

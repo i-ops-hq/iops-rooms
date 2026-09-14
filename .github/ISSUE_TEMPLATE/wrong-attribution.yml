@@ -1,0 +1,74 @@
+name: The attribution looked wrong
+description: A row, a number or a share that does not describe your repository. No fix needed.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This is the most useful issue you can open here**, and it needs no fix attached.
+
+        `npm test` only covers what the fixtures hold. Both defects fixed in 0.5.4 came from
+        pointing the published build at somebody else's repository — a hook that had leaked
+        `${CLAUDE_PROJECT_DIR}` into a trailer, and five model strings for one agent. Neither shape
+        was in a fixture and neither would have been.
+
+        **Before you write:** if the answer is mostly `no agent recorded`, that is almost certainly
+        correct rather than a bug. Across six well-known repositories, 1.5% of 3,000 commits carried
+        a trailer this can attribute. Every share it prints is a floor.
+
+  - type: textarea
+    id: command
+    attributes:
+      label: What you ran
+      render: shell
+      placeholder: npx iops-rooms week --since 90d
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: What it said
+      description: All of it, including the caveat paragraph at the bottom.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead, and why
+    validations:
+      required: true
+
+  - type: textarea
+    id: trailers
+    attributes:
+      label: The trailers behind it
+      description: >
+        This is the part that usually settles it. Run the command below and paste the result — it is
+        the exact input the tool read. Redact names and addresses if you need to, but keep the
+        structure: which part is a name, which is an address, and where the brackets are.
+      render: shell
+      placeholder: |
+        $ git log -n 200 --format='%B' | grep -i '^co-authored-by:' | sort | uniq -c | sort -rn | head
+    validations:
+      required: true
+
+  - type: input
+    id: repo
+    attributes:
+      label: Is the repository public?
+      description: If it is, a link is worth more than anything else here — it makes the case reproducible.
+      placeholder: "https://github.com/... , or: private"
+    validations:
+      required: false
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`npx iops-rooms --version`, `node --version`, and your OS"
+      placeholder: iops-rooms 0.5.4, node 22.21.0, macOS
+    validations:
+      required: true
