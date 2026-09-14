@@ -330,6 +330,20 @@ the project and secret-looking filenames; and the whole of `src/` is unminified 
 
 Verify it yourself: open the board as `file://` and watch the network tab stay empty.
 
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup — `npm install`, `npm test`, and two smoke
+scripts that run the real thing end to end.
+
+The part worth reading before you start: **testing this against a repository it has never seen
+matters more than the unit suite does.** Both defects fixed in 0.5.4 came from pointing the
+published build at `astral-sh/uv` and `anthropic-sdk-python`, and neither shape was in a fixture.
+
+Issues labelled [`good first issue`](https://github.com/i-ops-hq/iops-rooms/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+are scoped so the hard part is already decided in the issue text. **"I ran this on my own repository
+and the answer looked wrong" is a first-class issue** and needs no fix attached — paste the output
+and what you expected.
+
 ## Requirements
 
 Node 20, 22 or 24 on macOS, Linux or Windows. Linux and Windows on every change, macOS weekly.
