@@ -869,7 +869,8 @@ export function renderBuiltBy(history) {
   if (!history || !history.ok || !history.contributors?.length) return "";
   const { agents } = history.agents;
   const plain = Number(history.agents.plain) || 0;
-  const coauthored = Number(history.agents.coauthored) || 0;
+  const coauthoredByBot = Number(history.agents.coauthoredByBot) || 0;
+  const coauthoredByPerson = Number(history.agents.coauthoredByPerson) || 0;
   const totalShown = history.trunk.length + history.branches.reduce((n, b) => n + b.commits.length, 0);
 
   const agentChips = agents
@@ -880,9 +881,19 @@ export function renderBuiltBy(history) {
     .join("");
   // A trailer no family recognises is its own chip. Folding it into "no agent recorded" would
   // say the commit was the person's own while the commit itself names a co-author.
-  const coauthorChip = coauthored
-    ? `<span class="bb-agent" data-family="coauthor"><span class="bb-swatch" aria-hidden="true"></span>co-author, not a known agent <b>${coauthored}</b></span>`
-    : "";
+  //
+  // Two chips, and neither of them says "agent": as one chip reading "co-author, not a known
+  // agent" it sat at 47% on astral-sh/uv with maintainers and release bots inside it, next to the
+  // agent chips, and read as agent work. `[bot]` is GitHub's own marker on App accounts, so the
+  // split is evidence rather than a guess about anybody's name.
+  const coauthorChip = [
+    coauthoredByBot
+      ? `<span class="bb-agent" data-family="coauthor-bot"><span class="bb-swatch" aria-hidden="true"></span>co-author that says it is a bot <b>${coauthoredByBot}</b></span>`
+      : "",
+    coauthoredByPerson
+      ? `<span class="bb-agent" data-family="coauthor"><span class="bb-swatch" aria-hidden="true"></span>co-author, no bot marker <b>${coauthoredByPerson}</b></span>`
+      : "",
+  ].join("");
   const plainChip = plain
     ? `<span class="bb-agent" data-family="human"><span class="bb-swatch" aria-hidden="true"></span>no agent recorded <b>${plain}</b></span>`
     : "";

@@ -25,13 +25,38 @@ npx iops-rooms week
 ```
 
 ```
-iops-rooms · last 7d
-105 commits · +15k −1.4k · 2 people
+iops-rooms · last 90d
+124 commits · +17k −1.6k · 1 person
 
-  Claude Opus 5      39  ████████░░░░░░░░░░░░░░  37%
+  Claude             55  ██████████░░░░░░░░░░░░  44%
   Cursor              1  █░░░░░░░░░░░░░░░░░░░░░   1%
-  no agent recorded  65  ██████████████░░░░░░░░  62%
+  no agent recorded  68  ████████████░░░░░░░░░░  55%
 ```
+
+That is this repository, which is unusually well attributed because it is built by an agent that
+writes the trailer. **Most repositories look nothing like it.** Here is `anthropic-sdk-python`, and
+it is the more honest picture of what you should expect on a first run:
+
+```
+anthropic-sdk-python · last 3650d
+500 commits · +161k −30k · 36 people
+
+  Claude                                        30  █░░░░░░░░░░░░░░░░░░░░░   6%
+    Claude                                      26
+    Claude Code                                  1
+    Claude Opus 4.6                              1
+    Claude Opus 4.7                              1
+    and 1 more                                   1
+  co-author that says it is a bot                5  █░░░░░░░░░░░░░░░░░░░░░   1%
+  co-author, no bot marker — usually a person    9  █░░░░░░░░░░░░░░░░░░░░░   2%
+  no agent recorded                            456  ████████████████████░░  91%
+```
+
+Six percent, in the repository of the company whose tool writes the trailer by default. Across six
+well-known repositories — Anthropic's, OpenAI's, LangChain's, Astral's, Vercel's and tinygrad's —
+1.5% of 3,000 commits carried a trailer this could attribute. **If your repository comes back
+mostly `no agent recorded`, that is the normal result and not a fault in your history.** The
+number is a floor, and on most repositories it is a very low one.
 
 Four commands, all read-only, none of which needs a room:
 
@@ -47,7 +72,7 @@ Run them from anywhere inside the project. A repository is one project, so a com
 you, not one of the same name at the root.
 
 <p align="center">
-  <img src="docs/screenshots/agents.svg" alt="A stacked bar badge reading: agents — Claude Opus 5 42%, Cursor 1%, unrecorded 57%">
+  <img src="docs/screenshots/agents.svg" alt="A stacked bar badge reading: agents — Claude 42%, Cursor 1%, unrecorded 57%">
 </p>
 
 <p align="center"><em>This one is real, generated from this repository by <code>rooms badge</code>.</em></p>
@@ -57,11 +82,28 @@ you, not one of the same name at the root.
 a **floor**, never a measurement of how much of your code an AI wrote — and unlike a vendor
 dashboard, it is blind to which vendor you use.
 
-**A trailer this tool does not recognise gets its own row**, `co-author, not a known agent`, rather
-than being folded into `no agent recorded`. Ten agents are recognised by name today — Claude,
-Cursor, Codex, Copilot, Devin, Gemini, Jules, aider, Amazon Q, Windsurf — and the eleventh will
-appear in that row instead of quietly lowering the floor. Human co-authors land there too, which is
-exactly what the label says of them.
+**A trailer this tool does not recognise gets its own row** rather than being folded into
+`no agent recorded`. Ten agents are recognised by name today — Claude, Cursor, Codex, Copilot,
+Devin, Gemini, Jules, aider, Amazon Q, Windsurf — and the eleventh appears in that row instead of
+quietly lowering the floor.
+
+**There are two such rows, and neither of them says "agent".** Until 0.5.4 there was one, labelled
+`co-author, not a known agent`, and on `astral-sh/uv` it read 47% with a long bar sitting directly
+above `no agent recorded` — so the page said, to any eye scanning it, that half the repository was
+agent-written. Inside that row were Zanie Blue with 157 commits, Charlie Marsh with 14, and a
+handful of release bots. Not one AI agent in the top twelve. The label was true and the number read
+as something else, which is the failure this tool exists to refuse.
+
+They are split on `[bot]`, which GitHub appends to every App account, so it is the platform's own
+marker rather than a guess about anybody's name. A release bot that does not mark itself lands with
+the people — that understates automation instead of overstating it, and calling somebody's
+colleague a robot is the more expensive mistake.
+
+**One row per agent; the model goes underneath it.** `anthropic-sdk-python` reported Claude Code
+five separate times — `Claude`, `Claude Opus 4.6`, `Claude Opus 4.7`, `Claude Opus 4.7 (1M context)`
+and, from a hook that wrote its template instead of its value, `Claude Code (${CLAUDE_PROJECT_DIR})`
+— so the one agent anybody was looking for never appeared as a number. The agent and the model are
+two different questions; the row answers the first and the lines beneath it answer the second.
 
 **Counts can overlap; percentages cannot.** A commit with two agents on it appears in both of their
 counts, because both of them were there. The percentages split that commit evenly so the rows always
@@ -231,7 +273,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.3 mcp install
+npx -y iops-rooms@0.5.4 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -244,7 +286,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.3", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.4", "mcp"] } } }
 ```
 
 ## Commands

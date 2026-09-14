@@ -72,17 +72,32 @@ export async function buildReport(projectDir, opts = {}) {
   const deletions = r.commits.reduce((n, c) => n + c.deletions, 0);
   const seen = r.commits.length;
 
-  // One row per agent, plus a row for co-authored commits no family claims, plus one for the
-  // commits that recorded nothing at all — so callers never have to remember to add a slice back
-  // in. All three are the same kind of row.
+  // One row per agent, then the co-authored commits no family claims, then the commits that
+  // recorded nothing at all — so callers never have to remember to add a slice back in.
   //
-  // The middle row exists because "no agent recorded" is a claim, not a leftover: folding an
-  // unrecognised trailer into it says a commit was the person's own when the commit says otherwise.
-  // A human co-author lands here too, which is exactly what the label says of them.
+  // **The co-authored rows are two, not one, and neither says "agent".** As one row labelled
+  // "co-author, not a known agent" it read 47% on astral-sh/uv with a long bar directly above
+  // "no agent recorded", and the eye took it for half the repository being agent-written. Inside
+  // it were Zanie Blue with 157 commits, Charlie Marsh with 14, and release bots — not one AI
+  // agent in the top twelve. A number that reads as more than it is, which is the thing this tool
+  // exists to refuse.
   const rows = allocatePercent(
     [
-      ...agents.agents.map((a) => ({ id: a.id, label: a.label, commits: a.commits, share: a.share })),
-      { id: "coauthor", label: "co-author, not a known agent", commits: agents.coauthored, share: agents.coauthored },
+      ...agents.agents.map((a) => ({
+        id: a.id, label: a.label, commits: a.commits, share: a.share, variants: a.variants || [],
+      })),
+      {
+        id: "coauthor-bot",
+        label: "co-author that says it is a bot",
+        commits: agents.coauthoredByBot,
+        share: agents.coauthoredByBot,
+      },
+      {
+        id: "coauthor",
+        label: "co-author, no bot marker — usually a person",
+        commits: agents.coauthoredByPerson,
+        share: agents.coauthoredByPerson,
+      },
       { id: "unrecorded", label: "no agent recorded", commits: agents.plain, share: agents.plain },
     ].filter((row) => row.commits > 0),
     seen,
@@ -120,6 +135,30 @@ function bar(pct) {
   return "█".repeat(Math.min(BAR_W, filled)) + "░".repeat(Math.max(0, BAR_W - filled));
 }
 
+/**
+ * The models beneath their agent, when the trailers named more than one.
+ *
+ * The agent is the row and the model is a detail of it. Only shown when there is something to
+ * choose between: a single model adds a line that repeats what the row above already said.
+ */
+function modelLines(row, width, countWidth) {
+  const variants = row.variants || [];
+  if (variants.length < 2) return [];
+  const shown = variants.slice(0, MODELS_SHOWN);
+  const rest = variants.length - shown.length;
+  const lines = shown.map(
+    (v) => `    ${v.label}`.padEnd(width + 2) + `  ${String(v.commits).padStart(countWidth)}`,
+  );
+  if (rest > 0) {
+    const more = variants.slice(MODELS_SHOWN).reduce((n, v) => n + v.commits, 0);
+    lines.push(`    and ${rest} more`.padEnd(width + 2) + `  ${String(more).padStart(countWidth)}`);
+  }
+  return lines;
+}
+
+//: Enough to show the mix without turning one agent into a page.
+const MODELS_SHOWN = 4;
+
 /** The mix, as the block every command shares. `delta` is an optional id -> change in commits. */
 export function formatMix(report, { delta = null } = {}) {
   if (!report.rows.length) return "  no commits in this window\n";
@@ -130,7 +169,8 @@ export function formatMix(report, { delta = null } = {}) {
       const d = delta && delta[r.id] != null && delta[r.id] !== 0
         ? `  ${delta[r.id] > 0 ? "+" : "−"}${Math.abs(delta[r.id])}`
         : "";
-      return `  ${r.label.padEnd(w)}  ${String(r.commits).padStart(cw)}  ${bar(r.pct)} ${String(r.pct).padStart(3)}%${d}`;
+      const line = `  ${r.label.padEnd(w)}  ${String(r.commits).padStart(cw)}  ${bar(r.pct)} ${String(r.pct).padStart(3)}%${d}`;
+      return [line, ...modelLines(r, w, cw)].join("\n");
     })
     .join("\n") + "\n" + splitNote(report);
 }

@@ -74,6 +74,24 @@ const FAMILIES = [
   { id: "windsurf", name: /\bwindsurf\b/i, address: /^windsurf@codeium\.com$/i, label: "Windsurf" },
 ];
 
+/**
+ * Whether a co-author trailer says it is automation.
+ *
+ * GitHub appends `[bot]` to every GitHub App account, so this is the platform's own marker rather
+ * than a guess from the name — `dependabot[bot]`, `renovate[bot]`, `github-actions[bot]`,
+ * `stainless-app[bot]` all carry it. Deliberately nothing cleverer: a suffix rule that read
+ * `zaniebot` as automation would also read a person named Abbot as one, and the cost of that
+ * mistake is telling somebody their colleague is a robot.
+ *
+ * So a release bot that does not mark itself lands with the people. That is the safe direction:
+ * it understates automation rather than overstating it, and the note beside the row says so.
+ */
+export function marksItselfABot(coauthor) {
+  const label = String(coauthor?.label || "");
+  const email = String(coauthor?.email || "");
+  return /\[bot\]/i.test(label) || /\[bot\]@users\.noreply\.github\.com$/i.test(email);
+}
+
 /** The name half of a `Name <email>` trailer, for a co-author no family claims. */
 export function coauthorOf(trailer) {
   const raw = String(trailer || "").trim();
@@ -89,6 +107,26 @@ export function coauthorOf(trailer) {
  * Split a `Name <email>` trailer into an agent, or null when it names a person.
  * A co-author with no recognised domain or name is a human collaborator, not an unknown robot.
  */
+/**
+ * A trailer name with unexpanded shell variables taken out of it.
+ *
+ * anthropic-sdk-python carries a commit co-authored by `Claude Code (${CLAUDE_PROJECT_DIR})`:
+ * somebody's hook wrote the template instead of the value, and rooms printed it as the agent's
+ * name. The variable is not information about the agent, so it goes; what is left is still the
+ * name the trailer meant to give. An empty parenthesis left behind goes with it.
+ */
+function withoutUnexpandedVariables(label) {
+  const cleaned = String(label)
+    .replace(/\$\{[^}]*\}/g, "")
+    .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  // Never return nothing: a name that was only a variable is unusable, and the caller's fallback
+  // to the family label is a better answer than an empty row.
+  return cleaned || "";
+}
+
 export function attributeAgent(trailer) {
   const raw = String(trailer || "").trim();
   if (!raw) return null;
@@ -97,7 +135,11 @@ export function attributeAgent(trailer) {
   const email = (m ? m[2] : "").trim();
   for (const fam of FAMILIES) {
     if (fam.name.test(label) || (email && fam.address.test(email))) {
-      return { id: fam.id, family: fam.label, label: label || fam.label, email };
+      return {
+        id: fam.id, family: fam.label,
+        label: withoutUnexpandedVariables(label) || fam.label,
+        email,
+      };
     }
   }
   return null;
@@ -582,28 +624,63 @@ export function rollUpContributors(commits) {
 export function rollUpAgents(commits) {
   const agents = new Map();
   let attributed = 0;
-  let coauthored = 0;
+  let coauthoredByPerson = 0;
+  let coauthoredByBot = 0;
   let multi = 0;
   for (const c of commits || []) {
-    if (c.agents.length) attributed += 1;
-    else if ((c.coauthors || []).length) coauthored += 1;
-    if (c.agents.length > 1) multi += 1;
-    const weight = c.agents.length ? 1 / c.agents.length : 0;
+    // **One row per agent, models beneath it.** Keyed by family and not by the trailer's own text,
+    // because Claude Code writes the model into the name: anthropic-sdk-python reported `Claude`
+    // 26, `Claude Opus 4.6` 1, `Claude Opus 4.7` 1, `Claude Opus 4.7 (1M context)` 1 and
+    // `Claude Code (${CLAUDE_PROJECT_DIR})` 1 as five separate agents, so the one agent anybody
+    // was looking for never appeared as a number. Agent and model are two questions and this row
+    // answers the first.
+    const families = new Map();
     for (const a of c.agents) {
-      const row = agents.get(a.label) || {
-        label: a.label, id: a.id, family: a.family, commits: 0, share: 0, insertions: 0, deletions: 0,
+      const row = families.get(a.family) || { id: a.id, family: a.family, labels: [] };
+      // `parseLog` already de-duplicates identical trailers per commit (#10), so this cannot fire
+      // today and no test covers it. Kept because the variant tally below counts per label, and a
+      // repeated trailer arriving here would make one commit two without anything noticing.
+      if (!row.labels.includes(a.label)) row.labels.push(a.label);
+      families.set(a.family, row);
+    }
+
+    if (families.size) attributed += 1;
+    else if ((c.coauthors || []).length) {
+      // A commit with a person on it goes with the people even when a bot signed it too: the
+      // human is the more informative half, and these buckets are one-per-commit.
+      if ((c.coauthors || []).every(marksItselfABot)) coauthoredByBot += 1;
+      else coauthoredByPerson += 1;
+    }
+    if (families.size > 1) multi += 1;
+    const weight = families.size ? 1 / families.size : 0;
+    for (const found of families.values()) {
+      const row = agents.get(found.family) || {
+        label: found.family, id: found.id, family: found.family,
+        commits: 0, share: 0, insertions: 0, deletions: 0, variants: new Map(),
       };
       row.commits += 1;
       row.share += weight;
       row.insertions += c.insertions;
       row.deletions += c.deletions;
-      agents.set(a.label, row);
+      for (const label of found.labels) row.variants.set(label, (row.variants.get(label) || 0) + 1);
+      agents.set(found.family, row);
     }
   }
+  const coauthored = coauthoredByPerson + coauthoredByBot;
   return {
-    agents: [...agents.values()].sort((a, b) => b.commits - a.commits || a.label.localeCompare(b.label)),
+    agents: [...agents.values()]
+      .map((row) => ({
+        ...row,
+        // The models, biggest first, as plain data — every surface can show or ignore them.
+        variants: [...row.variants.entries()]
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([label, commits]) => ({ label, commits })),
+      }))
+      .sort((a, b) => b.commits - a.commits || a.label.localeCompare(b.label)),
     attributed,
     coauthored,
+    coauthoredByPerson,
+    coauthoredByBot,
     multi,
     plain: (commits || []).length - attributed - coauthored,
   };

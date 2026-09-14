@@ -171,7 +171,7 @@ test("the badge is a stacked bar, so unrecorded cannot be cropped out of it", as
     const svg = renderBadgeSvg(await buildReport(dir));
     assert.match(svg, /^<svg xmlns=/);
     assert.match(svg, /unrecorded 67%/, "the number nobody wants on their README is on it");
-    assert.match(svg, /Claude Opus 5 33%/);
+    assert.match(svg, /Claude 33%/, "the badge names the agent, not the model it happened to run");
     // A single "33% AI" number is the claim this tool cannot support; the unrecorded segment has
     // to be in the same picture at the same size as the ones it is compared against.
     assert.equal((svg.match(/<rect class="seg"/g) || []).length, 2, "one segment per row");
