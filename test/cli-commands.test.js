@@ -43,6 +43,25 @@ function run(cwd, argv, env = {}) {
   });
 }
 
+async function rmRf(dir) {
+  // On Windows, a killed process may still briefly hold open file handles or directory locks
+  // during OS teardown, causing rmdir to fail with EBUSY/ENOTEMPTY immediately after exit.
+  // Retry with backoff on Windows to prevent test flakiness (issue #19).
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      return;
+    } catch (err) {
+      if (process.platform === "win32" && (err.code === "EBUSY" || err.code === "ENOTEMPTY" || err.code === "EPERM")) {
+        if (attempt === 9) throw err;
+        await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 async function withRoom(fn, { init = true } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "iops-rooms-cmd-"));
   await new Promise((res) => spawn("git", ["init", "-q", "."], { cwd: dir }).on("close", res));
@@ -55,7 +74,7 @@ async function withRoom(fn, { init = true } = {}) {
     if (init) await run(dir, ["init", "--name", "cmds"]);
     await fn(dir);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rmRf(dir);
   }
 }
 
@@ -135,7 +154,7 @@ test("bare auth defaults to status; an unrecognised subcommand is refused", asyn
       assert.match(bogus.err, /github/);
       assert.match(bogus.err, /gitlab/);
     } finally {
-      await rm(home, { recursive: true, force: true });
+      await rmRf(home);
     }
   });
 });
@@ -259,7 +278,7 @@ test("index scans and writes a page without touching the real home", async () =>
       assert.ok(page.length > 100, "a page was written");
       assert.doesNotMatch(page, /\{\{/, "template fully substituted");
     } finally {
-      await rm(home, { recursive: true, force: true });
+      await rmRf(home);
     }
   });
 });
