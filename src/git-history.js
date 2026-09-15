@@ -177,7 +177,7 @@ function describeGitError(err, args, timeout) {
  * Callers that genuinely tolerate absence (an optional probe like `symbolic-ref` on a detached
  * HEAD) read `.out` and carry on. Callers that report a NUMBER check `.ok` first.
  */
-async function git(cwd, args, { timeout = 20_000, maxBuffer = 64 * 1024 * 1024 } = {}) {
+export async function git(cwd, args, { timeout = 20_000, maxBuffer = 64 * 1024 * 1024 } = {}) {
   try {
     const { stdout } = await execFileAsync("git", args, { cwd, timeout, maxBuffer });
     return { ok: true, out: String(stdout || ""), err: "" };

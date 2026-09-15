@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.5.5
+
+### The trailers are 1.5% of commits, and the repository was already saying more than that
+
+This tool rested entirely on `Co-Authored-By` trailers. Measured across the newest 500 commits of
+six well-known repositories — Anthropic's, OpenAI's, LangChain's, Astral's, Vercel's and tinygrad's,
+3,000 commits — **45 of them carried a trailer that could be attributed to an agent.** On
+`sindresorhus/execa`, picked at random, the whole output was one row: `no agent recorded 100%`.
+
+That was not a bug. It was the product measuring something that mostly is not there, while the
+denser signal sat in the same checkout and nothing opened it: **five of those six repositories
+declare their agents in a committed file**, and `AGENTS.md` alone is in five of six.
+
+So there is a second source now, answering a different question. Not *which commits recorded an
+agent* — sparse, honestly caveated, unchanged — but *which agents is this project set up for*.
+
+```
+Configured for: Claude Code (CLAUDE.md, .claude/), Codex (.codex/) and a
+cross-vendor AGENTS.md.
+A config file says a tool was set up here, never that it was used — and never
+how much. These are not commits and do not belong in the percentages above.
+```
+
+**The two are never combined into one number**, and the commit percentages are untouched — a test
+asserts that adding a config file moves no share. A figure averaging "6% attributed" with
+"configured for three agents" would mean nothing, and would be the 47% row of 0.5.4 wearing a
+different hat.
+
+### Three decisions inside it
+
+**Only the filename is read, never the contents.** What is inside a `CLAUDE.md` is somebody's
+prompt. A test fails if `src/agent-config.js` so much as references `readFile`.
+
+**It asks git, not the filesystem.** An untracked `.claude/` left in a working tree by somebody's
+own session is not a declaration by the project, and reporting it as one would tell a reader this
+repository is set up for Claude Code on the evidence of their own scratch directory.
+
+**Declaring nothing is stated rather than omitted**, because otherwise "declared nothing" and "did
+not look" read identically — and the first is the reason the trailer count is the only evidence
+there is.
+
+### On the tests
+
+Two of them proved nothing on the first pass and were rewritten. A sentinel that wrote a secret into
+`CLAUDE.md` and checked it never surfaced **passed with the reader mutated to read every file** —
+the result is assembled from a fixed vocabulary, so file data has nowhere to ride. It is now an
+assertion that every string returned comes from that vocabulary, which does fail when something
+file-derived is added.
+
+
 ## 0.5.4
 
 Found by installing the published 0.5.3 and pointing it at six repositories that have never heard of
