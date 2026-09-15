@@ -237,16 +237,29 @@ jobs:
 
       # End to end against the PUBLISHED package, the way a caller's workflow runs it. Comment
       # posting is off: this job is not a pull request and has no business writing one.
-      # The version in package.json on this branch is unreleased by definition, and the action
-      # pins to it — correctly, because floating would change what a comment said. So the end-to-end
-      # run is given the newest PUBLISHED version explicitly. Testing the unreleased one is not
-      # possible and pretending otherwise would just wire the pin check to always fail here.
-      - name: Which published version to run end to end
+      # The action runs `rooms branch --json`, and the published package only grew `--json` in the
+      # version this branch introduces. So the end-to-end run can only happen once that ships:
+      # until then the newest published build ignores the flag and prints prose, and the action
+      # would fail on unparseable output for a reason that has nothing to do with the action.
+      #
+      # Skipped with the reason stated rather than removed, because it starts working on its own the
+      # moment the release lands — and rather than pointed at the working tree, which would make it
+      # a test of code nobody can install.
+      - name: Can the published package do what the action needs?
         id: published
-        run: echo "version=$(npm view iops-rooms version)" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(npm view iops-rooms version)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npx --yes "iops-rooms@$VERSION" week --since 1d --json 2>&1 | head -1 | grep -q '^{'; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=rooms::iops-rooms@$VERSION has no --json yet, so the end-to-end step is skipped until this release ships"
+          fi
 
       - name: The action runs end to end against the published package
         id: live
+        if: steps.published.outputs.ready == 'true'
         uses: ./actions/attribution
         with:
           base: main
@@ -267,6 +280,7 @@ jobs:
           [ "${{ steps.badpin.outcome }}" = "failure" ] || { echo "::error::an unpublished pin should fail"; exit 1; }
 
       - name: ...and reports what it read
+        if: steps.published.outputs.ready == 'true'
         run: |
           echo "attributed=${{ steps.live.outputs.attributed }} seen=${{ steps.live.outputs.seen }}"
           [ "${{ steps.live.outputs.commented }}" = "false" ] || { echo "::error::it posted a comment with comment:false"; exit 1; }
