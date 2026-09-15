@@ -28,6 +28,15 @@ if [ -z "$base" ]; then
   exit 1
 fi
 
+# The pinned version has to exist before npx is asked for it. Without this check npx falls through
+# to looking for a local `rooms` and the runner reports `sh: 1: rooms: not found`, which explains
+# nothing — it happens whenever an action tag carries a version that was never published, and the
+# person reading the log has no way to get from that message to that cause.
+if ! npm view "iops-rooms@${ROOMS_VERSION}" version >/dev/null 2>&1; then
+  echo "::error title=rooms::iops-rooms@${ROOMS_VERSION} is not on the registry. This action is pinned to the version beside it in its own tag; if you are running it from an unreleased ref, pass \`version:\` explicitly."
+  exit 1
+fi
+
 # `--json` and never the text output. Parsing prose would break the first time a sentence was
 # reworded, and the sentences in this tool get reworded because that is most of what it is.
 npx --yes "iops-rooms@${ROOMS_VERSION}" branch "origin/$base" --json > "$report" 2> >(tee /dev/stderr)

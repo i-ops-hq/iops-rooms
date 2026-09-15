@@ -237,12 +237,34 @@ jobs:
 
       # End to end against the PUBLISHED package, the way a caller's workflow runs it. Comment
       # posting is off: this job is not a pull request and has no business writing one.
+      # The version in package.json on this branch is unreleased by definition, and the action
+      # pins to it — correctly, because floating would change what a comment said. So the end-to-end
+      # run is given the newest PUBLISHED version explicitly. Testing the unreleased one is not
+      # possible and pretending otherwise would just wire the pin check to always fail here.
+      - name: Which published version to run end to end
+        id: published
+        run: echo "version=$(npm view iops-rooms version)" >> "$GITHUB_OUTPUT"
+
       - name: The action runs end to end against the published package
         id: live
         uses: ./actions/attribution
         with:
           base: main
           comment: "false"
+          version: ${{ steps.published.outputs.version }}
+
+      - name: An unpublished pin fails with a message that names the cause
+        id: badpin
+        continue-on-error: true
+        uses: ./actions/attribution
+        with:
+          base: main
+          comment: "false"
+          version: "0.0.0-does-not-exist"
+
+      - name: "...rather than a bare `sh: rooms: not found`"
+        run: |
+          [ "${{ steps.badpin.outcome }}" = "failure" ] || { echo "::error::an unpublished pin should fail"; exit 1; }
 
       - name: ...and reports what it read
         run: |
