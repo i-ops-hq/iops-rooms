@@ -7,6 +7,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import test from "node:test";
@@ -83,7 +84,7 @@ test("why nothing was recorded is carried, and only when nothing was", async () 
 test("stdout carries the object and nothing else", async () => {
   await repo(async ({ dir, commit }) => {
     await commit("a.txt", "1\n", CLAUDE);
-    const cli = new URL("../src/cli.js", import.meta.url).pathname;
+    const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));
     const { stdout } = await run(process.execPath, [cli, "week", "--since", "400d", "--json"], { cwd: dir });
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.attributed, 1);
@@ -96,7 +97,7 @@ test("a refusal is JSON too, rather than prose with a success code", async () =>
   // an unreadable stdout and exit 0 — the worst pair available.
   await repo(async ({ dir, commit }) => {
     await commit("a.txt", "1\n", CLAUDE);
-    const cli = new URL("../src/cli.js", import.meta.url).pathname;
+    const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));
     const { stdout } = await run(process.execPath, [cli, "branch", "main", "--json"], { cwd: dir });
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.ok, false);
@@ -105,7 +106,7 @@ test("a refusal is JSON too, rather than prose with a success code", async () =>
 });
 
 test("--json is listed in the help, or nobody finds it", async () => {
-  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));
   const { stdout } = await run(process.execPath, [cli, "help"]);
   assert.match(stdout, /--json/);
 });

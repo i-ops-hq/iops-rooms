@@ -217,7 +217,7 @@ jobs:
           grep -q 'SENTINEL-FLOOR-NOTE' /tmp/body2.md || { echo "::error::the floor note is not in the comment body"; exit 1; }
           grep -q '3 of 10 commits' /tmp/body2.md || { echo "::error::expected a count, not a bare percentage"; exit 1; }
           grep -q 'Claude Opus 5' /tmp/body2.md || { echo "::error::models are not listed under the agent"; exit 1; }
-          grep -q 'record more than one agent' /tmp/body2.md || { echo "::error::the overlap caveat is missing"; exit 1; }
+          grep -qE 'records? more than one agent' /tmp/body2.md || { echo "::error::the overlap caveat is missing"; exit 1; }
           grep -q 'never that it was used' /tmp/body2.md || { echo "::error::the declared-is-not-used caveat is missing"; exit 1; }
           grep -q '<!-- iops-rooms-attribution -->' /tmp/body2.md || { echo "::error::no marker, so the comment cannot be updated in place"; exit 1; }
 
