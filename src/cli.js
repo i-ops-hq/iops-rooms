@@ -39,6 +39,7 @@ Read your git history — no room, no server, no account:
   rooms branch [<base>]        the mix for commits on this branch only
   rooms file <path>            who and which agent last touched it
   rooms badge [--out <file>]   an SVG for your README
+  --json                       week, branch and file as data, caveats included
 
 The board and the room:
   rooms init [--name <n>] [--code <id>] [--share] [--mcp]
@@ -102,6 +103,7 @@ const VALUE_FLAGS = new Set([
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
+  "json",
 ]);
 
 /**
@@ -594,8 +596,18 @@ async function main() {
     // folder — `api · last 7d` for a repo called something else entirely.
     const here = process.cwd();
     const dir = await resolveProjectRoot(here);
-    const { buildReport, formatWeek, formatBranch, formatFile, renderBadgeSvg, defaultBase } =
+    const { buildReport, formatWeek, formatBranch, formatFile, renderBadgeSvg, defaultBase, reportToJson } =
       await import("./report.js");
+    // One object on stdout and nothing else, so a consumer can pipe it without filtering prose out.
+    const asJson = (r, meta) => {
+      process.stdout.write(`${JSON.stringify(reportToJson(r, meta), null, 2)}\n`);
+    };
+    // A refusal still has to be JSON when JSON was asked for. Prose on stdout with exit 0 is the
+    // worst combination available: unparseable, and reported as success.
+    const refuseJson = (why, code = 0) => {
+      process.stdout.write(`${JSON.stringify({ ok: false, reason: why }, null, 2)}\n`);
+      if (code) process.exitCode = code;
+    };
     // A pathspec the user typed is relative to where they typed it, so it is rebased onto the root
     // rather than reinterpreted there: `rooms file thing.js` inside src/api/ means that file.
     const fromHere = (p) => {
@@ -620,6 +632,7 @@ async function main() {
       // Week over week, because "am I leaning harder on one model" is the question a weekly
       // report is actually asked. Only for the default window — a delta against an arbitrary
       // --since would be comparing this window to a window nobody chose.
+      if (argv.json) return asJson(r, { name, window: `last ${since}` });
       let delta = null;
       if (!argv.since) {
         const prior = await buildReport(dir, { since: "14d", paths, exclude });
@@ -642,6 +655,7 @@ async function main() {
     if (cmd === "branch") {
       const base = rest[0] || (await defaultBase(dir));
       if (!base) {
+        if (argv.json) return refuseJson("no default branch to compare against; name one", 1);
         process.stderr.write("no default branch to compare against — name one: rooms branch main\n");
         process.exitCode = 1;
         return;
@@ -650,11 +664,13 @@ async function main() {
       const snap = await readGitSnapshot(dir);
       const head = snap.current || "HEAD";
       if (head === base) {
+        if (argv.json) return refuseJson(`on ${base} already; there is no branch to compare`);
         process.stdout.write(`on ${base} already — rooms branch compares a branch against it\n`);
         return;
       }
       const r = await buildReport(dir, { range: `${base}..HEAD`, paths, exclude });
       if (!r.ok) return failNotGit(r);
+      if (argv.json) return asJson(r, { name: head, window: `not in ${base}` });
       process.stdout.write(formatBranch(r, { branch: head, base }));
       return;
     }
@@ -668,6 +684,11 @@ async function main() {
       }
       const r = await buildReport(dir, { paths: [fromHere(target)], exclude, since: argv.since || "" });
       if (!r.ok) return failNotGit(r);
+      if (argv.json) {
+        // Zero commits is an answer here rather than a special case: a consumer asking about a file
+        // nobody touched wants `{"commits": {"seen": 0}}`, not a sentence it has to parse.
+        return asJson(r, { name: fromHere(target), window: argv.since ? `last ${argv.since}` : "" });
+      }
       if (!r.seen) {
         process.stdout.write(`no commits touch ${target} in this window\n`);
         return;

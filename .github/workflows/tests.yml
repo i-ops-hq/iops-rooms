@@ -160,3 +160,91 @@ jobs:
               exit 1
             fi
           done
+
+  action:
+    name: the attribution action says the right thing, or nothing
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the action compares a branch against a base, and a shallow clone has neither.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The body builder is a heredoc inside run.sh, which is where it belongs — it is three lines
+      # of glue away from the shell that feeds it. Lifted out here so the decisions in it can be
+      # tested against fixtures instead of only end to end against whatever this branch happens to
+      # contain, which changes under the test.
+      - name: Lift the comment builder out of the action
+        run: |
+          python3 - <<'EOF'
+          from pathlib import Path
+          src = Path("actions/attribution/run.sh").read_text()
+          block = src.split('python3 - "$report" "$body" <<\'PY\'\n', 1)[1].split("\nPY\n", 1)[0]
+          Path("/tmp/build_comment.py").write_text(block)
+          EOF
+
+      - name: Nothing attributed means no comment at all
+        run: |
+          # The common case. 1.5% of commits across six well-known repositories carried a trailer,
+          # so most pull requests land here — and a bot saying "0 agents found" every time is noise
+          # that teaches people to scroll past the one that matters.
+          cat > /tmp/none.json <<'EOF'
+          {"attributed":0,"commits":{"seen":12},"rows":[{"id":"unrecorded","label":"no agent recorded","commits":12,"percent":100,"models":[]}],
+           "multiAgentCommits":0,"declared":null,"floor":"every share is a floor"}
+          EOF
+          export GITHUB_OUTPUT=/tmp/out1; : > "$GITHUB_OUTPUT"
+          python3 /tmp/build_comment.py /tmp/none.json /tmp/body1.md
+          [ ! -s /tmp/body1.md ] || { echo "::error::it commented when nothing was attributed"; exit 1; }
+          grep -q '^commented=false$' /tmp/out1 || { echo "::error::commented output should be false"; exit 1; }
+
+      - name: The floor travels inside the comment, not behind a link
+        run: |
+          cat > /tmp/some.json <<'EOF'
+          {"attributed":3,"commits":{"seen":10},
+           "rows":[{"id":"claude","label":"Claude","commits":3,"percent":30,
+                    "models":[{"label":"Claude Opus 5","commits":2},{"label":"Claude Opus 4.7","commits":1}]}],
+           "multiAgentCommits":1,
+           "declared":{"agents":[{"id":"claude","label":"Claude Code","files":["CLAUDE.md"]}],"crossVendorAgentsMd":false,"note":"n/a"},
+           "floor":"SENTINEL-FLOOR-NOTE"}
+          EOF
+          export GITHUB_OUTPUT=/tmp/out2; : > "$GITHUB_OUTPUT"
+          python3 /tmp/build_comment.py /tmp/some.json /tmp/body2.md
+          cat /tmp/body2.md
+          grep -q 'SENTINEL-FLOOR-NOTE' /tmp/body2.md || { echo "::error::the floor note is not in the comment body"; exit 1; }
+          grep -q '3 of 10 commits' /tmp/body2.md || { echo "::error::expected a count, not a bare percentage"; exit 1; }
+          grep -q 'Claude Opus 5' /tmp/body2.md || { echo "::error::models are not listed under the agent"; exit 1; }
+          grep -q 'record more than one agent' /tmp/body2.md || { echo "::error::the overlap caveat is missing"; exit 1; }
+          grep -q 'never that it was used' /tmp/body2.md || { echo "::error::the declared-is-not-used caveat is missing"; exit 1; }
+          grep -q '<!-- iops-rooms-attribution -->' /tmp/body2.md || { echo "::error::no marker, so the comment cannot be updated in place"; exit 1; }
+
+      - name: A percentage never appears on its own
+        run: |
+          # A bare "30%" on somebody's pull request is read by people who never ran this and will
+          # not read a caveat. Counts are harder to misquote, so counts are what it prints.
+          grep -qE '^\*\*[0-9]+ of [0-9]+ commits' /tmp/body2.md || { echo "::error::the headline should be a count"; exit 1; }
+
+      - name: A refusal is handled as a refusal, not a finding
+        run: |
+          echo '{"ok":false,"reason":"on main already"}' > /tmp/refuse.json
+          export GITHUB_OUTPUT=/tmp/out3; : > "$GITHUB_OUTPUT"
+          python3 /tmp/build_comment.py /tmp/refuse.json /tmp/body3.md
+          [ ! -s /tmp/body3.md ] || { echo "::error::it commented on a refusal"; exit 1; }
+          grep -q '^commented=false$' /tmp/out3 || { echo "::error::a refusal should not report a comment"; exit 1; }
+
+      # End to end against the PUBLISHED package, the way a caller's workflow runs it. Comment
+      # posting is off: this job is not a pull request and has no business writing one.
+      - name: The action runs end to end against the published package
+        id: live
+        uses: ./actions/attribution
+        with:
+          base: main
+          comment: "false"
+
+      - name: ...and reports what it read
+        run: |
+          echo "attributed=${{ steps.live.outputs.attributed }} seen=${{ steps.live.outputs.seen }}"
+          [ "${{ steps.live.outputs.commented }}" = "false" ] || { echo "::error::it posted a comment with comment:false"; exit 1; }

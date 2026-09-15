@@ -184,6 +184,58 @@ export function formatConfig(report) {
   return `\n${wrap(`Configured for: ${list}.`)}\n${wrap(CONFIG_NOTE)}\n`;
 }
 
+/**
+ * The report as data, for anything downstream of a person reading it.
+ *
+ * **Every caveat the text carries is a field here.** A consumer that gets `{"claude": 6}` and
+ * nothing else will publish "6% AI-written" as a fact, which is the exact misuse the prose spends
+ * four sentences refusing — and a caveat that only exists in the terminal is a caveat that does not
+ * survive contact with the thing most likely to misquote it.
+ *
+ * So `floor`, `multi`, `truncated`, the model variants, the two co-author buckets kept apart, what
+ * the repository declares, and why nothing was recorded are all carried. They are not decoration:
+ * each one exists because a number was once read as more than it was.
+ */
+export function reportToJson(report, { name = "", window = "" } = {}) {
+  const config = report.config || null;
+  return {
+    project: name,
+    window,
+    commits: { seen: report.seen, total: report.total, truncated: Boolean(report.truncated) },
+    lines: { added: report.insertions, removed: report.deletions },
+    people: report.contributors.length,
+    rows: report.rows.map((r) => ({
+      id: r.id,
+      label: r.label,
+      commits: r.commits,
+      percent: r.pct,
+      // The models under an agent, when the trailers named more than one. Flattening these would
+      // put Claude Code back to appearing five times, which 0.5.4 removed.
+      models: (r.variants || []).map((v) => ({ label: v.label, commits: v.commits })),
+    })),
+    attributed: report.agents.attributed,
+    // Kept apart in the data for the same reason they are kept apart in the rows: one of these is
+    // mostly people, and merging them produced a 47% bar that read as agent work.
+    coAuthored: {
+      byBot: report.agents.coauthoredByBot,
+      byPersonOrUnmarked: report.agents.coauthoredByPerson,
+    },
+    unrecorded: report.agents.plain,
+    // How many commits carry more than one agent, so a consumer knows the rows overlap rather than
+    // discovering it when they sum past the commit count.
+    multiAgentCommits: report.multi,
+    declared: config && config.ok
+      ? {
+          agents: config.agents.map((a) => ({ id: a.id, label: a.label, files: a.files })),
+          crossVendorAgentsMd: config.crossVendor,
+          note: CONFIG_NOTE,
+        }
+      : null,
+    whyNothingRecorded: report.agents.attributed === 0 ? whyNothingRecorded(config) || null : null,
+    floor: FLOOR_NOTE,
+  };
+}
+
 /** The sentence that has to travel with every percentage on every surface. */
 export const FLOOR_NOTE =
   '"no agent recorded" is not "no agent used". Cursor and Copilot often write no ' +

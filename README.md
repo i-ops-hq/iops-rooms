@@ -87,7 +87,7 @@ dashboard, it is blind to which vendor you use.
 Devin, Gemini, Jules, aider, Amazon Q, Windsurf — and the eleventh appears in that row instead of
 quietly lowering the floor.
 
-**There are two such rows, and neither of them says "agent".** Until 0.5.6 there was one, labelled
+**There are two such rows, and neither of them says "agent".** Until 0.5.7 there was one, labelled
 `co-author, not a known agent`, and on `astral-sh/uv` it read 47% with a long bar sitting directly
 above `no agent recorded` — so the page said, to any eye scanning it, that half the repository was
 agent-written. Inside that row were Zanie Blue with 157 commits, Charlie Marsh with 14, and a
@@ -337,7 +337,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.6 mcp install
+npx -y iops-rooms@0.5.7 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -350,7 +350,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.6", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.7", "mcp"] } } }
 ```
 
 ## Commands
@@ -400,7 +400,7 @@ Verify it yourself: open the board as `file://` and watch the network tab stay e
 scripts that run the real thing end to end.
 
 The part worth reading before you start: **testing this against a repository it has never seen
-matters more than the unit suite does.** Both defects fixed in 0.5.6 came from pointing the
+matters more than the unit suite does.** Both defects fixed in 0.5.7 came from pointing the
 published build at `astral-sh/uv` and `anthropic-sdk-python`, and neither shape was in a fixture.
 
 Issues labelled [`good first issue`](https://github.com/i-ops-hq/iops-rooms/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
