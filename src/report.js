@@ -10,6 +10,7 @@
 // mistake it for a measurement of how much AI wrote their code.
 
 import { readCommits, rollUpAgents, rollUpContributors, sinceArg } from "./git-history.js";
+import { CONFIG_NOTE, readAgentConfig } from "./agent-config.js";
 import { readGitSnapshot } from "./git-info.js";
 
 /** k/M once the digits stop being readable. Shared with the board's own shortener by shape, not code
@@ -68,6 +69,11 @@ export async function buildReport(projectDir, opts = {}) {
 
   const agents = rollUpAgents(r.commits);
   const contributors = rollUpContributors(r.commits);
+  // The second evidence source, and a different question: not which commits recorded an agent, but
+  // which agents this repository is set up for. Read on the same pass as the commits so no caller
+  // can print one without having the other — the first source is a floor and saying so is only
+  // half an answer when the second one is sitting in the same checkout.
+  const config = await readAgentConfig(projectDir);
   const insertions = r.commits.reduce((n, c) => n + c.insertions, 0);
   const deletions = r.commits.reduce((n, c) => n + c.deletions, 0);
   const seen = r.commits.length;
@@ -117,11 +123,44 @@ export async function buildReport(projectDir, opts = {}) {
     rows,
     agents,
     contributors,
+    config,
     since: sinceArg(since),
     range,
     paths,
     exclude,
   };
+}
+
+/**
+ * What the repository declares, as its own block beneath the mix.
+ *
+ * Deliberately prose and not a second bar chart. A chart invites comparison with the one above it,
+ * and these two things do not compare: the rows above are commits and these are files. Putting a
+ * percentage on a config file would be inventing a denominator out of nothing.
+ *
+ * Absence is stated rather than omitted. A repository that declares nothing is a finding — it is
+ * the reason the trailer count is the only evidence there is — and leaving the block out entirely
+ * would make "nothing declared" and "not looked at" identical to a reader.
+ */
+export function formatConfig(report) {
+  const config = report.config;
+  if (!config) return "";
+  if (!config.ok) return `\nAgent config: ${config.note}.\n`;
+
+  const named = config.agents.map((a) => `${a.label} (${a.files.join(", ")})`);
+  if (!named.length && !config.crossVendor) {
+    return "\n" + wrap(
+      "This repository commits no agent config file — no AGENTS.md, CLAUDE.md, .claude/, " +
+      ".cursor/ or the rest — so the trailers above are the only evidence there is.",
+    ) + "\n";
+  }
+
+  const parts = [...named];
+  if (config.crossVendor) parts.push("a cross-vendor AGENTS.md");
+  const list = parts.length === 1
+    ? parts[0]
+    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return `\n${wrap(`Configured for: ${list}.`)}\n${wrap(CONFIG_NOTE)}\n`;
 }
 
 /** The sentence that has to travel with every percentage on every surface. */
@@ -223,6 +262,7 @@ export function formatWeek(report, { name = "", window = "last 7 days", delta = 
     out.push(`\nReading the newest ${report.seen} of ${report.total} commits in this window.\n`);
   }
   out.push(`\n${wrap(FLOOR_NOTE)}\n`);
+  out.push(formatConfig(report));
   return out.join("");
 }
 
@@ -231,6 +271,7 @@ export function formatBranch(report, { branch = "HEAD", base = "" } = {}) {
   const who = report.contributors.map((c) => c.name).join(", ");
   if (who) out.push(`\nby ${who}\n`);
   out.push(`\n${wrap(FLOOR_NOTE)}\n`);
+  out.push(formatConfig(report));
   return out.join("");
 }
 

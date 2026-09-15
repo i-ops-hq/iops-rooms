@@ -87,7 +87,7 @@ dashboard, it is blind to which vendor you use.
 Devin, Gemini, Jules, aider, Amazon Q, Windsurf — and the eleventh appears in that row instead of
 quietly lowering the floor.
 
-**There are two such rows, and neither of them says "agent".** Until 0.5.4 there was one, labelled
+**There are two such rows, and neither of them says "agent".** Until 0.5.5 there was one, labelled
 `co-author, not a known agent`, and on `astral-sh/uv` it read 47% with a long bar sitting directly
 above `no agent recorded` — so the page said, to any eye scanning it, that half the repository was
 agent-written. Inside that row were Zanie Blue with 157 commits, Charlie Marsh with 14, and a
@@ -194,6 +194,43 @@ None of that makes `git log` wrong. It makes the number you get from it a starti
 an answer — which is the whole job here: the same facts, with the arithmetic done correctly and the
 caveats attached, in a form you can paste into a PR or a README.
 
+### Two questions, and the second one is the dense answer
+
+**Which commits recorded an agent** is what the trailers answer, and the honest version of that
+answer is usually "almost none". Across the newest 500 commits of six well-known repositories —
+3,000 commits — **45 of them, 1.5%, carried a trailer this could attribute.**
+
+**Which agents is this project set up for** is a different question, and it has a much better
+answer: five of those six repositories declare their agents in a committed file. `AGENTS.md` alone
+is in five of six.
+
+So both are reported, apart:
+
+```
+  Claude                                         4  █░░░░░░░░░░░░░░░░░░░░░   2%
+  co-author that says it is a bot               20  █░░░░░░░░░░░░░░░░░░░░░   4%
+  co-author, no bot marker — usually a person  219  █████████░░░░░░░░░░░░░  43%
+  no agent recorded                            257  ███████████░░░░░░░░░░░  51%
+
+Configured for: Claude Code (CLAUDE.md, .claude/), Codex (.codex/) and a
+cross-vendor AGENTS.md.
+A config file says a tool was set up here, never that it was used — and never
+how much. These are not commits and do not belong in the percentages above.
+```
+
+**They are never combined into one number.** "6% attributed, configured for three agents" has no
+average, and inventing one would be the defect this tool exists to refuse.
+
+Three things about how that second line is produced:
+
+- **Only the filename is read, never the contents.** What is inside your `CLAUDE.md` is your
+  prompt — your standards, your architecture, sometimes your business. Rooms reads `git log` and
+  filenames. There is a test that fails if `src/agent-config.js` so much as references `readFile`.
+- **It asks git, not the filesystem.** An untracked `.claude/` your own session left lying around
+  is not a declaration by the project.
+- **Declaring nothing is stated, not omitted.** A repository with no config files says so, because
+  otherwise "declared nothing" and "did not look" read identically.
+
 ### What this will not tell you
 
 - **Which lines an agent wrote.** Rooms reads commits, not keystrokes. Line-level provenance is a
@@ -273,7 +310,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.4 mcp install
+npx -y iops-rooms@0.5.5 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -286,7 +323,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.4", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.5", "mcp"] } } }
 ```
 
 ## Commands
@@ -336,7 +373,7 @@ Verify it yourself: open the board as `file://` and watch the network tab stay e
 scripts that run the real thing end to end.
 
 The part worth reading before you start: **testing this against a repository it has never seen
-matters more than the unit suite does.** Both defects fixed in 0.5.4 came from pointing the
+matters more than the unit suite does.** Both defects fixed in 0.5.5 came from pointing the
 published build at `astral-sh/uv` and `anthropic-sdk-python`, and neither shape was in a fixture.
 
 Issues labelled [`good first issue`](https://github.com/i-ops-hq/iops-rooms/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
