@@ -10,7 +10,7 @@
 // mistake it for a measurement of how much AI wrote their code.
 
 import { readCommits, rollUpAgents, rollUpContributors, sinceArg } from "./git-history.js";
-import { CONFIG_NOTE, readAgentConfig } from "./agent-config.js";
+import { CONFIG_NOTE, readAgentConfig, whyNothingRecorded } from "./agent-config.js";
 import { readGitSnapshot } from "./git-info.js";
 
 /** k/M once the digits stop being readable. Shared with the board's own shortener by shape, not code
@@ -129,6 +129,27 @@ export async function buildReport(projectDir, opts = {}) {
     paths,
     exclude,
   };
+}
+
+/**
+ * Why nothing was attributed, printed only when nothing was.
+ *
+ * A window where every commit is `no agent recorded` looks identical whether the setup is broken,
+ * the tool in use never wrote trailers, or no agent was involved at all — and a reader cannot tell
+ * which, so they cannot tell whether to go looking. Two of those three answers are "nothing is
+ * wrong", which the output has never said.
+ *
+ * **Silent the moment anything is attributed.** Not a threshold: at 1% the reader has evidence the
+ * mechanism works and does not need telling how it works. And **no command is offered**, because
+ * the one this was first scoped around — `rooms hooks install` — writes a board post and not a
+ * trailer. Attribution comes from the agent; this tool measures it and must not manufacture it.
+ */
+export function formatWhyEmpty(report) {
+  if (!report || !report.agents) return "";
+  if (report.agents.attributed > 0) return "";
+  if (!report.seen) return "";
+  const why = whyNothingRecorded(report.config);
+  return why ? `\n${wrap(why)}\n` : "";
 }
 
 /**
@@ -263,6 +284,7 @@ export function formatWeek(report, { name = "", window = "last 7 days", delta = 
   }
   out.push(`\n${wrap(FLOOR_NOTE)}\n`);
   out.push(formatConfig(report));
+  out.push(formatWhyEmpty(report));
   return out.join("");
 }
 
@@ -272,6 +294,7 @@ export function formatBranch(report, { branch = "HEAD", base = "" } = {}) {
   if (who) out.push(`\nby ${who}\n`);
   out.push(`\n${wrap(FLOOR_NOTE)}\n`);
   out.push(formatConfig(report));
+  out.push(formatWhyEmpty(report));
   return out.join("");
 }
 

@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.5.6
+
+### An empty result now says whether it is expected, broken, or nothing to go on
+
+`no agent recorded 100%` is the most common first run, and three different situations produce it:
+the setup is broken, the tool in use never wrote trailers, or no agent was involved. A bar at 100%
+cannot tell them apart, so a reader could not tell whether to go looking — and **in two of the three
+the honest answer is that nothing is wrong**, which the output had never said.
+
+Since 0.5.5 reads what the repository declares, the cases can be told apart:
+
+```
+Cursor does not write a Co-Authored-By trailer, so an empty result here is
+the expected one rather than a fault. There is nothing to switch on.
+```
+```
+Claude Code writes this trailer itself, and none of these commits carries
+one — so either it was turned off, or this window predates it.
+```
+
+Silent the moment anything is attributed. Not a threshold: at any attribution at all the reader has
+evidence the mechanism works. Silent too for an agent this does not have a position on, because
+silence beats a guess about a tool nobody checked.
+
+### No command is offered, and the reason is the interesting part
+
+This was first scoped around printing `rooms hooks install` — on the belief, written into the issue,
+that it writes the trailer. **It does not.** That hook writes a board activity post and never
+touches a commit message, and the repository said so in two places that were not read first:
+`src/cli.js:80` and `src/board.js:943`, both "trailers the agents write themselves".
+
+Shipping it would have told people to fix an attribution problem with something that does not touch
+attribution. And rooms **should not** write trailers: one added by a git hook is a claim about
+authorship made by something that was not there. These numbers are worth something because the agent
+attested to its own work; manufacturing the evidence we then measure would be the most complete
+version of the defect this project exists to avoid.
+
+
 ## 0.5.5
 
 ### The trailers are 1.5% of commits, and the repository was already saying more than that

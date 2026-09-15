@@ -132,6 +132,68 @@ export async function readAgentConfig(projectDir) {
 }
 
 /**
+ * Whether an agent writes the trailer on its own, by family id.
+ *
+ * `true` means the tool attests to its own commits without being asked, so a repository configured
+ * for it and recording nothing is a discrepancy worth a sentence. `false` means it does not write
+ * one at all, so an empty result is the expected outcome and there is nothing for anybody to fix.
+ *
+ * Stated as a flat fact per family and nothing finer. The exact setting that controls it is a
+ * vendor's to change and we would be wrong about it within a release — naming a settings key here
+ * would be the same mistake as the one that produced this function, which was asserting that
+ * `rooms hooks install` writes a trailer. It writes a board post. Attribution comes from the agent,
+ * and this tool cannot and must not manufacture it.
+ */
+const WRITES_ITS_OWN_TRAILER = {
+  claude: true,
+  aider: true,
+  jules: true,
+  gemini: true,
+  cursor: false,
+  copilot: false,
+  windsurf: false,
+  codex: false,
+};
+
+/**
+ * Why nothing was attributed, for a window where nothing was — or "" when something was.
+ *
+ * Three different situations produce the same empty row, and a reader cannot tell them apart:
+ * their setup is broken, their setup never did this, or nothing used an agent. Saying which is the
+ * whole value here, and in two of the three cases the honest answer is that nothing is wrong.
+ */
+export function whyNothingRecorded(config) {
+  if (!config || !config.ok) return "";
+  const declared = config.agents || [];
+  if (!declared.length) {
+    return config.crossVendor
+      ? "An AGENTS.md is committed here but it names no vendor, so there is nothing to compare " +
+        "these commits against. If an agent was used and wrote no trailer, nothing here can tell."
+      : "Nothing here declares an agent either, so if none was used this is simply the answer.";
+  }
+
+  const attesting = declared.filter((a) => WRITES_ITS_OWN_TRAILER[a.id]);
+  const quiet = declared.filter((a) => WRITES_ITS_OWN_TRAILER[a.id] === false);
+  const names = (list) => list.map((a) => a.label).join(" and ");
+
+  if (attesting.length) {
+    return (
+      `${names(attesting)} writes this trailer itself, and none of these commits carries one — ` +
+      "so either it was turned off, or this window predates it. " +
+      "Rooms cannot add one: a trailer it wrote would be a claim about authorship made by " +
+      "something that was not there."
+    );
+  }
+  if (quiet.length) {
+    return (
+      `${names(quiet)} does not write a Co-Authored-By trailer, so an empty result here is the ` +
+      "expected one rather than a fault. There is nothing to switch on."
+    );
+  }
+  return "";
+}
+
+/**
  * The sentence that must travel with any configuration claim, for the same reason `FLOOR_NOTE`
  * travels with any percentage.
  */

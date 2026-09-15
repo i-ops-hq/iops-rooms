@@ -87,7 +87,7 @@ dashboard, it is blind to which vendor you use.
 Devin, Gemini, Jules, aider, Amazon Q, Windsurf — and the eleventh appears in that row instead of
 quietly lowering the floor.
 
-**There are two such rows, and neither of them says "agent".** Until 0.5.5 there was one, labelled
+**There are two such rows, and neither of them says "agent".** Until 0.5.6 there was one, labelled
 `co-author, not a known agent`, and on `astral-sh/uv` it read 47% with a long bar sitting directly
 above `no agent recorded` — so the page said, to any eye scanning it, that half the repository was
 agent-written. Inside that row were Zanie Blue with 157 commits, Charlie Marsh with 14, and a
@@ -231,6 +231,33 @@ Three things about how that second line is produced:
 - **Declaring nothing is stated, not omitted.** A repository with no config files says so, because
   otherwise "declared nothing" and "did not look" read identically.
 
+### When nothing is recorded, it says whether that is expected
+
+`no agent recorded 100%` is the most common first run, and three different situations produce it:
+the setup is broken, the tool in use never wrote trailers, or no agent was involved. A reader cannot
+tell which from a bar at 100%, so they cannot tell whether to go looking — and in two of the three
+the answer is that nothing is wrong.
+
+```
+Cursor does not write a Co-Authored-By trailer, so an empty result here is
+the expected one rather than a fault. There is nothing to switch on.
+```
+```
+Claude Code writes this trailer itself, and none of these commits carries
+one — so either it was turned off, or this window predates it. Rooms cannot
+add one: a trailer it wrote would be a claim about authorship made by
+something that was not there.
+```
+
+It is **silent the moment anything is attributed** — at any attribution at all you have evidence the
+mechanism works and do not need telling how it works.
+
+**No command is offered, and that is deliberate.** Rooms could write a trailer from a git hook and
+will not: a `Co-Authored-By: Claude` added by this tool is a claim about who wrote the code, made by
+something that was not there. The numbers here are worth something precisely because the agent
+attested to its own work. Manufacturing the evidence we then measure would be the most complete
+version of the mistake this project exists to avoid.
+
 ### What this will not tell you
 
 - **Which lines an agent wrote.** Rooms reads commits, not keystrokes. Line-level provenance is a
@@ -310,7 +337,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.5 mcp install
+npx -y iops-rooms@0.5.6 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -323,7 +350,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.5", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.6", "mcp"] } } }
 ```
 
 ## Commands
@@ -373,7 +400,7 @@ Verify it yourself: open the board as `file://` and watch the network tab stay e
 scripts that run the real thing end to end.
 
 The part worth reading before you start: **testing this against a repository it has never seen
-matters more than the unit suite does.** Both defects fixed in 0.5.5 came from pointing the
+matters more than the unit suite does.** Both defects fixed in 0.5.6 came from pointing the
 published build at `astral-sh/uv` and `anthropic-sdk-python`, and neither shape was in a fixture.
 
 Issues labelled [`good first issue`](https://github.com/i-ops-hq/iops-rooms/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
