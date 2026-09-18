@@ -160,3 +160,173 @@ jobs:
               exit 1
             fi
           done
+
+  action:
+    name: the attribution action says the right thing, or nothing
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the action compares a branch against a base, and a shallow clone has neither.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The body builder is a heredoc inside run.sh, which is where it belongs — it is three lines
+      # of glue away from the shell that feeds it. Lifted out here so the decisions in it can be
+      # tested against fixtures instead of only end to end against whatever this branch happens to
+      # contain, which changes under the test.
+      - name: Lift the comment builder out of the action
+        run: |
+          python3 - <<'EOF'
+          from pathlib import Path
+          src = Path("actions/attribution/run.sh").read_text()
+          block = src.split('python3 - "$report" "$body" <<\'PY\'\n', 1)[1].split("\nPY\n", 1)[0]
+          Path("/tmp/build_comment.py").write_text(block)
+          EOF
+
+      - name: Nothing attributed means no comment at all
+        run: |
+          # The common case. 1.5% of commits across six well-known repositories carried a trailer,
+          # so most pull requests land here — and a bot saying "0 agents found" every time is noise
+          # that teaches people to scroll past the one that matters.
+          cat > /tmp/none.json <<'EOF'
+          {"attributed":0,"commits":{"seen":12},"rows":[{"id":"unrecorded","label":"no agent recorded","commits":12,"percent":100,"models":[]}],
+           "multiAgentCommits":0,"declared":null,"floor":"every share is a floor"}
+          EOF
+          export GITHUB_OUTPUT=/tmp/out1; : > "$GITHUB_OUTPUT"
+          python3 /tmp/build_comment.py /tmp/none.json /tmp/body1.md
+          [ ! -s /tmp/body1.md ] || { echo "::error::it commented when nothing was attributed"; exit 1; }
+          grep -q '^commented=false$' /tmp/out1 || { echo "::error::commented output should be false"; exit 1; }
+
+      - name: The floor travels inside the comment, not behind a link
+        run: |
+          cat > /tmp/some.json <<'EOF'
+          {"attributed":3,"commits":{"seen":10},
+           "rows":[{"id":"claude","label":"Claude","commits":3,"percent":30,
+                    "models":[{"label":"Claude Opus 5","commits":2},{"label":"Claude Opus 4.7","commits":1}]}],
+           "multiAgentCommits":1,
+           "declared":{"agents":[{"id":"claude","label":"Claude Code","files":["CLAUDE.md"]}],"crossVendorAgentsMd":false,"note":"n/a"},
+           "floor":"SENTINEL-FLOOR-NOTE"}
+          EOF
+          export GITHUB_OUTPUT=/tmp/out2; : > "$GITHUB_OUTPUT"
+          python3 /tmp/build_comment.py /tmp/some.json /tmp/body2.md
+          cat /tmp/body2.md
+          grep -q 'SENTINEL-FLOOR-NOTE' /tmp/body2.md || { echo "::error::the floor note is not in the comment body"; exit 1; }
+          grep -q '3 of 10 commits' /tmp/body2.md || { echo "::error::expected a count, not a bare percentage"; exit 1; }
+          grep -q 'Claude Opus 5' /tmp/body2.md || { echo "::error::models are not listed under the agent"; exit 1; }
+          grep -qE 'records? more than one agent' /tmp/body2.md || { echo "::error::the overlap caveat is missing"; exit 1; }
+          grep -q 'never that it was used' /tmp/body2.md || { echo "::error::the declared-is-not-used caveat is missing"; exit 1; }
+          grep -q '<!-- iops-rooms-attribution -->' /tmp/body2.md || { echo "::error::no marker, so the comment cannot be updated in place"; exit 1; }
+
+      - name: A percentage never appears on its own
+        run: |
+          # A bare "30%" on somebody's pull request is read by people who never ran this and will
+          # not read a caveat. Counts are harder to misquote, so counts are what it prints.
+          grep -qE '^\*\*[0-9]+ of [0-9]+ commits' /tmp/body2.md || { echo "::error::the headline should be a count"; exit 1; }
+
+      - name: A refusal is handled as a refusal, not a finding
+        run: |
+          echo '{"ok":false,"reason":"on main already"}' > /tmp/refuse.json
+          export GITHUB_OUTPUT=/tmp/out3; : > "$GITHUB_OUTPUT"
+          python3 /tmp/build_comment.py /tmp/refuse.json /tmp/body3.md
+          [ ! -s /tmp/body3.md ] || { echo "::error::it commented on a refusal"; exit 1; }
+          grep -q '^commented=false$' /tmp/out3 || { echo "::error::a refusal should not report a comment"; exit 1; }
+
+      # End to end against the PUBLISHED package, the way a caller's workflow runs it. Comment
+      # posting is off: this job is not a pull request and has no business writing one.
+      # The action runs `rooms branch --json`, and the published package only grew `--json` in the
+      # version this branch introduces. So the end-to-end run can only happen once that ships:
+      # until then the newest published build ignores the flag and prints prose, and the action
+      # would fail on unparseable output for a reason that has nothing to do with the action.
+      #
+      # Skipped with the reason stated rather than removed, because it starts working on its own the
+      # moment the release lands — and rather than pointed at the working tree, which would make it
+      # a test of code nobody can install.
+      # The posting half, with `gh` stubbed, because a workflow cannot open a pull request from a
+      # fork to test itself. Every call is logged, and a write answers with whatever STUB says.
+      - name: Stub gh for the posting tests
+        run: |
+          mkdir -p /tmp/ghstub
+          cat > /tmp/ghstub/gh <<'STUB'
+          #!/usr/bin/env bash
+          echo "$*" >> "$GH_LOG"
+          case "$*" in
+            *"--method POST"*|*"--method PATCH"*)
+              case "$STUB" in
+                ok) exit 0 ;;
+                403) echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1 ;;
+                500) echo "gh: Internal Server Error (HTTP 500)" >&2; exit 1 ;;
+              esac ;;
+          esac
+          exit 0
+          STUB
+          chmod +x /tmp/ghstub/gh
+          printf 'body\n' > /tmp/body.md
+
+      - name: A fork is not a failed check, and costs no request
+        env: { HEAD_REPO: someone/fork, REPO: i-ops-hq/iops-rooms, PR_NUMBER: "7", STUB: "403", GH_LOG: /tmp/gh-fork.log }
+        run: |
+          : > "$GH_LOG"; out=$(mktemp)
+          PATH="/tmp/ghstub:$PATH" GITHUB_OUTPUT="$out" bash actions/attribution/post.sh /tmp/body.md
+          grep -q '^commented=false$' "$out" || { echo "::error::a fork should report commented=false"; exit 1; }
+          [ ! -s "$GH_LOG" ] || { echo "::error::the fork was noticed only after calling the API"; exit 1; }
+
+      - name: A token that cannot write says so, and passes
+        env: { HEAD_REPO: i-ops-hq/iops-rooms, REPO: i-ops-hq/iops-rooms, PR_NUMBER: "7", STUB: "403", GH_LOG: /tmp/gh-403.log }
+        run: |
+          out=$(mktemp)
+          PATH="/tmp/ghstub:$PATH" GITHUB_OUTPUT="$out" bash actions/attribution/post.sh /tmp/body.md > /tmp/said.txt
+          grep -q '^commented=false$' "$out" || { echo "::error::a 403 should report commented=false"; exit 1; }
+          grep -q 'cannot write' /tmp/said.txt || { echo "::error::a 403 should say why"; exit 1; }
+
+      - name: Any other failure still fails
+        env: { HEAD_REPO: i-ops-hq/iops-rooms, REPO: i-ops-hq/iops-rooms, PR_NUMBER: "7", STUB: "500", GH_LOG: /tmp/gh-500.log }
+        run: |
+          out=$(mktemp)
+          if PATH="/tmp/ghstub:$PATH" GITHUB_OUTPUT="$out" bash actions/attribution/post.sh /tmp/body.md; then
+            echo "::error::a server error was swallowed"; exit 1
+          fi
+          if grep -q '^commented=' "$out"; then echo "::error::a failed post reported an outcome"; exit 1; fi
+
+      - name: Can the published package do what the action needs?
+        id: published
+        run: |
+          VERSION=$(npm view iops-rooms version)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npx --yes "iops-rooms@$VERSION" week --since 1d --json 2>&1 | head -1 | grep -q '^{'; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=rooms::iops-rooms@$VERSION has no --json yet, so the end-to-end step is skipped until this release ships"
+          fi
+
+      - name: The action runs end to end against the published package
+        id: live
+        if: steps.published.outputs.ready == 'true'
+        uses: ./actions/attribution
+        with:
+          base: main
+          comment: "false"
+          version: ${{ steps.published.outputs.version }}
+
+      - name: An unpublished pin fails with a message that names the cause
+        id: badpin
+        continue-on-error: true
+        uses: ./actions/attribution
+        with:
+          base: main
+          comment: "false"
+          version: "0.0.0-does-not-exist"
+
+      - name: "...rather than a bare `sh: rooms: not found`"
+        run: |
+          [ "${{ steps.badpin.outcome }}" = "failure" ] || { echo "::error::an unpublished pin should fail"; exit 1; }
+
+      - name: ...and reports what it read
+        if: steps.published.outputs.ready == 'true'
+        run: |
+          echo "attributed=${{ steps.live.outputs.attributed }} seen=${{ steps.live.outputs.seen }}"
+          [ "${{ steps.live.outputs.commented }}" = "false" ] || { echo "::error::it posted a comment with comment:false"; exit 1; }

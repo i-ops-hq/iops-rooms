@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.5.7
+
+### `--json` on `week`, `branch` and `file`
+
+Nothing downstream could consume this tool's output, which is why the action below could not exist.
+One object on stdout and nothing else, and **every caveat the prose carries is a field**: the floor
+note itself rather than a flag pointing at it, `multiAgentCommits` so a consumer knows the rows
+overlap, `truncated`, the models nested under their agent, the two co-author buckets kept apart, what
+the repository declares, and why nothing was recorded when nothing was.
+
+A caveat that exists only in the terminal does not survive contact with the surface most likely to
+misquote it.
+
+A refusal is JSON too. `rooms branch` on the base branch declines, and under `--json` that used to
+be prose on stdout with exit 0 — unparseable and reported as success, the worst pair available.
+
+### A GitHub Action that comments the attribution on a pull request
+
+```yaml
+- uses: i-ops-hq/iops-rooms/actions/attribution@attribution-action-v1.0.0
+```
+
+Most of its design is about who reads it. Everything else this tool prints is read by somebody who
+just typed a command and can see the caveat underneath. **A comment on a pull request is read by
+people who never ran anything**, did not choose to see it, and will take a number at face value.
+
+- **It says nothing when nothing was attributed.** Most pull requests will be that — 1.5% of commits
+  across six well-known repositories carried a trailer. A bot posting "0 agents found" every time is
+  noise that teaches people to scroll past the one that matters.
+- **Counts, never a bare percentage.** `3 of 10 commits` is harder to misquote than `30%`, and the
+  number repeated in a meeting is the one to be careful about.
+- **The floor note is in the comment**, not behind a link. A reader who has to click will not click.
+- One comment, edited in place.
+- **A pull request from a fork is not a failed check.** GitHub gives a fork's workflow a read-only
+  token, so the comment cannot be posted. The first version of this action failed the check there,
+  on exactly the outside contributions it exists to read. It now notices, says so in a notice, leaves
+  the attribution in the job summary, and passes. Any other failure to post still fails.
+
+The version it runs is pinned to the package beside it and it refuses to guess, for the same reason
+the coverage action in `assurance` does: an action that floats changes what a comment said without
+anybody editing a workflow.
+
+
 ## 0.5.6
 
 ### An empty result now says whether it is expected, broken, or nothing to go on

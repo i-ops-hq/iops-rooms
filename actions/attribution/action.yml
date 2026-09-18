@@ -1,0 +1,91 @@
+name: "rooms attribution"
+description: "Comment the agent mix for a pull request's commits — and say nothing when there is nothing to say."
+author: "I-Ops"
+
+branding:
+  icon: git-pull-request
+  color: blue
+
+inputs:
+  base:
+    description: "What to compare against. Defaults to the pull request's own base branch."
+    required: false
+    default: ""
+  token:
+    description: "Token used to post the comment. Needs `pull-requests: write`."
+    required: false
+    default: ${{ github.token }}
+  comment:
+    description: >-
+      Post a comment on the pull request. Set false to compute the outputs and post nothing —
+      useful if you would rather put it in a job summary or a check of your own.
+    required: false
+    default: "true"
+  version:
+    description: "Version of iops-rooms to run. Defaults to the one this action shipped with."
+    required: false
+    default: ""
+  node-version:
+    description: "Node to run it on."
+    required: false
+    default: "22"
+
+outputs:
+  attributed:
+    description: "Commits carrying a trailer this could attribute."
+    value: ${{ steps.report.outputs.attributed }}
+  seen:
+    description: "Commits read in this range."
+    value: ${{ steps.report.outputs.seen }}
+  agents:
+    description: "The agents found, comma separated. Empty when none were."
+    value: ${{ steps.report.outputs.agents }}
+  declared:
+    description: "Agents the repository declares in committed config, comma separated."
+    value: ${{ steps.report.outputs.declared }}
+  commented:
+    description: "true when a comment was posted or updated."
+    value: ${{ steps.report.outputs.commented }}
+
+runs:
+  using: composite
+  steps:
+    - name: Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Work out which version to run
+      id: pin
+      shell: bash
+      env:
+        REQUESTED: ${{ inputs.version }}
+      run: |
+        VERSION="$REQUESTED"
+        if [ -z "$VERSION" ]; then
+          # The version this action shipped with, from the package beside it in the same checkout.
+          # Refused rather than floated: an action that falls back to latest changes what a comment
+          # said without anybody editing a workflow, and the change is invisible.
+          PKG="${{ github.action_path }}/../../package.json"
+          if [ ! -f "$PKG" ]; then
+            echo "::error title=rooms::cannot find $PKG to read the pinned version. Pass \`version:\` explicitly."
+            exit 1
+          fi
+          VERSION=$(node -p "require('$PKG').version")
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "running iops-rooms@$VERSION"
+
+    - name: Read the attribution
+      id: report
+      shell: bash
+      env:
+        ROOMS_VERSION: ${{ steps.pin.outputs.version }}
+        BASE: ${{ inputs.base }}
+        POST_COMMENT: ${{ inputs.comment }}
+        GH_TOKEN: ${{ inputs.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        DEFAULT_BASE: ${{ github.event.pull_request.base.ref }}
+        REPO: ${{ github.repository }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      run: bash "${{ github.action_path }}/run.sh"
