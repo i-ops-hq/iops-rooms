@@ -87,4 +87,5 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
         DEFAULT_BASE: ${{ github.event.pull_request.base.ref }}
         REPO: ${{ github.repository }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       run: bash "${{ github.action_path }}/run.sh"

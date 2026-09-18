@@ -142,16 +142,6 @@ if [ ! -s "$body" ] || [ "${POST_COMMENT}" != "true" ] || [ -z "${PR_NUMBER:-}" 
   exit 0
 fi
 
-# Rule 3. One comment, updated in place. The marker is an HTML comment in the body, which survives
-# editing and is invisible to a reader.
-existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-  --jq 'map(select(.body | contains("<!-- iops-rooms-attribution -->"))) | .[0].id // empty' 2>/dev/null || true)
-
-if [ -n "$existing" ]; then
-  gh api --method PATCH "repos/$REPO/issues/comments/$existing" -F body=@"$body" --silent
-  echo "updated comment $existing"
-else
-  gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@"$body" --silent
-  echo "posted a new comment"
-fi
-echo "commented=true" >> "$GITHUB_OUTPUT"
+# Rule 3. One comment, updated in place, and a fork's read-only token is not a failed check.
+# Both live in post.sh, which the workflow tests with a stubbed `gh`.
+bash "$(dirname "${BASH_SOURCE[0]}")/post.sh" "$body"

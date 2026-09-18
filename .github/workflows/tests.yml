@@ -245,6 +245,52 @@ jobs:
       # Skipped with the reason stated rather than removed, because it starts working on its own the
       # moment the release lands — and rather than pointed at the working tree, which would make it
       # a test of code nobody can install.
+      # The posting half, with `gh` stubbed, because a workflow cannot open a pull request from a
+      # fork to test itself. Every call is logged, and a write answers with whatever STUB says.
+      - name: Stub gh for the posting tests
+        run: |
+          mkdir -p /tmp/ghstub
+          cat > /tmp/ghstub/gh <<'STUB'
+          #!/usr/bin/env bash
+          echo "$*" >> "$GH_LOG"
+          case "$*" in
+            *"--method POST"*|*"--method PATCH"*)
+              case "$STUB" in
+                ok) exit 0 ;;
+                403) echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1 ;;
+                500) echo "gh: Internal Server Error (HTTP 500)" >&2; exit 1 ;;
+              esac ;;
+          esac
+          exit 0
+          STUB
+          chmod +x /tmp/ghstub/gh
+          printf 'body\n' > /tmp/body.md
+
+      - name: A fork is not a failed check, and costs no request
+        env: { HEAD_REPO: someone/fork, REPO: i-ops-hq/iops-rooms, PR_NUMBER: "7", STUB: "403", GH_LOG: /tmp/gh-fork.log }
+        run: |
+          : > "$GH_LOG"; out=$(mktemp)
+          PATH="/tmp/ghstub:$PATH" GITHUB_OUTPUT="$out" bash actions/attribution/post.sh /tmp/body.md
+          grep -q '^commented=false$' "$out" || { echo "::error::a fork should report commented=false"; exit 1; }
+          [ ! -s "$GH_LOG" ] || { echo "::error::the fork was noticed only after calling the API"; exit 1; }
+
+      - name: A token that cannot write says so, and passes
+        env: { HEAD_REPO: i-ops-hq/iops-rooms, REPO: i-ops-hq/iops-rooms, PR_NUMBER: "7", STUB: "403", GH_LOG: /tmp/gh-403.log }
+        run: |
+          out=$(mktemp)
+          PATH="/tmp/ghstub:$PATH" GITHUB_OUTPUT="$out" bash actions/attribution/post.sh /tmp/body.md > /tmp/said.txt
+          grep -q '^commented=false$' "$out" || { echo "::error::a 403 should report commented=false"; exit 1; }
+          grep -q 'cannot write' /tmp/said.txt || { echo "::error::a 403 should say why"; exit 1; }
+
+      - name: Any other failure still fails
+        env: { HEAD_REPO: i-ops-hq/iops-rooms, REPO: i-ops-hq/iops-rooms, PR_NUMBER: "7", STUB: "500", GH_LOG: /tmp/gh-500.log }
+        run: |
+          out=$(mktemp)
+          if PATH="/tmp/ghstub:$PATH" GITHUB_OUTPUT="$out" bash actions/attribution/post.sh /tmp/body.md; then
+            echo "::error::a server error was swallowed"; exit 1
+          fi
+          if grep -q '^commented=' "$out"; then echo "::error::a failed post reported an outcome"; exit 1; fi
+
       - name: Can the published package do what the action needs?
         id: published
         run: |

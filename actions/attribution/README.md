@@ -86,7 +86,10 @@ Pin to the action's own tag rather than a branch, for the same reason. There is 
 
 ## Forks
 
-A pull request from a fork gets a read-only token, so the comment step cannot write. Either run this
-on `pull_request_target` — **read the GitHub guidance first, it runs with your repository's token
-against someone else's code** — or set `comment: false` and surface the outputs in the job summary,
-which needs no token at all.
+A pull request from a fork gets a read-only token, so the action cannot comment on it. **It notices,
+says so in a notice, leaves the attribution in the job summary, and passes.** A contributor does not
+get a failed check for something their code did not do. The same happens when a workflow's
+`permissions:` leave out `pull-requests: write`.
+
+To comment on forks as well, run it on `pull_request_target`. **Read the GitHub guidance first: that
+event runs with your repository's token against someone else's code.**

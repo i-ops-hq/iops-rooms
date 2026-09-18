@@ -33,6 +33,10 @@ people who never ran anything**, did not choose to see it, and will take a numbe
   number repeated in a meeting is the one to be careful about.
 - **The floor note is in the comment**, not behind a link. A reader who has to click will not click.
 - One comment, edited in place.
+- **A pull request from a fork is not a failed check.** GitHub gives a fork's workflow a read-only
+  token, so the comment cannot be posted. The first version of this action failed the check there,
+  on exactly the outside contributions it exists to read. It now notices, says so in a notice, leaves
+  the attribution in the job summary, and passes. Any other failure to post still fails.
 
 The version it runs is pinned to the package beside it and it refuses to guess, for the same reason
 the coverage action in `assurance` does: an action that floats changes what a comment said without
