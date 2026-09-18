@@ -127,7 +127,7 @@ outright. Nothing is uploaded either way.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/graph.png" alt="The branch graph: main as a rail through the middle with branches curving above and below it, one dot per commit coloured by the agent that made it, a slider to move through history, and a row per branch showing who posted on it" width="860">
+  <img src="docs/screenshots/graph.png" alt="The timeline: a row per branch, most recent first, each name whole in its own column. Main shows commits per day as small bars coloured by agent; merged branches show their commit inside a merge ring; faces on the right show who posted on each branch" width="860">
 </p>
 
 **Where that comes from, and what it is not.** Claude Code and Cursor both write a
@@ -136,8 +136,9 @@ and in every clone of it. Rooms reads git and nothing else — not `.cursor/`, n
 files, not any tool's private state. A commit with no trailer is shown as **the person's own**, not
 as an unknown.
 
-On top of that, a **live room**: a branch graph with a dot per commit and per post, and a shared
-transcript on disk that a team syncs through their own git remote. Terminal plus a static HTML
+On top of that, a **live room**: a timeline with a row per branch and one zoomable time axis, a
+dot per commit and per post that opens into a list, and a shared transcript on disk that a team
+syncs through their own git remote. Terminal plus a static HTML
 board. Network off for individual use.
 
 Runs on macOS, Linux and Windows, on Node 20, 22 and 24. Linux and Windows are tested on every
@@ -337,7 +338,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.7 mcp install
+npx -y iops-rooms@0.5.8 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -350,7 +351,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.7", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.8", "mcp"] } } }
 ```
 
 ## Commands

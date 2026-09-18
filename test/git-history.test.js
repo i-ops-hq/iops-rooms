@@ -315,6 +315,18 @@ test("the panel names the agents, the people and where the attribution came from
   });
 });
 
+test("the panel's first sentence counts what it read, not the whole repository", async () => {
+  // It said "From 8269 commits" over figures computed from the newest 500, and put the correction in
+  // a note at the bottom. The count a reader takes away is the one in the first sentence.
+  await repo(async ({ dir, commit }) => {
+    for (let i = 0; i < 5; i += 1) await commit(`f${i}.txt`, `${i}\n`, `c${i}`);
+    const capped = renderBuiltBy(await readHistoryGraph(dir, { limit: 3 }));
+    assert.match(capped, /From the newest <strong>3<\/strong> of 5 commits of git history/);
+    const whole = renderBuiltBy(await readHistoryGraph(dir));
+    assert.match(whole, /From <strong>5<\/strong> commits of git history/);
+  });
+});
+
 test("one name under two addresses is flagged, never merged on a guess", async () => {
   await repo(async ({ dir, git, commit }) => {
     await commit("a.txt", "1\n", "one");

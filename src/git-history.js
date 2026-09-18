@@ -542,6 +542,9 @@ export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMI
     branches,
     total: all.total,
     truncated: all.truncated,
+    // How many branch refs this checkout has, so a drawing of the most recent twelve can say it is
+    // twelve of how many rather than implying it is all of them.
+    branchRefs: refs.length,
     agents: rollUpAgents(all.commits),
     contributors: rollUpContributors(all.commits),
     // Flagged, never merged on a guess: two addresses under one name are usually one person, and
