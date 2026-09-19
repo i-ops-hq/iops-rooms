@@ -20,7 +20,9 @@
 set -euo pipefail
 
 report=$(mktemp)
-trap 'rm -f "$report"' EXIT
+# Empty on purpose: it is where npm resolves the pinned package from. The npm exec line says why.
+npx_prefix=$(mktemp -d)
+trap 'rm -f "$report"; rm -rf "$npx_prefix"' EXIT
 
 base="${BASE:-$DEFAULT_BASE}"
 if [ -z "$base" ]; then
@@ -28,10 +30,10 @@ if [ -z "$base" ]; then
   exit 1
 fi
 
-# The pinned version has to exist before npx is asked for it. Without this check npx falls through
-# to looking for a local `rooms` and the runner reports `sh: 1: rooms: not found`, which explains
-# nothing — it happens whenever an action tag carries a version that was never published, and the
-# person reading the log has no way to get from that message to that cause.
+# The pinned version has to exist before npm is asked for it. Without this check the log ends in
+# npm's `notarget No matching version found`, which names the version and not the cause — it happens
+# whenever an action tag carries a version that was never published, and the person reading the log
+# has no way to get from that message to that cause.
 if ! npm view "iops-rooms@${ROOMS_VERSION}" version >/dev/null 2>&1; then
   echo "::error title=rooms::iops-rooms@${ROOMS_VERSION} is not on the registry. This action is pinned to the version beside it in its own tag; if you are running it from an unreleased ref, pass \`version:\` explicitly."
   exit 1
@@ -39,7 +41,14 @@ fi
 
 # `--json` and never the text output. Parsing prose would break the first time a sentence was
 # reworded, and the sentences in this tool get reworded because that is most of what it is.
-npx --yes "iops-rooms@${ROOMS_VERSION}" branch "origin/$base" --json > "$report" 2> >(tee /dev/stderr)
+#
+# `npm exec` from an empty prefix, and not bare `npx`. npx first asks whether the project it is
+# standing in already satisfies the spec, and a checkout of iops-rooms at the pinned version does, so
+# it installs nothing and runs whatever `iops-rooms` is on PATH: nothing on a runner, an older global
+# install on a laptop. That is how this action's own end-to-end test went unrun on main after 0.5.7
+# shipped. The empty prefix takes the checkout out of that question, and the command still runs
+# here, in the repository it is reading.
+npm exec --yes --prefix "$npx_prefix" -- "iops-rooms@${ROOMS_VERSION}" branch "origin/$base" --json > "$report" 2> >(tee /dev/stderr)
 
 if [ ! -s "$report" ]; then
   echo "::error title=rooms::no output from rooms — this is a failure of the tool, not a finding about the branch"
@@ -47,7 +56,7 @@ if [ ! -s "$report" ]; then
 fi
 
 body=$(mktemp)
-trap 'rm -f "$report" "$body"' EXIT
+trap 'rm -f "$report" "$body"; rm -rf "$npx_prefix"' EXIT
 
 python3 - "$report" "$body" <<'PY'
 import json

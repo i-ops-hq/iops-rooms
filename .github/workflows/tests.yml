@@ -291,21 +291,28 @@ jobs:
           fi
           if grep -q '^commented=' "$out"; then echo "::error::a failed post reported an outcome"; exit 1; fi
 
-      - name: Can the published package do what the action needs?
+      # Every release from 0.5.7 answers --json, so there is no published version left for the
+      # end-to-end step to wait on, and it can no longer skip itself. It used to, with a notice, and
+      # on main after 0.5.7 shipped the notice said "iops-rooms@0.5.7 has no --json yet" about a
+      # release that has it: bare npx, standing in this checkout at the same version, had run
+      # whatever `iops-rooms` was on PATH instead of the package. A skip that explains itself is
+      # still a test that did not run, so this fails instead, and shows what it got.
+      - name: The published package answers --json
         id: published
         run: |
           VERSION=$(npm view iops-rooms version)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if npx --yes "iops-rooms@$VERSION" week --since 1d --json 2>&1 | head -1 | grep -q '^{'; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=rooms::iops-rooms@$VERSION has no --json yet, so the end-to-end step is skipped until this release ships"
+          out=$(mktemp); err=$(mktemp)
+          npm exec --yes --prefix "$(mktemp -d)" -- "iops-rooms@$VERSION" week --since 1d --json > "$out" 2> "$err" || true
+          if ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$out" 2>/dev/null; then
+            echo "::error title=rooms::iops-rooms@$VERSION did not answer --json with a JSON object, so the action cannot be tested against it"
+            echo "--- stdout"; head -5 "$out"; echo "--- stderr"; head -5 "$err"
+            exit 1
           fi
+          echo "iops-rooms@$VERSION answers --json"
 
       - name: The action runs end to end against the published package
         id: live
-        if: steps.published.outputs.ready == 'true'
         uses: ./actions/attribution
         with:
           base: main
@@ -321,12 +328,11 @@ jobs:
           comment: "false"
           version: "0.0.0-does-not-exist"
 
-      - name: "...rather than a bare `sh: rooms: not found`"
+      - name: "...rather than npm's bare `No matching version found`"
         run: |
           [ "${{ steps.badpin.outcome }}" = "failure" ] || { echo "::error::an unpublished pin should fail"; exit 1; }
 
       - name: ...and reports what it read
-        if: steps.published.outputs.ready == 'true'
         run: |
           echo "attributed=${{ steps.live.outputs.attributed }} seen=${{ steps.live.outputs.seen }}"
           [ "${{ steps.live.outputs.commented }}" = "false" ] || { echo "::error::it posted a comment with comment:false"; exit 1; }
