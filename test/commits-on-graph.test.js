@@ -53,20 +53,22 @@ test("with no history the graph is unchanged — room posts still stand alone", 
   );
   const same = mergeHistoryIntoLanes(model, null);
   assert.equal(same, model, "a folder that is not a checkout changes nothing");
-  assert.match(renderBranchGraph(same), /bg-core/, "and the post is still drawn");
+  assert.match(renderBranchGraph(same), /class="ln-post" data-kind="note"/, "and the post is still drawn");
 });
 
 test("commits appear as dots even when the room has no posts at all", () => {
   const m = mergeHistoryIntoLanes(emptyModel(), history());
-  const svg = renderBranchGraph(m);
-  assert.match(svg, /data-kind="commit"/, "a project with history is drawable before anyone posts");
-  assert.equal((svg.match(/data-kind="commit"/g) || []).length, 3, "two on trunk, one on the branch");
+  const html = renderBranchGraph(m);
+  assert.match(html, /class="ln-dot" data-kind="commit"/, "a project with history is drawable before anyone posts");
+  assert.equal((html.match(/class="ln-dot" data-kind="commit"/g) || []).length, 3, "two on trunk, one on the branch");
 });
 
 test("a merged branch becomes a lane that splits and rejoins", () => {
   const m = mergeHistoryIntoLanes(emptyModel(), history());
   const svg = renderBranchGraph(m);
   assert.match(svg, />feature</, "the branch is named from its merge commit");
+  assert.match(svg, /merged #7/, "its row says it merged, and where");
+  assert.match(svg, /class="ln-merge"[^>]*title="merged in #7/, "and marks the moment on its lane");
   const lane = m.lanes.find((l) => l.name === "feature");
   assert.equal(lane.points.length, 1);
   assert.equal(lane.pr, 7, "and carries its PR number");

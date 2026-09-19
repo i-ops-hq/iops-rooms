@@ -655,6 +655,9 @@
         color: var(--ink-2);
         box-shadow: 0 4px 18px rgba(0,0,0,0.06);
       }
+      .live-chip[data-state="connecting"],
+      .live-chip[data-state="reconnecting"] { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); }
+      .live-chip[data-state="offline"] { color: var(--ink-3); border-style: dashed; }
 
       /* —— Slice D: branch timeline canvas —— */
       .timeline {
@@ -691,20 +694,6 @@
       .timeline-canvas {
         min-width: 560px;
       }
-      .tl-axis {
-        display: flex;
-        justify-content: flex-start;
-        align-items: center;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        color: var(--ink-3);
-        /* Was inset 148px to clear a label column that no longer exists. It now starts where the
-           graph starts, which is the whole point of putting it directly above the graph. */
-        margin: 0 0 6px;
-        padding-left: 2px;
-      }
-      .tl-axis-mid { letter-spacing: 0.02em; }
-      .tl-axis-mid b { color: var(--ink-2); font-weight: 500; }
 
       /* ---- built by ---------------------------------------------------------------- */
       .built-by { margin: 22px 0; }
@@ -755,232 +744,357 @@
       }
       @media (max-width: 720px) { .bb-person { grid-template-columns: 1fr; } }
 
-      /* ---- branch graph -------------------------------------------------------------
-         Main is a rail across the whole span; every other branch splits off at its first
-         post and rejoins at its last. A dot per post, and a light travelling each wire.
-
-         The wire-and-travelling-light treatment is lifted from the I-Ops runtime
-         architecture diagram: a dim static track, plus the SAME path drawn again with a
-         short dash and an animated dash offset, so one segment reads as a light moving
-         along a connector. Two circles make the glow rather than an SVG blur filter —
-         same look, no filter cost, and it survives printing. */
-      .branch-graph { margin: 4px 0 10px; }
-      /* Collapsed, the SVG is cropped to the six lanes nearest main. `slice` scales the drawing to
-         cover the box and centres it, and main sits at the centre of the viewBox, so the crop takes
-         the same number of lanes off the top and the bottom. Checking the box swaps the ratio to the
-         drawing's own, at which point slice and meet are the same thing and every branch is shown.
-         CSS only: the board is a file, and it has to work opened from disk. */
-      /* The graph is as wide as the history is long, and scrolls on its own — dragging the whole
-         timeline sideways to read a branch would take the rows below with it.
-
-         The scrollbar is styled rather than left to the platform, which on macOS means overlay:
-         invisible until you already know to scroll. A graph wider than its window with no visible
-         way to move it reads as a graph that has been cut off. */
-      /* row-reverse so the scroller opens at the RIGHT edge — the newest commits, which is what
-         someone opening a board wants to see. Scrolling left walks back through history. */
-      .bg-scroll {
-        overflow-x: auto;
-        overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
+      /* ---- timeline: a row per branch ------------------------------------------------------
+         The name sits in a column of its own, so nothing crosses and nothing is clipped. Every
+         mark in the lane column is placed by one calc against --z0 and --z1, the part of the
+         whole span that is on screen, so a zoom is two custom properties and no redraw. */
+      .ln-figure {
+        --z0: 0;
+        --z1: 1;
+        --ln-cols: minmax(120px, 180px) minmax(0, 1fr) minmax(150px, 200px);
+        margin: 4px 0 6px;
       }
-      .bg-scroll > svg { flex: 0 0 auto; }
-      /* scrollbar-width and ::-webkit-scrollbar are mutually exclusive in Chrome: setting the
-         standard property makes it ignore the pseudo-elements, and on macOS `thin` is still an
-         overlay bar that occupies no layout space. So the styled bar is the default and the
-         standard properties are only for engines with no ::-webkit-scrollbar at all. */
-      @supports not selector(::-webkit-scrollbar) {
-        .bg-scroll { scrollbar-width: thin; scrollbar-color: var(--ink-3) var(--bg-soft); }
-      }
-      .bg-scroll::-webkit-scrollbar { height: 11px; }
-      /* The slider does everything the bar does and is visible without hovering, so once the script
-         has wired one up the bar is redundant. Without JS the class is never added and the styled
-         bar stays — the graph is still scrollable either way. */
-      .branch-graph[data-slider="on"] .bg-scroll::-webkit-scrollbar { height: 0; }
-      .bg-scroll::-webkit-scrollbar-track {
-        background: var(--bg-soft);
-        border: 1px solid var(--line-2);
-        border-radius: var(--r-pill);
-      }
-      .bg-scroll::-webkit-scrollbar-thumb {
-        background: var(--ink-3);
-        border-radius: var(--r-pill);
-        border: 3px solid var(--card);
-      }
-      .bg-scroll::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
-
-      .bg-slider {
-        display: block;
-        width: 100%;
-        margin: 10px 0 0;
-        appearance: none;
-        background: transparent;
-        cursor: grab;
-      }
-      .bg-slider:active { cursor: grabbing; }
-      .bg-slider::-webkit-slider-runnable-track {
-        height: 6px;
-        border-radius: var(--r-pill);
-        background: var(--bg-soft);
-        border: 1px solid var(--line-2);
-      }
-      .bg-slider::-moz-range-track {
-        height: 6px;
-        border-radius: var(--r-pill);
-        background: var(--bg-soft);
-        border: 1px solid var(--line-2);
-      }
-      .bg-slider::-webkit-slider-thumb {
-        appearance: none;
-        width: 46px;
-        height: 14px;
-        margin-top: -5px;
-        border-radius: var(--r-pill);
-        background: var(--ink-3);
-        border: none;
-      }
-      .bg-slider::-moz-range-thumb {
-        width: 46px;
-        height: 14px;
-        border: none;
-        border-radius: var(--r-pill);
-        background: var(--ink-3);
-      }
-      .bg-slider:hover::-webkit-slider-thumb { background: var(--ink-2); }
-      .bg-slider:hover::-moz-range-thumb { background: var(--ink-2); }
-      .bg-slider:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
-
-      /* Who posted where. Not a second timeline: the graph is on a commit-order axis and these
-         avatars are people, so putting them on a track of their own invited a comparison that was
-         never true. Name, count, faces. */
-      .tl-who-list { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
-      .tl-who {
+      .ln-controls {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 9px;
-        padding: 7px 12px;
-        border: 1px solid var(--line-2);
-        border-radius: 10px;
-        background: var(--bg-soft);
+        justify-content: space-between;
+        gap: 8px 16px;
+        margin: 0 0 10px;
       }
-      .tl-who[data-current="1"] { outline: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line)); }
-      .tl-who-name {
-        font-family: var(--font-mono);
-        font-size: 12px;
-        font-weight: 600;
-        white-space: nowrap;
-      }
-      .tl-who[data-main="1"] .tl-who-name { color: var(--green); }
-      .tl-who-meta { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
-      .tl-who-avatars { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
-      .tl-who .tl-avatar { position: static; left: auto; }
-      .tl-quiet { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin: 8px 0 0; }
-      .branch-graph svg {
-        display: block;
-        width: var(--vb-w, 1000px);
-        height: var(--vb-open, 300px);
-        overflow: hidden;
-        transition: height 0.24s ease;
-      }
-      .bg-toggle:checked ~ .bg-scroll svg { height: var(--vb-full, 300px); }
-      /* A branch outside the collapsed crop must not draw at all. Cropping alone leaves its riser
-         crossing the visible band — a line to nowhere, from a branch whose name is not on screen. */
-      .bg-branch[data-extra="1"] { display: none; }
-      .bg-toggle:checked ~ .bg-scroll .bg-branch[data-extra="1"] { display: inline; }
-      .bg-expand {
+      .ln-range { margin: 0; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); }
+      .ln-range b { color: var(--ink-2); font-weight: 500; }
+      .ln-zoom {
         display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        color: var(--ink-3);
+        gap: 2px;
+        padding: 3px;
         border: 1px solid var(--line);
         border-radius: var(--r-pill);
-        padding: 3px 11px;
-        margin: 8px 0 0;
+        background: var(--bg-soft);
+      }
+      .ln-zoom button {
+        font: inherit;
+        font-size: 12px;
+        line-height: 1;
+        color: var(--ink-2);
+        background: transparent;
+        border: 0;
+        border-radius: var(--r-pill);
+        padding: 6px 11px;
         cursor: pointer;
-        user-select: none;
+      }
+      .ln-zoom button:hover { color: var(--ink); }
+      .ln-zoom button[aria-pressed="true"] {
         background: var(--card);
+        color: var(--ink);
+        font-weight: 600;
+        box-shadow: var(--shadow-sm);
       }
-      .bg-expand:hover { color: var(--ink-1); border-color: var(--ink-3); }
-      .bg-toggle:focus-visible ~ .bg-expand { outline: 2px solid var(--blue); outline-offset: 2px; }
-      .bg-expand::before { content: ""; }
-      .bg-expand-close { display: none; }
-      .bg-toggle:checked ~ .bg-expand .bg-expand-open { display: none; }
-      .bg-toggle:checked ~ .bg-expand .bg-expand-close { display: inline; }
-      .bg-track {
-        fill: none;
-        stroke: hsl(var(--h, 210) 45% 55%);
-        stroke-width: 1.4;
-        opacity: 0.32;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        vector-effect: non-scaling-stroke;
+      .ln-zoom button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+      .ln-legend {
+        list-style: none;
+        margin: 0 0 12px;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+        font-size: 12px;
+        color: var(--ink-3);
       }
-      .bg-pulse {
-        fill: none;
-        stroke: hsl(var(--h, 210) 70% 52%);
-        stroke-width: 2.1;
-        opacity: 0.9;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        vector-effect: non-scaling-stroke;
-        stroke-dasharray: 26 2000;
-        animation: bg-travel 4.2s linear infinite;
-        animation-delay: var(--delay, 0s);
+      .ln-legend li { display: inline-flex; align-items: center; gap: 6px; }
+      .ln-key { width: 9px; height: 9px; border-radius: 50%; background: var(--agent-c, var(--ink-3)); }
+      .ln-key[data-shape="post"] {
+        width: 7px;
+        height: 7px;
+        border-radius: 1px;
+        transform: rotate(45deg);
+        background: var(--ink-2);
       }
-      @keyframes bg-travel {
-        from { stroke-dashoffset: 2026; }
-        to { stroke-dashoffset: 0; }
-      }
-      .bg-branch[data-main="1"] .bg-track { stroke: var(--green); opacity: 0.4; }
-      .bg-branch[data-main="1"] .bg-pulse { stroke: var(--green); }
-      .bg-branch[data-current="1"] .bg-track { opacity: 0.6; stroke-width: 1.8; }
+      .ln-key[data-shape="merge"] { background: transparent; border: 1.5px solid var(--ink-2); }
 
-      .bg-halo {
-        fill: hsl(var(--h, 210) 70% 52%);
-        opacity: 0.16;
-      }
-      .bg-core {
-        fill: hsl(var(--h, 210) 65% 46%);
-        stroke: var(--bg);
-        stroke-width: 1.4;
-      }
-      .bg-branch[data-main="1"] .bg-halo { fill: var(--green); }
-      .bg-branch[data-main="1"] .bg-core { fill: var(--green); }
-      /* A diff is a heavier event than a note, and the dot says so without a legend. */
-      .bg-dot[data-kind="diff"] .bg-core { fill: var(--violet); }
-      .bg-dot[data-kind="diff"] .bg-halo { fill: var(--violet); }
-      .bg-dot[data-kind="approved"] .bg-core { fill: var(--green); }
-      .bg-dot[data-kind="review"] .bg-core { fill: var(--amber); }
-      .bg-dot[data-kind="review"] .bg-halo { fill: var(--amber); }
-      /* A commit is coloured by the agent that made it, not by its branch — the branch is already
-         said by the lane it sits on, and "which agent" is the thing this board exists to answer. */
-      .bg-dot[data-kind="commit"] .bg-core { fill: var(--ink-3); }
-      .bg-dot[data-kind="commit"] .bg-halo { fill: var(--ink-3); opacity: 0.1; }
-      .bg-dot[data-agent="claude"] .bg-core { fill: var(--violet); }
-      .bg-dot[data-agent="claude"] .bg-halo { fill: var(--violet); }
-      .bg-dot[data-agent="cursor"] .bg-core { fill: var(--blue); }
-      .bg-dot[data-agent="cursor"] .bg-halo { fill: var(--blue); }
-      .bg-dot[data-agent="codex"] .bg-core { fill: var(--green); }
-      .bg-dot[data-agent="copilot"] .bg-core { fill: var(--amber); }
-      /* A merge moves no lines, so it is drawn hollow rather than as a solid unit of work. */
-      .bg-dot[data-kind="merge"] .bg-core { fill: var(--bg); stroke: var(--ink-3); stroke-width: 1.6; }
-      .bg-dot[data-kind="merge"] .bg-halo { fill: var(--ink-3); opacity: 0.08; }
-      .bg-dot { cursor: default; }
-      .bg-dot:hover .bg-halo { opacity: 0.34; }
+      /* One set of agent colours for dots, bar segments, legend keys and chips alike. */
+      .ln-figure [data-agent] { --agent-c: var(--ink-2); }
+      .ln-figure [data-agent="none"] { --agent-c: color-mix(in srgb, var(--ink-3) 55%, var(--bg)); }
+      .ln-figure [data-agent="claude"],
+      .ln-figure [data-agent="jules"] { --agent-c: var(--violet); }
+      .ln-figure [data-agent="cursor"],
+      .ln-figure [data-agent="gemini"] { --agent-c: var(--blue); }
+      .ln-figure [data-agent="codex"],
+      .ln-figure [data-agent="aider"],
+      .ln-figure [data-agent="windsurf"] { --agent-c: var(--green); }
+      .ln-figure [data-agent="copilot"],
+      .ln-figure [data-agent="amazonq"] { --agent-c: var(--amber); }
 
-      .bg-label {
+      .ln-axis,
+      .ln-row > summary {
+        display: grid;
+        grid-template-columns: var(--ln-cols);
+        gap: 16px;
+        align-items: center;
+      }
+      .ln-axis { margin: 0 0 4px; padding: 0 13px; }
+      .ln-ticks {
+        position: relative;
+        height: 16px;
+        overflow: hidden;
         font-family: var(--font-mono);
-        font-size: 11px;
-        fill: var(--ink-3);
-        letter-spacing: 0.02em;
+        font-size: 10.5px;
+        color: var(--ink-3);
       }
-      .bg-label-main { fill: var(--green); font-weight: 600; }
-      /* Knocks the wire out from behind a name; without it, 11px type over a line is unreadable. */
-      .bg-tag { fill: var(--card); }
+      .ln-tick {
+        position: absolute;
+        top: 0;
+        left: calc((var(--x) - var(--z0)) / (var(--z1) - var(--z0)) * 100%);
+        padding-left: 4px;
+        border-left: 1px solid var(--line);
+        line-height: 16px;
+        white-space: nowrap;
+        display: none;
+      }
+      .ln-figure .ln-tick[data-g="m"] { display: block; }
+      .ln-figure[data-zoom="30"] .ln-tick[data-g="m"] { display: none; }
+      .ln-figure[data-zoom="30"] .ln-tick[data-g="w"],
+      .ln-figure[data-weeks="1"] .ln-tick[data-g="w"] { display: block; }
+      .ln-figure[data-weeks="1"] .ln-tick[data-g="m"] { display: none; }
+      .ln-figure[data-zoom="365"] .ln-tick[data-g="m"]:not([data-q]) { display: none; }
+      .ln-figure[data-long="1"][data-zoom="all"] .ln-tick[data-g="m"]:not([data-q]) { display: none; }
+      .ln-figure[data-long="2"][data-zoom="all"] .ln-tick[data-g="m"]:not([data-y]) { display: none; }
+
+      .ln-rows { display: flex; flex-direction: column; gap: 6px; }
+      .ln-row { border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-soft); }
+      .ln-row[data-current="1"] { border-color: color-mix(in srgb, var(--blue) 40%, var(--line)); }
+      .ln-row > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 9px 12px;
+        border-radius: 10px;
+      }
+      .ln-row > summary::-webkit-details-marker { display: none; }
+      .ln-row > summary:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+      .ln-row > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+      .ln-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .ln-name::before {
+        content: "›";
+        flex: 0 0 auto;
+        width: 8px;
+        color: var(--ink-3);
+        font-weight: 400;
+        transition: transform 0.15s ease;
+      }
+      .ln-row[open] > summary .ln-name::before { transform: rotate(90deg); }
+      /* break-word, not anywhere: a name breaks at its hyphens and slashes, and only a token too long
+         for the line on its own is split, so "main" never becomes "mai" over "n". */
+      .ln-label {
+        min-width: 0;
+        overflow: hidden;
+        overflow-wrap: break-word;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+      .ln-row[data-main="1"] .ln-label { color: var(--green); }
+      .ln-name .branch-badge { flex: 0 0 auto; }
+
+      .ln-lane { position: relative; display: block; height: 28px; overflow: hidden; }
+      .ln-lane > * { position: absolute; left: calc((var(--x) - var(--z0)) / (var(--z1) - var(--z0)) * 100%); }
+      .ln-lane > .ln-rail {
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 2px;
+        margin-top: -1px;
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--green) 35%, transparent);
+      }
+      .ln-lane[data-dense="1"]::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 2px;
+        height: 1px;
+        background: var(--line);
+      }
+      .ln-bar {
+        bottom: 3px;
+        width: max(2px, calc(var(--w) / (var(--z1) - var(--z0)) * 100% - 1px));
+        height: var(--bh);
+        display: flex;
+        flex-direction: column-reverse;
+        border-radius: 2px 2px 0 0;
+        overflow: hidden;
+      }
+      .ln-bar i { display: block; min-height: 1px; background: var(--agent-c); }
+      .ln-span {
+        top: 50%;
+        height: 2px;
+        margin-top: -1px;
+        min-width: 2px;
+        width: calc(var(--w) / (var(--z1) - var(--z0)) * 100%);
+        border-radius: 2px;
+        background: hsl(var(--branch-hue, 210) 45% 55% / 0.55);
+      }
+      .ln-dot {
+        top: 50%;
+        width: 9px;
+        height: 9px;
+        margin: -4.5px 0 0 -4.5px;
+        border-radius: 50%;
+        background: var(--agent-c);
+        box-shadow: 0 0 0 2px var(--bg-soft);
+      }
+      .ln-dot[data-kind="merge"] { background: var(--bg-soft); border: 1.5px solid var(--ink-3); }
+      /* Wider than a dot plus its outline, so a commit sitting inside the ring leaves the ring visible. */
+      .ln-merge {
+        top: 50%;
+        width: 15px;
+        height: 15px;
+        margin: -7.5px 0 0 -7.5px;
+        border-radius: 50%;
+        border: 2px solid var(--ink-2);
+        background: var(--bg-soft);
+      }
+      .ln-post {
+        top: 3px;
+        width: 7px;
+        height: 7px;
+        margin-left: -3.5px;
+        border-radius: 1px;
+        transform: rotate(45deg);
+        background: var(--ink-2);
+      }
+      .ln-post[data-kind="diff"] { background: var(--violet); }
+      .ln-post[data-kind="review"] { background: var(--amber); }
+      .ln-post[data-kind="approved"] { background: var(--green); }
+      /* What is earlier than the window is clipped, so the lane says how much. */
+      .ln-lane::before {
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 1;
+        padding-right: 6px;
+        background: var(--bg-soft);
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: var(--ink-3);
+      }
+      .ln-figure[data-zoom="30"] .ln-lane[data-before-30]::before { content: "‹ " attr(data-before-30); }
+      .ln-figure[data-zoom="90"] .ln-lane[data-before-90]::before { content: "‹ " attr(data-before-90); }
+      .ln-figure[data-zoom="365"] .ln-lane[data-before-365]::before { content: "‹ " attr(data-before-365); }
+
+      .ln-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px 10px;
+        min-width: 0;
+        font-size: 11.5px;
+        color: var(--ink-3);
+      }
+      .ln-counts { color: var(--ink-2); white-space: nowrap; }
+      .ln-when { white-space: nowrap; }
+      .ln-mini { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+      .ln-mini::before {
+        content: "";
+        flex: 0 0 auto;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--agent-c, var(--ink-3));
+      }
+      .ln-faces { display: inline-flex; }
+      .ln-face {
+        width: 22px;
+        height: 22px;
+        margin-left: -6px;
+        border-radius: 50%;
+        border: 2px solid var(--bg-soft);
+        background: hsl(var(--actor-hue, 210) 55% 46%);
+        color: #fff;
+        font: 700 8.5px/18px var(--font-display);
+        text-align: center;
+      }
+      .ln-face:first-child { margin-left: 0; }
+
+      .ln-body { padding: 2px 12px 12px; border-top: 1px solid var(--line-2); }
+      .ln-people { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0 6px; }
+      .ln-people-label { font-size: 11.5px; color: var(--ink-3); }
+      /* The avatar's base rule centres it on a point with a translate, which is right on a track
+         and is what pushed it half out of the row it sat in. In a row it is an ordinary box. */
+      .ln-people .tl-avatar { position: relative; top: auto; left: auto; transform: none; }
+      .ln-people .tl-avatar:hover,
+      .ln-people .tl-avatar:focus-visible { transform: scale(1.08); }
+      .ln-list {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        font-size: 12px;
+      }
+      .ln-list li {
+        display: grid;
+        grid-template-columns: 56px minmax(0, 1fr) minmax(70px, 130px) minmax(90px, 150px) 72px 76px;
+        gap: 10px;
+        align-items: baseline;
+        padding: 5px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .ln-list li:last-child { border-bottom: 0; }
+      .ln-list li[data-kind="post"] { grid-template-columns: 56px minmax(0, 1fr) minmax(70px, 130px) 150px; }
+      .ln-list time,
+      .ln-list code,
+      .ln-delta,
+      .ln-kind { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+      .ln-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ln-subj { min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+      .ln-list li.ln-unlisted { display: block; color: var(--ink-3); font-style: italic; }
+      .ln-more { margin-top: 6px; }
+      .ln-more > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 8px 12px;
+        border: 1px dashed var(--line);
+        border-radius: 10px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--ink-2);
+      }
+      .ln-more > summary::-webkit-details-marker { display: none; }
+      .ln-more > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+      .ln-more[open] > summary { margin-bottom: 6px; }
+      .ln-note { margin: 10px 0 0; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+      @media (max-width: 760px) {
+        .ln-axis { grid-template-columns: minmax(0, 1fr); }
+        .ln-axis > span:not(.ln-ticks) { display: none; }
+        /* The details column wraps inside its share rather than taking the whole line at its
+           natural width, which squeezed the name to nothing and ran a badge into the counts. */
+        .ln-row > summary {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+          grid-template-areas: "name meta" "lane lane";
+          gap: 8px 12px;
+        }
+        .ln-name { grid-area: name; }
+        /* Main is already first and green; at this width its badge squeezed "main" onto two lines. */
+        .ln-row[data-main="1"] .branch-badge { display: none; }
+        .ln-meta { grid-area: meta; }
+        .ln-lane { grid-area: lane; }
+        .ln-list li,
+        .ln-list li[data-kind="post"] { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+        .ln-subj { flex-basis: 100%; }
+      }
       @media (prefers-reduced-motion: reduce) {
-        .bg-pulse { animation: none; stroke-dasharray: none; opacity: 0.45; }
-        .branch-graph svg { transition: none; }
+        .ln-name::before { transition: none; }
       }
       .tl-lanes { display: flex; flex-direction: column; gap: 10px; }
       .tl-lane {
@@ -1177,61 +1291,23 @@
     </main>
   
     <script data-rooms-graph>
-    // The graph is wider than its window whenever the history is longer than about sixty commits.
-    // Two jobs: open at the newest end, and give that scroll a control people can see.
-    //
-    // `flex-direction: row-reverse` is the usual CSS-only way to anchor a scroller to its right
-    // edge. It did not work here — the container reported scrollLeft 0 with the oldest commits in
-    // view — so the position is set explicitly, which is also the only version that can be checked.
+    // The timeline's zoom. Every mark is placed against --z0 and --z1 on the figure, so a window is
+    // two custom properties and nothing is redrawn. The range line and the count of commits the
+    // window leaves out were computed per button when the board was written, so they stay honest.
     (function () {
-      document.querySelectorAll(".branch-graph").forEach(function (fig) {
-        var scroll = fig.querySelector(".bg-scroll");
-        var slider = fig.querySelector(".bg-slider");
-        if (!scroll || !slider) return;
-        var syncing = false;
-
-        function span() { return scroll.scrollWidth - scroll.clientWidth; }
-
-        function fit() {
-          var max = span();
-          // A graph that fits needs no control, and an empty slider is a control that lies.
-          slider.hidden = max <= 1;
-          // Only claimed once a slider is really on screen: the stylesheet hides the native
-          // scrollbar off this, and hiding both would leave a wide graph with no way to move it.
-          if (slider.hidden) fig.removeAttribute("data-slider");
-          else {
-            fig.setAttribute("data-slider", "on");
-            toEnd();
-          }
-        }
-
-        function toEnd() {
-          scroll.scrollLeft = span();
-          slider.value = slider.max;
-        }
-
-        slider.addEventListener("input", function () {
-          if (syncing) return;
-          syncing = true;
-          scroll.scrollLeft = (Number(slider.value) / Number(slider.max)) * span();
-          syncing = false;
+      document.querySelectorAll(".ln-figure").forEach(function (fig) {
+        var buttons = fig.querySelectorAll(".ln-zoom button");
+        var range = fig.querySelector("[data-ln-range]");
+        var outside = fig.querySelector("[data-ln-outside]");
+        buttons.forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            fig.style.setProperty("--z0", btn.getAttribute("data-z0"));
+            fig.setAttribute("data-zoom", btn.getAttribute("data-zoom"));
+            buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
+            if (range) range.textContent = btn.getAttribute("data-range");
+            if (outside) outside.textContent = btn.getAttribute("data-outside-text");
+          });
         });
-
-        scroll.addEventListener("scroll", function () {
-          if (syncing) return;
-          var max = span();
-          if (max <= 0) return;
-          syncing = true;
-          slider.value = String((scroll.scrollLeft / max) * Number(slider.max));
-          syncing = false;
-        });
-
-        // Opening the hidden branches makes the drawing taller, not wider, but the scrollbar
-        // appearing or leaving changes clientWidth — so the range is recomputed either way.
-        var toggle = fig.querySelector(".bg-toggle");
-        if (toggle) toggle.addEventListener("change", fit);
-        window.addEventListener("resize", fit);
-        fit();
       });
     })();
     </script>

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.8
+
+### The timeline, rebuilt so it can be read
+
+The board's branch graph was one wide drawing: main as a rail, branches as arcs above and below it,
+a dot per commit. On OpenHands, 8,269 commits, the rail was 500 dots thirteen pixels apart, twelve
+arcs crossed each other and main, names were cut off at the edges of the drawing, and commits hung
+in empty space where an arc had already turned back towards main.
+
+- **A row per branch, most recent first,** with the whole name in a column of its own.
+- **A busy row shows commits per day, stacked by agent.** A quiet one keeps a dot per commit.
+- **One time axis, zoomable to 30 days, 90 days, a year or all.** It opens at the smallest window
+  that still shows every row, and each window says how many commits it leaves out. A row says how
+  many of its marks are earlier than the window on screen.
+- **Every row opens into the list of what is on it:** date, message, person, agent and lines. That
+  list is also what a keyboard or a screen reader can reach. The old page had two focusable
+  elements in 12,000 pixels.
+
+On OpenHands the board went from 551 KB to 241 KB, and from 12,378 to 7,707 pixels tall.
+
+### Three things on the board that were wrong
+
+- **An avatar sat half outside its row.** The base rule centres an avatar on a point with
+  `translate(-50%, -50%)`, which is right on a track, and the row never reset it. People who posted
+  on a branch now sit inside that branch's row.
+- **"Live · localhost" showed from page load, with or without a server.** It now says Connecting,
+  Live, Reconnecting or Offline, with the time the page was loaded.
+- **Built by said "From 8269 commits"** over figures computed from the newest slice, with the
+  correction in a note at the bottom. The first sentence now counts what was read.
+
 ## 0.5.7
 
 ### `--json` on `week`, `branch` and `file`

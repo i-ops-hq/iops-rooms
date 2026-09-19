@@ -508,110 +508,6 @@ function parseAt(iso) {
  * Build branch lanes + per-(actor,branch) presence from Rooms events + local git.
  * Positions are honest: only .room event stamps, not IDE session data.
  */
-/** Branch graph geometry. Kept as constants so the SVG and the CSS agree on one set of numbers. */
-/**
- * Geometry for the branch graph.
- *
- * `edge` is the room kept beyond the outermost lane, so a branch name has somewhere to sit.
- * `shown` is how many branches are visible before the reader opens the rest — six, because main
- * plus three lanes either side is what stays readable at a glance and still fits a screenshot.
- */
-const GRAPH = { w: 1000, maxW: 7200, perCommit: 13, pad: 26, edge: 30, gap: 34, shown: 6, r: 3.4, glow: 8 };
-
-/**
- * Branches alternate below main, above main, further below, further above.
- *
- * Stacking every branch downward made main the ceiling of the picture and pushed the oldest branch
- * furthest from it. Alternating puts main in the middle where a trunk belongs, keeps the busiest
- * branches nearest it, and halves how far the graph runs before it needs scrolling.
- */
-function laneOffset(i) {
-  const step = Math.floor(i / 2) + 1;
-  return i % 2 === 0 ? step : -step;
-}
-
-/**
- * A branch leaves main, runs its own line, and rejoins.
- *
- * Curves rather than right angles, which is a reversal of the runtime-diagram treatment and for a
- * reason: that diagram's boxes are far apart and its connectors are wide, so square corners read as
- * a circuit. A branch here can be two commits inside three hundred — narrow and, if it sits on an
- * outer lane, tall. A square staple at that aspect ratio is a spike; the same shape as a curve is
- * a legible arc off the trunk.
- */
-function branchPath(x1, x2, yMain, yLane) {
-  const span = Math.max(0, x2 - x1);
-  const third = span / 3;
-  const k = Math.min(52, Math.max(7, third));
-  const xa = x1 + third;
-  const xb = x2 - third;
-  return (
-    `M${x1} ${yMain}` +
-    ` C${(x1 + k).toFixed(1)} ${yMain} ${(xa - k).toFixed(1)} ${yLane} ${xa.toFixed(1)} ${yLane}` +
-    ` L${xb.toFixed(1)} ${yLane}` +
-    ` C${(xb + k).toFixed(1)} ${yLane} ${(x2 - k).toFixed(1)} ${yMain} ${x2} ${yMain}`
-  );
-}
-
-/**
- * A branch name, in a chip on its own wire.
- *
- * Drawn as a rect plus text rather than plain text: with lanes above and below main, a name will
- * sooner or later land on top of another branch's line, and bare 11px type over a wire is unreadable.
- * The chip is the card colour, so it knocks the wire out behind the name.
- */
-function graphLabel(x, y, text, anchor = "start", extra = "") {
-  const w = Math.max(20, text.length * 6.2 + 10);
-  const rx = anchor === "end" ? x - w : x;
-  return (
-    `<rect class="bg-tag" x="${rx.toFixed(1)}" y="${(y - 9.5).toFixed(1)}" width="${w.toFixed(1)}" height="13" rx="3"></rect>` +
-    `<text class="bg-label${extra ? ` ${extra}` : ""}" x="${(rx + 5).toFixed(1)}" y="${y}">${escapeHtml(text)}</text>`
-  );
-}
-
-/** One commit: a soft halo plus a solid core. Two circles rather than an SVG blur filter — same
- *  look, no filter cost, and it still reads when the page is printed. */
-function graphDot(x, y, pt, hue) {
-  const kind =
-    pt.type === "commit" || pt.type === "merge"
-      ? pt.type
-      : pt.isDiff
-        ? "diff"
-        : pt.type === "approved"
-          ? "approved"
-          : pt.type === "review_requested"
-            ? "review"
-            : "note";
-  const when = formatWhen(pt.at);
-  // A commit says who made it, which agent helped, and what it moved. "no agent recorded" is the
-  // honest label for a plain commit — it is the person's own work, not an unknown.
-  const tip =
-    kind === "commit" || kind === "merge"
-      ? `${pt.sha ? `${pt.sha} · ` : ""}${pt.actor}` +
-        ` · ${pt.agent || "no agent recorded"}` +
-        `${kind === "merge" ? " · merge" : ` · +${pt.ins || 0} −${pt.del || 0}`}` +
-        `${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`
-      : `${pt.actor}${pt.tool ? ` · ${pt.tool}` : ""} · ${kind}${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`;
-  return (
-    // data-agent colours a COMMIT by the agent that made it. A room post's tool (cli, mcp) is a
-    // different fact and must not borrow the agent palette.
-    `<g class="bg-dot" data-kind="${escapeHtml(kind)}"${
-      (kind === "commit" || kind === "merge") && pt.tool ? ` data-agent="${escapeHtml(pt.tool)}"` : ""
-    } style="--h: ${hue}">` +
-    `<title>${escapeHtml(tip)}</title>` +
-    `<circle class="bg-halo" cx="${x.toFixed(1)}" cy="${y}" r="${GRAPH.glow}"></circle>` +
-    `<circle class="bg-core" cx="${x.toFixed(1)}" cy="${y}" r="${GRAPH.r}"></circle>` +
-    `</g>`
-  );
-}
-
-/**
- * The branch graph: main as a rail across the whole span, every other branch splitting off at its
- * first post and rejoining at its last, a glowing dot per post, and a light travelling each wire.
- *
- * Positions come from the same 0-100 time axis the lane avatars use, so a dot and its avatar sit
- * at the same x. Nothing here is invented: a branch with no posts has no line to draw.
- */
 /**
  * Fold git history into the graph's lane shape, so commits and room posts sit on one picture.
  *
@@ -648,7 +544,7 @@ export function mergeHistoryIntoLanes(model, history) {
     const existing = gitLanes.get(b.name);
     const pts = b.commits.map(commitPoint);
     if (existing) existing.points.push(...pts);
-    else gitLanes.set(b.name, { name: b.name, isMain: false, pr: b.pr, points: pts });
+    else gitLanes.set(b.name, { name: b.name, isMain: false, pr: b.pr, open: Boolean(b.open), mergedAt: b.mergedAt || "", points: pts });
   }
 
   // One axis over everything, so a commit from March and a post from today are placed honestly.
@@ -685,6 +581,8 @@ export function mergeHistoryIntoLanes(model, history) {
       isMain: lane.isMain,
       isCurrent: lane.name === model.current,
       pr: lane.pr || null,
+      open: Boolean(lane.open),
+      mergedAt: lane.mergedAt || "",
       eventCount: lane.points.length,
       tools: [],
       people: [],
@@ -711,142 +609,465 @@ export function mergeHistoryIntoLanes(model, history) {
     lastPct: l.points.length ? l.points[l.points.length - 1].pct : null,
   }));
 
-  return { ...model, lanes, tMin, tMax, fromHistory: true, historyTotal: history.total };
-}
-
-/**
- * Where each event sits on the horizontal axis.
- *
- * By ORDER, not by elapsed time. A branch that lived forty minutes inside a repo spanning two
- * months is 0.1% of a time axis — drawn to scale it is a vertical spike, not a branch, and
- * seventeen of them are a comb. Ordering gives every commit the same width, which is what
- * `git log --graph` does and what makes a branch look like a branch.
- *
- * The cost is that a quiet month and a busy hour take the same space. The axis says so, and the
- * real timestamp is still on every dot's tooltip and at both ends of the axis.
- */
-function rankAxis(lanes) {
-  const times = new Set();
-  for (const lane of lanes) {
-    for (const pt of lane.points || []) if (pt.t != null) times.add(pt.t);
-  }
-  const sorted = [...times].sort((a, b) => a - b);
-  const rank = new Map(sorted.map((t, i) => [t, i]));
-  const steps = Math.max(1, sorted.length - 1);
-  const w = Math.max(
-    GRAPH.w,
-    Math.min(GRAPH.maxW, sorted.length * GRAPH.perCommit + GRAPH.pad * 2),
-  );
-  const span = w - GRAPH.pad * 2;
   return {
-    w,
-    count: sorted.length,
-    // A point with no timestamp cannot be ordered, so it sits in the middle rather than at an end.
-    of: (pt) => (pt.t == null ? GRAPH.pad + span / 2 : GRAPH.pad + (rank.get(pt.t) / steps) * span),
-    // A branch leaves main one commit before its first and rejoins one after its last — which is
-    // where it actually forked and merged, and guarantees even a one-commit branch has a body.
-    at: (i) => GRAPH.pad + (Math.max(0, Math.min(steps, i)) / steps) * span,
-    rankOf: (pt) => (pt.t == null ? steps / 2 : rank.get(pt.t)),
+    ...model,
+    lanes,
+    tMin,
+    tMax,
+    fromHistory: true,
+    historyTotal: history.total,
+    historyTruncated: Boolean(history.truncated),
+    historyBranchRefs: Number(history.branchRefs) || 0,
   };
 }
 
-export function renderBranchGraph(model) {
-  const withPosts = (model.lanes || []).filter((l) => (l.points || []).length > 0);
-  if (!withPosts.length) return "";
+/**
+ * The timeline, drawn as rows: one per branch, its name in a column of its own, and every mark
+ * placed on one time axis the reader can zoom.
+ *
+ * It replaced one wide SVG — main as a rail, branches as arcs above and below it, a dot per commit —
+ * that stopped being readable at scale. On OpenHands, 8,269 commits, the rail carried 500 dots
+ * thirteen pixels apart, twelve arcs crossed each other and main, the names were chips floating on
+ * the wires and were cut off at the edges, and a commit was drawn at its branch's height even where
+ * the arc had already turned back to main, so dots hung in empty space. Each change answers one:
+ *
+ * - **A row per branch, the name in its own column.** Nothing crosses anything, and a name is never
+ *   clipped by the edge of the drawing or lost when the lane scrolls.
+ * - **A busy lane is commits per day, stacked by agent,** not a dot per commit. Five hundred dots
+ *   are a smear; sixty bars are a history, and the stack says which agent did the work.
+ * - **Time, with a zoom, rather than commit order.** The old axis gave every commit one step, so a
+ *   quiet month and a busy hour were the same width and "when" could not be read down the page. Its
+ *   objection to time was that a forty-minute branch becomes a sliver on a two-year axis. The zoom
+ *   answers that, and so does a history shorter than three days being drawn in hours.
+ * - **Every row opens into the list of what is on it.** That list is also the version a keyboard or
+ *   a screen reader can use: the picture decorates the facts, it is not the only copy of them.
+ */
+const LANES = { shown: 6, listCap: 100, dense: 40, barPx: 22 };
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 
-  const main = withPosts.find((l) => l.isMain) || null;
-  const others = withPosts.filter((l) => l !== main);
-  const axis = rankAxis(withPosts);
+/** The windows on offer. One longer than the history is not offered, because it would zoom nothing. */
+const ZOOMS = [
+  { id: "30", label: "30 days", days: 30 },
+  { id: "90", label: "90 days", days: 90 },
+  { id: "365", label: "1 year", days: 365 },
+  { id: "all", label: "All", days: 0 },
+];
 
-  // Every branch is drawn. The ones past `shown` sit outside the collapsed crop rather than being
-  // left out of the picture — a branch the reader cannot reach is a branch they do not know about.
-  const reach = Math.ceil(others.length / 2);
-  const half = reach * GRAPH.gap + GRAPH.edge;
-  const yMain = half;
-  const fullH = half * 2;
-  const openH = (Math.min(reach, GRAPH.shown / 2) * GRAPH.gap + GRAPH.edge) * 2;
-  const hidden = Math.max(0, others.length - GRAPH.shown);
+/** For a tooltip that says "Claude 9" rather than "claude 9". An unknown id is shown as itself. */
+const FAMILY_NAMES = {
+  claude: "Claude",
+  cursor: "Cursor",
+  codex: "Codex",
+  copilot: "Copilot",
+  devin: "Devin",
+  gemini: "Gemini",
+  jules: "Jules",
+  aider: "aider",
+  amazonq: "Amazon Q",
+  windsurf: "Windsurf",
+};
+const familyName = (id) => (id ? FAMILY_NAMES[id] || id : "no agent recorded");
 
-  const mainRail =
-    `<g class="bg-branch" data-main="1" style="--h: ${main ? main.hue : 150}">` +
-    `<path class="bg-track" d="M${GRAPH.pad} ${yMain} L${axis.w - GRAPH.pad} ${yMain}"></path>` +
-    `<path class="bg-pulse" d="M${GRAPH.pad} ${yMain} L${axis.w - GRAPH.pad} ${yMain}"></path>` +
-    `</g>`;
+const isCommit = (pt) => pt.type === "commit" || pt.type === "merge";
+const fixed = (n) => Number(n.toFixed(5));
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-  const branches = others
-    .map((lane, i) => {
-      const dir = laneOffset(i);
-      const yLane = yMain + dir * GRAPH.gap;
-      const ranks = lane.points.map((pt) => axis.rankOf(pt));
-      const x1 = axis.at(Math.min(...ranks) - 1);
-      const x2 = axis.at(Math.max(...ranks) + 1);
-      const d = branchPath(x1, x2, yMain, yLane);
-      const cur = lane.isCurrent ? ' data-current="1"' : "";
-      // The name goes on the branch's own wire, on the far side from main, so it never sits in the
-      // gap between two lines and belongs to neither.
-      const name = shortBranch(lane.name, 26);
-      const nearRight = x1 > axis.w - 240;
-      const label = graphLabel(
-        nearRight ? x2 - 2 : x1 + 2,
-        dir > 0 ? yLane + 16 : yLane - 8,
-        name,
-        nearRight ? "end" : "start",
-      );
-      return (
-        `<g class="bg-branch"${cur} data-lane="${i}"${i >= GRAPH.shown ? ' data-extra="1"' : ""}` +
-        ` style="--h: ${lane.hue}; --delay: ${((i % 6) * 0.5).toFixed(2)}s">` +
-        `<title>${escapeHtml(lane.name)} · ${lane.eventCount} post${lane.eventCount === 1 ? "" : "s"}</title>` +
-        `<path class="bg-track" d="${d}"></path>` +
-        `<path class="bg-pulse" d="${d}"></path>` +
-        label +
-        lane.points.map((pt) => graphDot(axis.of(pt), yLane, pt, lane.hue)).join("") +
-        `</g>`
-      );
+function postKind(pt) {
+  if (pt.isDiff) return "diff";
+  if (pt.type === "approved") return "approved";
+  if (pt.type === "review_requested") return "review";
+  return "note";
+}
+
+/** Dates in UTC, because days are bucketed in UTC. A label that disagreed with its own bar by a
+ *  timezone would file a Monday's commits under Sunday. */
+function fmtDay(t, { year = false } = {}) {
+  return new Date(t).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(year ? { year: "numeric" } : {}),
+    timeZone: "UTC",
+  });
+}
+
+function fmtHour(t) {
+  return new Date(t).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+}
+
+/** What a mark says on hover: the sha, the person, the agent and what it moved — as it did before. */
+function pointTip(pt) {
+  const when = formatWhen(pt.at);
+  if (isCommit(pt)) {
+    return (
+      `${pt.sha ? `${pt.sha} · ` : ""}${pt.actor}` +
+      ` · ${pt.agent || "no agent recorded"}` +
+      `${pt.type === "merge" ? " · merge" : ` · +${pt.ins || 0} −${pt.del || 0}`}` +
+      `${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`
+    );
+  }
+  return (
+    `${pt.actor}${pt.tool ? ` · ${pt.tool}` : ""} · ${postKind(pt)}` +
+    `${when ? ` · ${when}` : ""}${pt.text ? `\n${pt.text}` : ""}`
+  );
+}
+
+/**
+ * One axis over every lane. Whole UTC days from the oldest mark to the end of the newest day, so a
+ * day's bar has a width — except when the whole history is under three days. Days would pile every
+ * commit onto one spot there, and so would whole hours: a first afternoon's commits all land in the
+ * same one. A short history is drawn to its own extent instead, with a margin so no mark sits on the
+ * edge, and busy stretches of it are bucketed by the hour.
+ */
+function laneAxis(lanes) {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const lane of lanes) {
+    for (const pt of lane.points) {
+      if (pt.t == null) continue;
+      if (pt.t < lo) lo = pt.t;
+      if (pt.t > hi) hi = pt.t;
+    }
+    const merged = Date.parse(lane.mergedAt || "");
+    if (Number.isFinite(merged) && merged > hi) hi = merged;
+  }
+  if (!Number.isFinite(lo)) return null;
+  const short = hi - lo < 3 * DAY;
+  const unit = short ? HOUR : DAY;
+  const pad = Math.max(60_000, (hi - lo) * 0.06);
+  const T0 = short ? lo - pad : Math.floor(lo / unit) * unit;
+  const T1 = short ? hi + pad : (Math.floor(hi / unit) + 1) * unit;
+  const span = T1 - T0;
+  return { T0, T1, lo, hi, span, unit, x: (t) => fixed((t - T0) / span), w: (ms) => fixed(ms / span) };
+}
+
+function rangeText(axis, from) {
+  if (axis.unit === HOUR) {
+    // The data's own first and last moment, not the margin drawn around them.
+    const sameDay = fmtDay(axis.lo) === fmtDay(axis.hi);
+    if (sameDay && fmtHour(axis.lo) === fmtHour(axis.hi)) return `${fmtDay(axis.lo, { year: true })}, ${fmtHour(axis.lo)} UTC`;
+    return `${fmtDay(axis.lo, { year: true })}, ${fmtHour(axis.lo)} – ${sameDay ? "" : `${fmtDay(axis.hi)}, `}${fmtHour(axis.hi)} UTC`;
+  }
+  // The start carries its year whenever it differs from the end's. "Mar 16 – Sep 18, 2026" over a
+  // span that began in 2023 read as six months when it was three and a half years.
+  const end = axis.T1 - DAY;
+  const sameYear = new Date(from).getUTCFullYear() === new Date(end).getUTCFullYear();
+  return `${fmtDay(from, { year: !sameYear })} – ${fmtDay(end, { year: true })}`;
+}
+
+/** Each window the reader can pick, with how many commits it leaves out, so the count is honest
+ *  whichever is on screen. */
+function laneZooms(axis, lanes) {
+  const times = [];
+  for (const lane of lanes) for (const pt of lane.points) if (pt.t != null && isCommit(pt)) times.push(pt.t);
+  const days = axis.span / DAY;
+  return ZOOMS.filter((z) => !z.days || z.days < days).map((z) => {
+    const from = z.days ? axis.T1 - z.days * DAY : axis.T0;
+    return {
+      ...z,
+      from,
+      z0: z.days ? axis.x(from) : 0,
+      outside: times.filter((t) => t < from).length,
+      range: rangeText(axis, from),
+    };
+  });
+}
+
+/** Month ticks across the whole span, and weekly ones where the 30-day window can show them. */
+function laneTicks(axis, zooms) {
+  if (axis.unit === HOUR) return "";
+  const ticks = [];
+  const start = new Date(axis.T0);
+  let m = Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + (start.getUTCDate() === 1 ? 0 : 1), 1);
+  let first = true;
+  while (m < axis.T1) {
+    const d = new Date(m);
+    const month = d.getUTCMonth();
+    const label = d.toLocaleDateString("en-US", {
+      month: "short",
+      ...(first || month === 0 ? { year: "numeric" } : {}),
+      timeZone: "UTC",
+    });
+    ticks.push(
+      `<span class="ln-tick" data-g="m"${month % 3 === 0 ? ' data-q="1"' : ""}${month === 0 ? ' data-y="1"' : ""} style="--x: ${axis.x(m)}">${escapeHtml(label)}</span>`,
+    );
+    first = false;
+    m = Date.UTC(d.getUTCFullYear(), month + 1, 1);
+  }
+  // Weeks where the 30-day window can show them, or across the whole span when it is too short to
+  // offer that window: twelve days of history otherwise had no dates on its axis at all.
+  const short = zooms.find((z) => z.id === "30") || (axis.span <= 45 * DAY ? { from: axis.T0 } : null);
+  if (short) {
+    let w = Math.floor(short.from / DAY) * DAY;
+    while (new Date(w).getUTCDay() !== 1) w += DAY;
+    for (; w < axis.T1; w += 7 * DAY) {
+      ticks.push(`<span class="ln-tick" data-g="w" style="--x: ${axis.x(w)}">${escapeHtml(fmtDay(w))}</span>`);
+    }
+  }
+  return ticks.join("");
+}
+
+/** A busy lane: one bar per day (or hour), its height the commit count and its colours the agents. */
+function laneBars(commits, axis) {
+  const buckets = new Map();
+  for (const c of commits) {
+    const at = Math.floor(c.t / axis.unit) * axis.unit;
+    const b = buckets.get(at) || { n: 0, by: new Map() };
+    b.n += 1;
+    const id = c.tool || "none";
+    b.by.set(id, (b.by.get(id) || 0) + 1);
+    buckets.set(at, b);
+  }
+  const most = Math.max(1, ...[...buckets.values()].map((b) => b.n));
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([at, b]) => {
+      const h = Math.max(3, Math.round((b.n / most) * LANES.barPx));
+      const parts = [...b.by.entries()].sort((a, b2) => b2[1] - a[1]);
+      const when = axis.unit === HOUR ? `${fmtDay(at)} ${fmtHour(at)} UTC` : fmtDay(at, { year: true });
+      const tip = `${when}: ${plural(b.n, "commit")} · ${parts.map(([id, n]) => `${familyName(id === "none" ? "" : id)} ${n}`).join(" · ")}`;
+      const segs = parts.map(([id, n]) => `<i data-agent="${escapeHtml(id)}" style="flex: ${n}"></i>`).join("");
+      return `<span class="ln-bar" style="--x: ${axis.x(at)}; --w: ${axis.w(axis.unit)}; --bh: ${h}px" title="${escapeHtml(tip)}">${segs}</span>`;
     })
     .join("");
+}
 
-  const mainDots = main
-    ? `<g class="bg-branch" data-main="1" style="--h: ${main.hue}">` +
-      graphLabel(axis.w - GRAPH.pad, yMain - 11, shortBranch(main.name, 26), "end", "bg-label-main") +
-      main.points.map((pt) => graphDot(axis.of(pt), yMain, pt, main.hue)).join("") +
-      `</g>`
+/** The marks on one lane: bars when it is busy, otherwise its life as a line with a dot per commit. */
+function laneMarks(lane, axis) {
+  const commits = lane.points.filter((pt) => isCommit(pt) && pt.t != null);
+  const posts = lane.points.filter((pt) => !isCommit(pt) && pt.t != null);
+  const merged = Date.parse(lane.mergedAt || "");
+  const out = [];
+  const dense = commits.length > LANES.dense;
+  // A rail under dots; a busy lane's bars stand on a baseline the stylesheet draws instead.
+  if (lane.isMain && !dense) out.push(`<span class="ln-rail"></span>`);
+  // The merge ring goes down first: a one-commit branch merged minutes later puts both in one place,
+  // and drawn last the ring covered the commit's colour.
+  if (!lane.isMain && Number.isFinite(merged)) {
+    out.push(
+      `<span class="ln-merge" style="--x: ${axis.x(merged)}" title="${escapeHtml(`merged${lane.pr ? ` in #${lane.pr}` : ""} · ${formatWhen(lane.mergedAt)}`)}"></span>`,
+    );
+  }
+  if (dense) {
+    out.push(laneBars(commits, axis));
+  } else {
+    if (!lane.isMain && commits.length + posts.length > 0) {
+      const ts = [...commits, ...posts].map((pt) => pt.t);
+      const a = Math.min(...ts);
+      const b = Math.max(...ts, Number.isFinite(merged) ? merged : -Infinity);
+      out.push(`<span class="ln-span" style="--x: ${axis.x(a)}; --w: ${axis.w(b - a)}"></span>`);
+    }
+    for (const c of commits) {
+      out.push(
+        `<span class="ln-dot" data-kind="${c.type}" data-agent="${escapeHtml(c.tool || "none")}"` +
+          ` style="--x: ${axis.x(c.t)}" title="${escapeHtml(pointTip(c))}"></span>`,
+      );
+    }
+  }
+  for (const p of posts) {
+    out.push(`<span class="ln-post" data-kind="${postKind(p)}" style="--x: ${axis.x(p.t)}" title="${escapeHtml(pointTip(p))}"></span>`);
+  }
+  return out.join("");
+}
+
+/**
+ * The avatar a person posts under, with the tooltip data the board's script reads. Shared by the
+ * row that opens under a branch; the class and data attributes are the ones that script expects.
+ */
+function laneAvatar(p, lane, model) {
+  const tools = p.tools.length ? p.tools.join(",") : "cli";
+  const lastPost = p.lastText ? `${p.lastType}: ${p.lastText}` : "no post text";
+  const presenceState = p.presence?.state === "active" ? "active" : "idle";
+  const presenceLabel = p.presence?.label || "idle · never";
+  const toolPresenceBits = p.tools
+    .map((tid) => {
+      const pr = model.toolPresence?.[tid];
+      return `${tid}=${pr?.state === "active" ? "active" : "idle"}:${pr?.label || "idle · never"}`;
+    })
+    .join("|");
+  // No title= on the button — a native browser tip would stack with .tl-tooltip.
+  return (
+    `<button type="button" class="tl-avatar" style="--actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}"` +
+    ` data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-tool-presence="${escapeHtml(toolPresenceBits)}"` +
+    ` data-presence="${presenceState}" data-presence-label="${escapeHtml(presenceLabel)}" data-posts="${p.postCount}"` +
+    ` data-diffs="${p.diffCount}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}"` +
+    ` data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${posterVerifyKind(p)}"` +
+    ` aria-label="${escapeHtml(`${p.actor} on ${lane.name}`)}">` +
+    `<span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span>` +
+    `<span class="tl-presence" data-presence="${presenceState}" aria-hidden="true"></span>` +
+    `${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`
+  );
+}
+
+/** One line of a row's list: the date and what happened first, then who, which agent, and the sha. */
+function laneListItem(pt) {
+  const day = pt.t == null ? "—" : fmtDay(pt.t);
+  if (isCommit(pt)) {
+    return (
+      `<li data-kind="${pt.type}"><time datetime="${escapeHtml(pt.at || "")}">${escapeHtml(day)}</time>` +
+      `<span class="ln-subj">${escapeHtml(pt.text || "")}</span>` +
+      `<span class="ln-who">${escapeHtml(pt.actor || "")}</span>` +
+      `<span class="ln-mini" data-agent="${escapeHtml(pt.tool || "none")}">${escapeHtml(pt.agent || "no agent recorded")}</span>` +
+      `<span class="ln-delta">${pt.type === "merge" ? "merge" : `+${pt.ins || 0} −${pt.del || 0}`}</span>` +
+      `<code>${escapeHtml(pt.sha || "")}</code></li>`
+    );
+  }
+  return (
+    `<li data-kind="post"><time datetime="${escapeHtml(pt.at || "")}">${escapeHtml(day)}</time>` +
+    `<span class="ln-subj">${escapeHtml(pt.text || "")}</span>` +
+    `<span class="ln-who">${escapeHtml(pt.actor || "")}</span><span class="ln-kind">${postKind(pt)}</span></li>`
+  );
+}
+
+function laneRow(lane, axis, zooms, model, ctx) {
+  const commits = lane.points.filter(isCommit);
+  const posts = lane.points.filter((pt) => !isCommit(pt));
+  const times = lane.points.map((pt) => pt.t).filter((t) => t != null);
+  const last = times.length ? Math.max(...times) : null;
+
+  const byAgent = new Map();
+  for (const c of commits) if (c.tool) byAgent.set(c.tool, (byAgent.get(c.tool) || 0) + 1);
+  const agents = [...byAgent.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([id, n]) => `<span class="ln-mini" data-agent="${escapeHtml(id)}">${escapeHtml(familyName(id))} ${n}</span>`)
+    .join("");
+
+  const counts = [commits.length ? plural(commits.length, "commit") : "", posts.length ? plural(posts.length, "post") : ""]
+    .filter(Boolean)
+    .join(" · ");
+  // A branch whose tip is in main says so. The cap on how much history was read is said once, for
+  // the whole figure, because it cuts every lane and not only main.
+  const state = lane.isMain
+    ? ""
+    : lane.mergedAt
+      ? `merged${lane.pr ? ` #${lane.pr}` : ""}`
+      : lane.open
+        ? "open"
+        : "";
+  const ago = last == null ? "" : shortSince(Math.max(0, ctx.now - last));
+  const when = ago ? (ago === "just now" ? ago : `${ago} ago`) : "";
+
+  // Items earlier than the window on screen are clipped from the lane, so the lane says how many.
+  const before = zooms
+    .filter((z) => z.id !== "all")
+    .map((z) => [z.id, lane.points.filter((pt) => pt.t != null && pt.t < z.from).length])
+    .filter(([, n]) => n > 0)
+    .map(([id, n]) => ` data-before-${id}="${n}"`)
+    .join("");
+
+  const faces = lane.people.length
+    ? `<span class="ln-faces" aria-hidden="true">${lane.people
+        .slice(0, 4)
+        .map((p) => `<span class="ln-face" style="--actor-hue: ${p.hue}">${escapeHtml(p.initials)}</span>`)
+        .join("")}</span>`
     : "";
 
-  // Collapsed, the SVG is cropped to `openH` around main — which is why main sits at the centre of
-  // the viewBox and lanes fan out from it. The checkbox swaps the height to the full drawing, so
-  // the reveal is CSS only and the board keeps working as a file with no server behind it.
-  const toggle =
-    hidden > 0
-      ? `<label class="bg-expand" for="bg-toggle">` +
-        `<span class="bg-expand-open">+ ${hidden} more branch${hidden === 1 ? "" : "es"}</span>` +
-        `<span class="bg-expand-close">− show the ${GRAPH.shown} closest to main</span>` +
-        `</label>`
+  const listed = [...lane.points]
+    .sort((a, b) => (b.t ?? -Infinity) - (a.t ?? -Infinity))
+    .slice(0, LANES.listCap);
+  const unlisted = lane.points.length - listed.length;
+  const people = lane.people.length
+    ? `<div class="ln-people"><span class="ln-people-label">Posting here</span>${lane.people.map((p) => laneAvatar(p, lane, model)).join("")}</div>`
+    : "";
+
+  const badges =
+    (lane.isMain ? ' <span class="branch-badge">default</span>' : "") +
+    (lane.isCurrent && !lane.isMain ? ' <span class="branch-badge">checked out</span>' : "");
+
+  return `<details class="ln-row"${lane.isMain ? ' data-main="1"' : ""}${lane.isCurrent ? ' data-current="1"' : ""} style="--branch-hue: ${lane.hue}">
+  <summary>
+    <span class="ln-name"><span class="branch-swatch" aria-hidden="true"></span><span class="ln-label" title="${escapeHtml(lane.name)}">${escapeHtml(lane.name)}</span>${badges}</span>
+    <span class="ln-lane" aria-hidden="true"${before}${commits.filter((pt) => pt.t != null).length > LANES.dense ? ' data-dense="1"' : ""}>${laneMarks(lane, axis)}</span>
+    <span class="ln-meta"><span class="ln-counts">${escapeHtml(counts)}${state ? ` · ${escapeHtml(state)}` : ""}</span>${agents}${when ? `<span class="ln-when">${escapeHtml(when)}</span>` : ""}${faces}</span>
+  </summary>
+  <div class="ln-body">
+    ${people}
+    <ol class="ln-list">${listed.map(laneListItem).join("")}${unlisted > 0 ? `<li class="ln-unlisted">and ${plural(unlisted, "older item")} not listed here</li>` : ""}</ol>
+  </div>
+</details>`;
+}
+
+function laneLegend(lanes) {
+  const seen = new Set();
+  let posts = false;
+  let merges = false;
+  for (const lane of lanes) {
+    if (lane.mergedAt && !lane.isMain) merges = true;
+    for (const pt of lane.points) {
+      if (isCommit(pt)) seen.add(pt.tool || "none");
+      else posts = true;
+    }
+  }
+  const order = [...seen].sort((a, b) => (a === "none") - (b === "none") || familyName(a).localeCompare(familyName(b)));
+  const keys = order.map(
+    (id) => `<li><span class="ln-key" data-agent="${escapeHtml(id)}"></span>${escapeHtml(familyName(id === "none" ? "" : id))}</li>`,
+  );
+  if (posts) keys.push(`<li><span class="ln-key" data-shape="post"></span>room post</li>`);
+  if (merges) keys.push(`<li><span class="ln-key" data-shape="merge"></span>merged</li>`);
+  return `<ul class="ln-legend" aria-label="Colours">${keys.join("")}</ul>`;
+}
+
+export function renderBranchGraph(model, { now = Date.now() } = {}) {
+  const lanes = (model.lanes || []).filter((l) => (l.points || []).length > 0);
+  if (!lanes.length) return "";
+  const axis = laneAxis(lanes);
+  if (!axis) return "";
+
+  const zooms = laneZooms(axis, lanes);
+  const lastOf = (lane) => Math.max(...lane.points.map((pt) => pt.t ?? -Infinity));
+  const main = lanes.find((l) => l.isMain);
+  const others = lanes.filter((l) => l !== main).sort((a, b) => lastOf(b) - lastOf(a) || a.name.localeCompare(b.name));
+  const ordered = main ? [main, ...others] : others;
+  // It opens at the smallest window in which every row on screen still shows its latest activity:
+  // thirty days on a busy repository, where anything wider bunches this week's branches against the
+  // right edge, and wider on a quiet one, where thirty days would show rows of nothing but "‹ 12".
+  const onScreen = ordered.slice(0, LANES.shown + (main ? 1 : 0));
+  const start = zooms.find((z) => onScreen.every((lane) => lastOf(lane) >= z.from)) || zooms[zooms.length - 1];
+
+  const ctx = { now };
+  const read = lanes.reduce((n, l) => n + l.points.filter(isCommit).length, 0);
+  const capNote = model.historyTruncated
+    ? `<p class="ln-note">Reading the newest ${read} of ${model.historyTotal} commits. Older ones are not drawn here or counted anywhere on this board.</p>`
+    : "";
+  const rows = ordered.map((lane) => laneRow(lane, axis, zooms, model, ctx));
+  const visible = rows.slice(0, LANES.shown + (main ? 1 : 0));
+  const rest = rows.slice(visible.length);
+
+  const refs = Number(model.historyBranchRefs) || 0;
+  const unseen = refs - 1 - others.length;
+  const refNote =
+    unseen > 0
+      ? `<p class="ln-note">The ${others.length} most recently merged or active branches are drawn. This checkout has ${refs} branch refs; <code>git branch -a</code> lists them all.</p>`
       : "";
 
-  const svg = `<svg viewBox="0 0 ${axis.w} ${fullH}" preserveAspectRatio="xMidYMid slice" role="img"
-       style="--vb-w: ${axis.w}px; --vb-open: ${openH}px; --vb-full: ${fullH}px"
-       aria-label="Branch graph: ${withPosts.length} branch${withPosts.length === 1 ? "" : "es"} in commit order, one dot per commit or post">
-    ${mainRail}
-    ${branches}
-    ${mainDots}
-  </svg>`;
+  const outsideText = (z) => (z.outside ? `${plural(z.outside, "older commit")} outside this window` : "everything read is in this window");
+  const zoomControl =
+    zooms.length > 1
+      ? `<div class="ln-zoom" role="group" aria-label="Time window">${zooms
+          .map(
+            (z) =>
+              `<button type="button" data-zoom="${z.id}" data-z0="${z.z0}" data-range="${escapeHtml(z.range)}" data-outside-text="${escapeHtml(outsideText(z))}" aria-pressed="${z === start}">${z.label}</button>`,
+          )
+          .join("")}</div>`
+      : "";
 
-  // Input first so `~` can reach both the svg it resizes and the label it relabels; the label sits
-  // after the svg so the control reads under the picture it opens.
-  // The slider is the answer to "the graph is wider than the window and nothing says so". A native
-  // scrollbar on macOS is an overlay: invisible until you already knew to scroll, which is exactly
-  // the wrong way round. The range input is always visible, is a control people recognise, and
-  // works from the keyboard. It hides itself when the graph fits.
-  const slider = `<input type="range" class="bg-slider" min="0" max="1000" value="1000" step="1"
-       aria-label="Scroll the branch graph through history" hidden>`;
-
-  return `<figure class="branch-graph" data-graph-width="${axis.w}">
-  <input type="checkbox" class="bg-toggle" id="bg-toggle" hidden>
-  <div class="bg-scroll">
-    ${svg}
+  // How dense the month labels can be over the whole span: every month, every quarter, or years.
+  const long = axis.span > 730 * DAY ? 2 : axis.span > 400 * DAY ? 1 : 0;
+  const weeks = axis.unit === DAY && !zooms.some((z) => z.id === "30") && axis.span <= 45 * DAY;
+  return `<figure class="ln-figure" data-zoom="${start.id}"${long ? ` data-long="${long}"` : ""}${weeks ? ' data-weeks="1"' : ""} style="--z0: ${start.z0}; --z1: 1">
+  <div class="ln-controls">
+    <p class="ln-range"><b data-ln-range>${escapeHtml(start.range)}</b> · <span data-ln-outside>${escapeHtml(outsideText(start))}</span></p>
+    ${zoomControl}
   </div>
-  ${slider}
-  ${toggle}
+  ${laneLegend(lanes)}
+  <div class="ln-axis" aria-hidden="true"><span></span><span class="ln-ticks">${laneTicks(axis, zooms)}</span><span></span></div>
+  <div class="ln-rows">
+${visible.join("\n")}
+  </div>
+  ${rest.length ? `<details class="ln-more"><summary>Show ${plural(rest.length, "more branch", "more branches")}</summary><div class="ln-rows">\n${rest.join("\n")}\n</div></details>` : ""}
+  ${capNote}
+  ${refNote}
 </figure>`;
 }
 
@@ -940,7 +1161,7 @@ export function renderBuiltBy(history) {
 
   return `<section class="built-by" aria-label="who built this project">
   <h2 class="bb-heading">Built by</h2>
-  <p class="bb-note">From <strong>${history.total}</strong> commit${history.total === 1 ? "" : "s"} of git history — attribution comes from <code>Co-Authored-By</code> trailers the agents write themselves. Nothing is read from Cursor's or Claude's private state.</p>
+  <p class="bb-note">From ${history.truncated ? `the newest <strong>${totalShown}</strong> of ${history.total} commits` : `<strong>${history.total}</strong> commit${history.total === 1 ? "" : "s"}`} of git history — attribution comes from <code>Co-Authored-By</code> trailers the agents write themselves. Nothing is read from Cursor's or Claude's private state.</p>
   <div class="bb-agent-row">${agentChips}${coauthorChip}${plainChip}</div>
   <ul class="bb-people">${people}</ul>
   ${split}
@@ -1357,7 +1578,7 @@ export function buildTimelineModel(events, git = {}, opts = {}) {
 function renderTimeline(events, git, opts = {}) {
   const model = mergeHistoryIntoLanes(buildTimelineModel(events, git, opts), opts.history);
   if (!model.lanes.length && !model.unknownCount) {
-    return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
+    return `<section class="timeline" id="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
     <h2 class="timeline-heading">Timeline</h2>
     <p class="timeline-note">No branch stamps yet. Posts with a git branch (or ROOMS_BRANCH) will appear as lanes here. Derived from room events — not IDE telemetry.</p>
@@ -1367,73 +1588,23 @@ function renderTimeline(events, git, opts = {}) {
 
   const headBit =
     model.head && model.current
-      ? `Current checkout <strong>${escapeHtml(shortBranch(model.current, 28))}</strong> @ <span class="device">${escapeHtml(model.head)}</span> (local git only).`
-      : "Commit SHAs appear only for the current local checkout when git is available.";
-
-  // Only branches somebody actually posted on. A lane per branch with "no posters yet" written
-  // across it was a row of furniture for every branch in the repo — and it sat under a graph on a
-  // commit-order axis while positioning its avatars by time, so the two never lined up and looked
-  // like they were meant to. The graph is the picture; this says who is where.
-  const withPeople = model.lanes.filter((l) => l.people.length > 0);
-  const lanesHtml = withPeople
-    .map((lane) => {
-      const mainAttr = lane.isMain ? ' data-main="1"' : "";
-      const curAttr = lane.isCurrent ? ' data-current="1"' : "";
-      const avatars = lane.people
-        .map((p) => {
-          const tools = p.tools.length ? p.tools.join(",") : "cli";
-          const lastPost = p.lastText ? `${p.lastType}: ${p.lastText}` : "no post text";
-          // No title= on the button — a native browser tip would stack with .tl-tooltip.
-          const aria = `${p.actor} on ${lane.name}`;
-          const verify = posterVerifyKind(p);
-          const presenceState = p.presence?.state === "active" ? "active" : "idle";
-          const presenceLabel = p.presence?.label || "idle · never";
-          const toolPresenceBits = p.tools
-            .map((tid) => {
-              const pr = model.toolPresence?.[tid];
-              const st = pr?.state === "active" ? "active" : "idle";
-              const lb = pr?.label || "idle · never";
-              return `${tid}=${st}:${lb}`;
-            })
-            .join("|");
-          return `<button type="button" class="tl-avatar" style="--actor-hue: ${p.hue}" data-actor="${escapeHtml(p.actor)}" data-branch="${escapeHtml(lane.name)}" data-tools="${escapeHtml(tools)}" data-tool-presence="${escapeHtml(toolPresenceBits)}" data-presence="${presenceState}" data-presence-label="${escapeHtml(presenceLabel)}" data-posts="${p.postCount}" data-diffs="${p.diffCount}" data-last-at="${escapeHtml(p.lastAt || "")}" data-last-post="${escapeHtml(lastPost)}" data-commit="${escapeHtml(lane.isCurrent && model.head ? model.head : "")}" data-verify="${verify}" aria-label="${escapeHtml(aria)}"><span class="tl-avatar-initials" aria-hidden="true">${escapeHtml(p.initials)}</span><span class="tl-presence" data-presence="${presenceState}" aria-hidden="true"></span>${p.verified ? '<span class="tl-verify" data-verify="verified">✓</span>' : ""}</button>`;
-        })
-        .join("");
-      return `<div class="tl-who"${mainAttr}${curAttr} style="--branch-hue: ${lane.hue}" data-branch="${escapeHtml(lane.name)}">
-  <span class="branch-swatch" aria-hidden="true"></span>
-  <span class="tl-who-name" title="${escapeHtml(lane.name)}">${escapeHtml(shortBranch(lane.name, 24))}${lane.isMain ? ' <span class="branch-badge">default</span>' : ""}</span>
-  <span class="tl-who-meta">${lane.eventCount} post${lane.eventCount === 1 ? "" : "s"}</span>
-  <span class="tl-who-avatars">${avatars}</span>
-</div>`;
-    })
-    .join("\n");
-
-  const quiet = model.lanes.length - withPeople.length;
-  const quietLine = quiet > 0
-    ? `<p class="tl-quiet">${quiet} other branch${quiet === 1 ? " is" : "es are"} on the graph with no room posts — their commits are still drawn.</p>`
-    : "";
+      ? ` Checked out: <strong>${escapeHtml(shortBranch(model.current, 28))}</strong> @ <span class="device">${escapeHtml(model.head)}</span>.`
+      : "";
 
   const unk =
     model.unknownCount > 0
       ? `<p class="timeline-unknown">${model.unknownCount} older post${model.unknownCount === 1 ? "" : "s"} without a branch stamp are omitted from lanes.</p>`
       : "";
 
-  const t0 = escapeHtml(formatWhen(new Date(model.tMin).toISOString()));
-  const t1 = escapeHtml(formatWhen(new Date(model.tMax).toISOString()));
-
-  return `<section class="timeline" data-timeline="1" aria-label="branch timeline">
+  // One sentence, where there used to be seven lines of instructions. What the picture means belongs
+  // in the picture: the legend names the colours, the range line names the window, and every mark
+  // says what it is on hover. People who posted on a branch are inside its row.
+  return `<section class="timeline" id="timeline" data-timeline="1" aria-label="branch timeline">
   <div class="timeline-head">
     <h2 class="timeline-heading">Timeline</h2>
-    <p class="timeline-note">Branches flow left→right in commit order — every commit takes the same step, so a quiet month and a busy hour are the same width and a short-lived branch is still readable. Real timestamps are on every dot and at both ends of the axis. Drag the bar under the graph to move through history. Hover for agent icons (Cursor / Claude Code / Codex / MCP / CLI / git-hook) with green/gray active·idle dots (from .room posts within the active window), post·diff counts on that branch, last activity, and local HEAD when known. ${headBit}</p>
+    <p class="timeline-note">A row per branch, most recent first. Dots are commits, coloured by the agent that co-authored them; a busy row shows commits per day instead. Open a row to list what is on it.${headBit}</p>
   </div>
-  <div class="tl-axis">
-    <span class="tl-axis-mid">oldest <b>${t0}</b> → newest <b>${t1}</b> · one step per commit</span>
-  </div>
-${renderBranchGraph(model)}
-  <div class="tl-who-list">
-${lanesHtml}
-  </div>
-  ${quietLine}
+${renderBranchGraph(model, { now: opts.now != null ? Number(opts.now) : Date.now() })}
   ${unk}
   <div class="tl-tooltip" id="tl-tooltip" role="tooltip" hidden></div>
 </section>`;
