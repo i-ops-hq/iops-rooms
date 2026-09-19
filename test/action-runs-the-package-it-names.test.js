@@ -17,7 +17,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+// Line endings normalised: with no .gitattributes, a Windows checkout of this repository has CRLF,
+// and a pattern anchored on "\n" or "$" matches nothing there. Both Windows jobs said so.
+const read = (path) =>
+  readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 // Shell and YAML comments quote the old invocation on purpose, to say why it is gone.
 const codeLines = (text) => text.split("\n").filter((line) => !/^\s*#/.test(line));
 const BARE_NPX = /\bnpx\b.*\biops-rooms@/;
