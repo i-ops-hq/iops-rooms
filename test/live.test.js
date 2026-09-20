@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { initRoom, postNote } from "../src/store.js";
 import { request as httpRequest } from "node:http";
-import { LIVE_HOST, startLiveBoard } from "../src/live.js";
+import { LIVE_HOST, hostIsLocal, startLiveBoard } from "../src/live.js";
 
 async function tmp() {
   return mkdtemp(join(tmpdir(), "iops-rooms-live-"));
@@ -123,5 +123,45 @@ test("localhost by any of its names still works", async () => {
     // A right name on the wrong port is a different server, so it is not this one.
     const wrong = await requestWithHost(port, "/", `localhost:${port + 1}`);
     assert.equal(wrong.status, 403);
+  });
+});
+
+// ---------------------------------------------------------------- the Host header, parsed strictly
+
+test("an authority this server cannot be addressed by is refused, however it is malformed", () => {
+  const port = 7840;
+  for (const host of [
+    `localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`,
+    `LOCALHOST:${port}`, `  localhost:${port}  `,
+    "localhost", "127.0.0.1", // no port is the scheme default, and still this machine
+  ]) {
+    assert.equal(hostIsLocal(host, port), true, `${JSON.stringify(host)} is this server`);
+  }
+  for (const host of [
+    `localhost:${port}:evil.test`,   // two ports: the old split read the first and served it
+    `localhost:${port}@evil.test`,   // user-info, where the host a client dials is after the @
+    `user@localhost:${port}`,
+    `localhost:0${port}`,            // no client sends a port written that way
+    `localhost: ${port}`,
+    `local host:${port}`,
+    `::1:${port}`,                   // unbracketed IPv6 is not an authority
+    `[::1]:${port + 1}`,
+    `localhost.evil.test:${port}`,
+    `127.0.0.1.evil.test:${port}`,
+    `evil.test:${port}`,
+    `localhost:${port + 1}`,
+    "localhost:abc", "localhost:", "localhost:0", "", "   ", undefined, null,
+  ]) {
+    assert.equal(hostIsLocal(host, port), false, `${JSON.stringify(host)} must not be served`);
+  }
+});
+
+test("and the server refuses the malformed ones on the wire", async () => {
+  await withLiveBoard(async ({ port }) => {
+    for (const host of [`localhost:${port}:evil.test`, `localhost:${port}@evil.test`, `localhost:0${port}`]) {
+      const res = await requestWithHost(port, "/", host);
+      assert.equal(res.status, 403, `Host: ${host} must not be served`);
+      assert.doesNotMatch(res.body, /<html|ln-row|built-by/i, "and nothing of the board leaks");
+    }
   });
 });
