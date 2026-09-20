@@ -1,5 +1,9 @@
 name: publish
 
+# Third-party actions are pinned to a commit, not a tag. This workflow holds the identity that
+# publishes the package, so a tag retargeted to other code would publish whatever that code built,
+# signed as us. The trailing comment is the release that commit is.
+
 # RELEASING: package.json is the version. The tag only triggers, and it must agree.
 #   1. bump "version" in package.json   2. add the CHANGELOG heading
 #   3. commit                           4. git tag v<X.Y.Z> && git push origin v<X.Y.Z>
@@ -31,8 +35,8 @@ jobs:
       # it is attested rather than asserted.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"

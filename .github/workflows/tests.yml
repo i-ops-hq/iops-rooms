@@ -1,5 +1,9 @@
 name: tests
 
+# Third-party actions are pinned to a commit, not a tag: a tag can be moved to other code, and
+# these workflows check this repository out and run it. The trailing comment is the release that
+# commit is, so moving one is a deliberate edit rather than something that happens to us.
+
 # There was no CI until 2026-09-07. PRs #20, #21 and #22 all merged showing `checks: 0`, so the
 # only verification any of them got was somebody running the suite locally and saying so. That
 # works until it doesn't, and it never catches the case where two branches are each fine alone.
@@ -54,8 +58,8 @@ jobs:
           || '[{"os":"ubuntu-latest","node":"20"},{"os":"ubuntu-latest","node":"22"},{"os":"ubuntu-latest","node":"24"},{"os":"windows-latest","node":"20"},{"os":"windows-latest","node":"24"}]'
           ) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
 
@@ -85,8 +89,8 @@ jobs:
     name: coverage floor
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # The --test-coverage-* thresholds landed in Node 22; the matrix above still runs 20.
           node-version: "22"
@@ -110,8 +114,8 @@ jobs:
     name: the packed tarball actually runs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
 
@@ -166,11 +170,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Full history: the action compares a branch against a base, and a shallow clone has neither.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
 
