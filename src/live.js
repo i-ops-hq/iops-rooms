@@ -25,16 +25,30 @@ export const LIVE_DEFAULT_PORT = 7840;
  * The Host header is what distinguishes the two, and nothing was reading it. A request that did not
  * ask for localhost was not meant for this server.
  */
+/**
+ * The whole header, parsed as an authority, or nothing.
+ *
+ * A name or a bracketed IPv6 address, optionally one port, and no room for anything else: no
+ * user-info, no second colon, no space, no port with a leading zero. The group order is bracketed
+ * address, name, port.
+ */
+const AUTHORITY = /^(?:(\[[0-9a-f:]+\])|([a-z0-9.-]+))(?::([1-9][0-9]{0,4}))?$/;
+
 export function hostIsLocal(hostHeader, port) {
   const raw = String(hostHeader || "").trim().toLowerCase();
   if (!raw) return false; // HTTP/1.1 requires Host; a request without one is not a browser's
-  // Strip the port, taking care with the bracketed IPv6 form `[::1]:7840`.
-  const host = raw.startsWith("[") ? raw.slice(0, raw.indexOf("]") + 1) : raw.split(":")[0];
-  const named = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
-  if (!named) return false;
-  const declared = raw.startsWith("[") ? raw.slice(raw.indexOf("]") + 1).replace(/^:/, "") : raw.split(":")[1];
-  // A right name on the wrong port is still not this server.
-  return !declared || Number(declared) === Number(port);
+  // Parsed rather than split. The old version took everything before the first colon as the name
+  // and everything after it as the port, so `localhost:7840:evil` read as this machine on this
+  // port and was served. Nothing could reach that — a URL with a non-numeric port does not parse,
+  // and a page cannot set Host — but a check that says yes to a string no client can even form is
+  // not checking. The same split also made `::1` unbracketed dead: it became "" before it was read.
+  const parsed = AUTHORITY.exec(raw);
+  if (!parsed) return false;
+  const host = parsed[1] || parsed[2];
+  if (host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]") return false;
+  // A right name on the wrong port is still not this server. No port at all is the scheme's
+  // default, which is a visit to this machine either way.
+  return parsed[3] === undefined || Number(parsed[3]) === Number(port);
 }
 
 export async function startLiveBoard(projectDir, opts = {}) {
