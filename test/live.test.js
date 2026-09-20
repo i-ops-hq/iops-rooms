@@ -11,6 +11,24 @@ async function tmp() {
   return mkdtemp(join(tmpdir(), "iops-rooms-live-"));
 }
 
+async function rmRf(dir) {
+  // On Windows, background socket/server teardown may briefly keep file handles open,
+  // causing rmdir to throw EBUSY/ENOTEMPTY. Retry with backoff on Windows (issue #19).
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      return;
+    } catch (err) {
+      if (process.platform === "win32" && (err.code === "EBUSY" || err.code === "ENOTEMPTY" || err.code === "EPERM")) {
+        if (attempt === 9) throw err;
+        await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 test("live board binds 127.0.0.1 and reflects a new post", async () => {
   const dir = await tmp();
   let live;
@@ -38,7 +56,7 @@ test("live board binds 127.0.0.1 and reflects a new post", async () => {
     assert.doesNotMatch(html, /https?:\/\/(?!127\.0\.0\.1)/);
   } finally {
     if (live) await live.close();
-    await rm(dir, { recursive: true, force: true });
+    await rmRf(dir);
   }
 });
 
@@ -58,7 +76,7 @@ test("--port 0 binds a free port, not the default", async () => {
       await a.close();
     }
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rmRf(dir);
   }
 });
 
@@ -93,7 +111,7 @@ async function withLiveBoard(fn) {
     await fn({ url: live.url, port: live.port });
   } finally {
     if (live) await live.close();
-    await rm(dir, { recursive: true, force: true });
+    await rmRf(dir);
   }
 }
 
