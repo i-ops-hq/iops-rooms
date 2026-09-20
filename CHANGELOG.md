@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.9
+
+### The Host header is parsed, not split at the first colon
+
+The live board is served only to this machine, and the Host header is the whole of that boundary:
+binding to 127.0.0.1 stops another host reaching the socket, but not a page the user is visiting
+whose domain has been pointed at 127.0.0.1. The check took everything before the first colon as the
+name and everything after it as the port, so `localhost:7840:evil.test` was a name it liked and a
+port it liked, and the board — the project's whole git history — was served for it.
+
+Nothing could reach it. A URL with a non-numeric port does not parse, and a page cannot set Host, so
+the only client that can send that is one able to send a well-formed `Host: localhost:7840` already.
+A check that says yes to a string no client can form is still not a check, and this one now parses
+the header: a name or a bracketed IPv6 address, at most one port, and nothing else. User-info, a
+second colon, a space and a port written `07840` are refused. The old split had also left `::1`
+unmatchable, because it became an empty string before anything compared it.
+
+Eight authorities that must be served and nineteen that must not, three of them refused on the wire
+through a running server. Found by an outside review that read the source and could not run it.
+
 ## 0.5.8
 
 ### The timeline, rebuilt so it can be read
