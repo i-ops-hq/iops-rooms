@@ -108,8 +108,11 @@ test("a report from a subdirectory is about the project, not the folder", async 
     // "api · last 7d" for a repository called something else.
     // basename(), not split("/"): a Windows path has no forward slashes in it, so the old version
     // built a regex out of the whole `C:\Users\…` path — backslash escapes and all.
-    assert.equal(here.out.split("\n")[0], `${basename(base)} · last 7d`, here.out);
-    assert.doesNotMatch(here.out.split("\n")[0], /^api /);
+    // The header is no longer the first line — the finding is — so this looks for the header
+    // rather than for a position. What it asserts is unchanged: the title names the project.
+    const title = here.out.split("\n").find((line) => line.includes("· last 7d"));
+    assert.equal(title, `${basename(base)} · last 7d`, here.out);
+    assert.doesNotMatch(String(title), /^api /);
   });
 });
 
