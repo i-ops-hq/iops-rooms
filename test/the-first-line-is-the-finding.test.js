@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -33,7 +33,7 @@ async function repo(fn) {
       await git(dir, ["add", file]);
       await git(dir, ["commit", "-m", trailer ? `${subject}\n\n${trailer}` : subject]);
     };
-    await fn({ dir, commit });
+    await fn({ dir, commit, git: (args) => git(dir, args) });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -69,11 +69,42 @@ test("a second agent is named rather than folded into the first", async () => {
   });
 });
 
-test("nothing recorded means no sentence, because there is no finding to state", async () => {
+test("nothing recorded is the finding for most repositories, so it is said too", async () => {
+  // Cursor and Copilot write no trailer, so this is the majority of first runs. The old behaviour
+  // put the dashboard back and said nothing, at exactly the moment a reader decides whether the
+  // tool told them anything.
   await repo(async ({ dir, commit }) => {
     await commit("a.txt", "mine");
+    await commit("b.txt", "mine too");
     const text = formatWeek(await buildReport(dir), { name: "x", window: "last 7d" });
-    assert.doesNotMatch(first(text), /co-authored/);
+    assert.equal(first(text), "None of the last 2 commits here records an agent.");
+  });
+});
+
+test("a configured agent that recorded nothing is named, because that is the gap", async () => {
+  await repo(async ({ dir, commit, git: run }) => {
+    // Committed, because that is what rooms reads: a config file in the working tree is not
+    // evidence the repository declares anything.
+    await mkdir(join(dir, ".cursor"), { recursive: true });
+    await writeFile(join(dir, ".cursor", "rules"), "x", "utf8");
+    await run(["add", "-A"]);
+    await run(["commit", "-m", "cursor config"]);
+    await commit("a.txt", "mine");
+    await commit("b.txt", "mine too");
+    const text = formatWeek(await buildReport(dir), { name: "x" });
+    assert.equal(
+      first(text),
+      "None of the last 3 commits here records an agent, and Cursor is configured in this repository.",
+    );
+    // It says what was read, never who wrote the code: no trailer is not no agent, which is what
+    // the note underneath has always said and what this must not contradict in one line.
+    assert.doesNotMatch(first(text), /wrote|AI|human/i);
+  });
+});
+
+test("an empty window still has no sentence, because there is nothing to have found", async () => {
+  await repo(async ({ dir }) => {
+    const text = formatWeek(await buildReport(dir), { name: "x", window: "last 7d" });
     assert.equal(first(text), "x · last 7d", "the header is still the header");
   });
 });

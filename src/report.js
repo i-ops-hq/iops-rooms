@@ -317,7 +317,23 @@ function finding(report) {
   const agents = (report.rows || [])
     .filter((row) => Number(row.commits) > 0 && !skip.has(row.id))
     .sort((a, b) => b.commits - a.commits);
-  if (!agents.length || !report.seen) return "";
+  if (!report.seen) return "";
+  // The majority case, and the one the sentence above does not reach: Cursor and Copilot write no
+  // trailer, so a first-time reader of a normal repository got the old dashboard and no finding.
+  // The gap IS the finding, and it is a better one — a statistic about somebody else's tool is
+  // less interesting than a hole in your own record. Worded so it says what was read and nothing
+  // more: no trailer is not no agent, which is what the note underneath has always said.
+  if (!agents.length) {
+    const declared = (report.config && report.config.ok ? report.config.agents || [] : [])
+      .map((agent) => agent.label);
+    const also = declared.length
+      ? `, and ${declared.length === 1 ? `${declared[0]} is` : `${declared.join(", ")} are`} configured in this repository`
+      : "";
+    const said = report.seen === 1
+      ? "The last commit here records no agent"
+      : `None of the last ${report.seen} commits here records an agent`;
+    return `${said}${also}.\n`;
+  }
   const [top, ...rest] = agents;
   // "1 of the last 1 commit" is arithmetic where a sentence belongs.
   if (report.seen === 1 && top.commits === 1 && !rest.length) {
