@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.0
+
+### The first line is the finding
+
+A week was a title, a count, a bar and two caveat paragraphs, and the thing anybody would repeat
+was inside the bar. It is the first line now:
+
+    Claude co-authored 68 of the last 137 commits here, and Cursor 1.
+
+Most repositories have no such line, and that is the more interesting finding rather than a reason
+to stay quiet. Cursor and Copilot write no `Co-Authored-By` trailer, so an ordinary repository got
+the dashboard back and nothing said. It now reads:
+
+    None of the last 3 commits here records an agent, and Cursor is configured in this repository.
+
+It says what was read and never who wrote the code. A missing trailer is not a missing agent — the
+note underneath has always argued that, and a headline contradicting it would be worse than no
+headline, so the line carries none of "wrote", "AI" or "human" and a test holds it to that. A
+configured agent is named only where the repository commits the config.
+
+Both caveat paragraphs are exactly where they were. A floor stated after the number is honesty;
+stated instead of the number it is a tool that will not say what it found.
+
+Minor rather than patch: the default output of `week`, `branch` and `file` gained a line. Nothing
+was removed and no flag changed.
+
 ## 0.5.9
 
 ### The Host header is parsed, not split at the first colon

@@ -25,12 +25,23 @@ npx iops-rooms week
 ```
 
 ```
-iops-rooms · last 90d
-124 commits · +17k −1.6k · 1 person
+Claude co-authored 68 of the last 137 commits here, and Cursor 1.
 
-  Claude             55  ██████████░░░░░░░░░░░░  44%
-  Cursor              1  █░░░░░░░░░░░░░░░░░░░░░   1%
-  no agent recorded  68  ████████████░░░░░░░░░░  55%
+iops-rooms · last 90d
+137 commits · +21k −2.4k · 1 person
+
+  Claude             68  ███████████░░░░░░░░░░░  49%
+  Cursor              1  █░░░░░░░░░░░░░░░░░░░░░   2%
+  no agent recorded  68  ███████████░░░░░░░░░░░  49%
+
+"no agent recorded" is not "no agent used". Cursor and Copilot often write
+no Co-Authored-By trailer, so a plain commit only means none was recorded.
+Every share here is a floor.
+
+Configured for: Cursor (.cursor/).
+A config file says a tool was set up here, never that it was used — and
+never how much. These are not commits and do not belong in the percentages
+above.
 ```
 
 That is this repository, which is unusually well attributed because it is built by an agent that
@@ -38,18 +49,31 @@ writes the trailer. **Most repositories look nothing like it.** Here is `anthrop
 it is the more honest picture of what you should expect on a first run:
 
 ```
-anthropic-sdk-python · last 3650d
-500 commits · +161k −30k · 36 people
+Claude co-authored 35 of the last 500 commits here.
 
-  Claude                                        30  █░░░░░░░░░░░░░░░░░░░░░   6%
-    Claude                                      26
+anthropic-sdk-python · last 3650d
+500 commits · +165k −31k · 35 people
+
+  Claude                                        35  ██░░░░░░░░░░░░░░░░░░░░   7%
+    Claude                                      31
     Claude Code                                  1
     Claude Opus 4.6                              1
     Claude Opus 4.7                              1
     and 1 more                                   1
   co-author that says it is a bot                5  █░░░░░░░░░░░░░░░░░░░░░   1%
-  co-author, no bot marker — usually a person    9  █░░░░░░░░░░░░░░░░░░░░░   2%
-  no agent recorded                            456  ████████████████████░░  91%
+  co-author, no bot marker — usually a person    7  █░░░░░░░░░░░░░░░░░░░░░   1%
+  no agent recorded                            453  ████████████████████░░  91%
+
+Reading the newest 500 of 1423 commits in this window.
+
+"no agent recorded" is not "no agent used". Cursor and Copilot often write
+no Co-Authored-By trailer, so a plain commit only means none was recorded.
+Every share here is a floor.
+
+Configured for: Claude Code (CLAUDE.md).
+A config file says a tool was set up here, never that it was used — and
+never how much. These are not commits and do not belong in the percentages
+above.
 ```
 
 Six percent, in the repository of the company whose tool writes the trailer by default. Across six
@@ -338,7 +362,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.9 mcp install
+npx -y iops-rooms@0.6.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -351,7 +375,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.9", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.6.0", "mcp"] } } }
 ```
 
 ## Commands
