@@ -61,9 +61,15 @@ async function rendered() {
   }
 }
 
+// Line endings normalised: with no .gitattributes, a Windows checkout of this repository has CRLF,
+// and a fence pattern anchored on "\n" found no block there. Both Windows jobs said "found 0".
+async function capturedBlocks() {
+  const readme = (await readFile(new URL("../README.md", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+  return [...readme.matchAll(/```\n([^`]*?· last [^`]*?)```/g)].map((m) => m[1]);
+}
+
 test("every structural line the README claims is still a line this prints", async () => {
-  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
-  const blocks = [...readme.matchAll(/```\n([^`]*?· last [^`]*?)```/g)].map((m) => m[1]);
+  const blocks = await capturedBlocks();
   assert.ok(blocks.length >= 2, `expected the two captured runs, found ${blocks.length}`);
   const both = blocks.join("\n");
   const live = await rendered();
@@ -74,8 +80,10 @@ test("every structural line the README claims is still a line this prints", asyn
 });
 
 test("each captured block opens with its own finding, which is the point of capturing it", async () => {
-  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
-  const blocks = [...readme.matchAll(/```\n([^`]*?· last [^`]*?)```/g)].map((m) => m[1]);
+  const blocks = await capturedBlocks();
+  // Without this the loop below runs zero times and passes. It did, on both Windows jobs, while the
+  // test above failed for finding no blocks at all.
+  assert.ok(blocks.length >= 2, `expected the two captured runs, found ${blocks.length}`);
   for (const block of blocks) {
     const first = block.split("\n")[0];
     assert.match(
