@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0
+## 0.5.10
 
 ### The first line is the finding
 
@@ -23,8 +23,9 @@ configured agent is named only where the repository commits the config.
 Both caveat paragraphs are exactly where they were. A floor stated after the number is honesty;
 stated instead of the number it is a tool that will not say what it found.
 
-Minor rather than patch: the default output of `week`, `branch` and `file` gained a line. Nothing
-was removed and no flag changed.
+The default output of `week` gained a line at the top; `branch` and `file` are as they were. Nothing
+was removed and no flag changed, and `--json` is exactly as it was, so anything reading the output
+should read that.
 
 ## 0.5.9
 
