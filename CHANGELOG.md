@@ -19,7 +19,10 @@ window as before, near the top:
   so and how to start, rather than showing zeros.
 
 An open `rooms live` board now reloads when the activity log changes, so it shows an agent's edits as
-they happen. The log is shared through git in a team room, so every value from it is escaped, and a
+they happen, once per change: the backup poll used to refresh it a second time for a change the
+watcher had already caught. Closing it now waits for a refresh already running. One that outlived
+`close` kept running git in the project, and Windows refused to delete the folder, which is how this
+pull request's Windows checks found it. The log is shared through git in a team room, so every value from it is escaped, and a
 test puts a path, a model and an agent name holding HTML into it. Long words in room posts wrap: a
 path or commit subject with no space in it made the whole page wider than a 375px phone screen.
 

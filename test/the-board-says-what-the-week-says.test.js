@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { get } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -218,9 +218,30 @@ test("an open live board reloads when an agent reports an edit", async () => {
       const deadline = Date.now() + 4000;
       while (!pushes.some((t) => t > editAt) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
       assert.ok(pushes.some((t) => t > editAt), `no refresh after the edit (pushes at ${pushes.map((t) => t - editAt).join(", ")} ms)`);
+      // One change, one refresh: the poll used to refresh again for a change the watcher had caught.
+      await new Promise((r) => setTimeout(r, 1500));
+      assert.equal(pushes.filter((t) => t > editAt).length, 1, `refreshes after one edit at ${pushes.map((t) => t - editAt).join(", ")} ms`);
     } finally {
       req.destroy();
       await live.close();
     }
+  });
+});
+
+test("closing the live board waits for a refresh already running, so nothing writes after it", async () => {
+  await scratch(async (dir) => {
+    await repoWithRoom(dir);
+    const live = await startLiveBoard(dir, { port: 0 });
+    const boardPath = join(dir, ".room", "board.html");
+    const mtime = async () => (await stat(boardPath)).mtimeMs;
+    const before = await mtime();
+    await run(dir, ["agent-hook", "claude-code"], { input: edit(dir, "a.txt") });
+    // Past the 80 ms debounce, so a refresh has started and is running git in the project.
+    await new Promise((r) => setTimeout(r, 150));
+    await live.close();
+    const closed = await mtime();
+    assert.ok(closed > before, "the refresh the edit started finished before close returned");
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(await mtime(), closed, "and nothing wrote the board after close returned");
   });
 });

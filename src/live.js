@@ -59,10 +59,18 @@ export async function startLiveBoard(projectDir, opts = {}) {
 
   const clients = new Set();
   let debounce = null;
-  let lastBytes = "";
+  // What the poll compares: the sizes of the two logs a board is built from. Taken as each refresh
+  // starts, so the poll does not refresh a second time for a change the watcher already caught.
+  const sizeOf = (file) => stat(file).then((st) => st.size, () => 0);
+  const signature = async () => `${await sizeOf(paths.events)}:${await sizeOf(join(paths.root, ACTIVITY_FILE))}`;
+  let lastBytes = await signature();
+  // One refresh at a time, and `close` waits for the last. A refresh runs git inside the project;
+  // one still running after `close` returned kept that folder busy, and Windows refused to delete it.
+  let inflight = Promise.resolve();
 
   async function push() {
     try {
+      lastBytes = await signature();
       const board = await refreshBoard(projectDir);
       const html = await readFile(board, "utf8");
       const payload = `data: ${JSON.stringify({ at: new Date().toISOString(), bytes: html.length })}\n\n`;
@@ -82,7 +90,7 @@ export async function startLiveBoard(projectDir, opts = {}) {
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(() => {
       debounce = null;
-      push();
+      inflight = inflight.then(push);
     }, 80);
   }
 
@@ -193,9 +201,7 @@ export async function startLiveBoard(projectDir, opts = {}) {
 
   const poll = setInterval(async () => {
     try {
-      const buf = await readFile(paths.events);
-      const activity = await stat(join(paths.root, ACTIVITY_FILE)).then((st) => st.size, () => 0);
-      const bytes = `${buf.length}:${activity}`;
+      const bytes = await signature();
       if (bytes !== lastBytes) {
         lastBytes = bytes;
         schedulePush();
@@ -214,6 +220,7 @@ export async function startLiveBoard(projectDir, opts = {}) {
       clearInterval(poll);
       if (debounce) clearTimeout(debounce);
       watcher.close();
+      await inflight;
       for (const res of clients) {
         try {
           res.end();
