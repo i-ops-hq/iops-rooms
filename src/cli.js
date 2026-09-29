@@ -942,8 +942,8 @@ async function main() {
         agentVersion: found?.version ?? null,
         entry: found?.entry ?? null,
         model: found?.model ?? null,
-        // The files of this commit an agent's own hook saw it edit here since the previous commit:
-        // what shows the commonest case, edits committed by hand from another terminal.
+        // The files of this commit an agent's own hook saw it edit here since each was last
+        // committed: what shows the commonest case, edits committed by hand from another terminal.
         editedBy: await editedByFor(process.cwd(), sha, await readActivity(dir)),
         checkout: await checkoutRef(process.cwd()),
         branch: (await resolveBranch(process.cwd())) || "",

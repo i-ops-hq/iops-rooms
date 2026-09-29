@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { applyClaudeHooks, fromClaudeCode, planClaudeHooks } from "../src/agent-hooks.js";
+import { editedByFor } from "../src/activity.js";
 
 const exec = promisify(execFile);
 const cli = join(fileURLToPath(new URL("..", import.meta.url)), "src", "cli.js");
@@ -153,7 +154,7 @@ test("a file outside the project, or a project without a room, records nothing",
   });
 });
 
-test("a commit made by hand carries the files the agent edited since the commit before it", async () => {
+test("a commit made by hand carries the files the agent edited since each was last committed", async () => {
   await scratch(async (dir) => {
     await repoWithRoom(dir);
     await run(dir, ["hooks", "install"]);
@@ -168,6 +169,64 @@ test("a commit made by hand carries the files the agent edited since the commit 
       [first, null, { "claude-code": ["a.txt"] }],
       [second, null, null],
     ]);
+  });
+});
+
+test("work split into two commits carries the agent's edits in each, and a deleted file is not carried", async () => {
+  await scratch(async (dir) => {
+    await repoWithRoom(dir);
+    await commit(dir, ["old.txt"], "old.txt, by hand, before any hook");
+    await run(dir, ["hooks", "install"]);
+    const commitOnly = async (files, message) => {
+      for (const f of files) await writeFile(join(dir, f), `${f} ${Math.random()}\n`, "utf8");
+      await exec("git", [...IDENT, "add", "-A", "--", ...files], { cwd: dir });
+      await exec("git", [...IDENT, "commit", "-q", "-m", message], { cwd: dir });
+      return (await exec("git", ["rev-parse", "HEAD"], { cwd: dir })).stdout.trim();
+    };
+    // The agent edits two files; the person commits them one at a time, the way `git add -p` does.
+    await run(dir, ["agent-hook", "claude-code"], { input: editPayload(dir, "x.txt") });
+    await run(dir, ["agent-hook", "claude-code"], { input: editPayload(dir, "y.txt") });
+    const one = await commitOnly(["x.txt"], "x only");
+    const two = await commitOnly(["y.txt"], "then y");
+    // The agent edits a file that was committed before; the person deletes it instead.
+    await run(dir, ["agent-hook", "claude-code"], { input: editPayload(dir, "old.txt", "Edit") });
+    await exec("git", [...IDENT, "rm", "-q", "old.txt"], { cwd: dir });
+    await exec("git", [...IDENT, "commit", "-q", "-m", "delete old.txt"], { cwd: dir });
+    const three = (await exec("git", ["rev-parse", "HEAD"], { cwd: dir })).stdout.trim();
+
+    const commits = (await activity(dir)).filter((r) => r.kind === "commit");
+    assert.equal(commits.length, 3);
+    assert.deepEqual(commits.map((c) => [c.sha, c.editedBy]), [
+      [one, { "claude-code": ["x.txt"] }],
+      [two, { "claude-code": ["y.txt"] }],
+      [three, null],
+    ]);
+  });
+});
+
+test("an edit in the same second as its file's last commit, but before it, is not carried by the next", async () => {
+  await scratch(async (dir) => {
+    await exec("git", ["init", "-q", "-b", "main", dir]);
+    // git keeps these to the second; the hook's records keep milliseconds.
+    const at = async (when, message) => {
+      await writeFile(join(dir, "a.txt"), `${message}\n`, "utf8");
+      await exec("git", [...IDENT, "add", "a.txt"], { cwd: dir });
+      await exec("git", [...IDENT, "commit", "-q", "-m", message], {
+        cwd: dir,
+        env: { ...process.env, GIT_COMMITTER_DATE: when, GIT_AUTHOR_DATE: when },
+      });
+      return (await exec("git", ["rev-parse", "HEAD"], { cwd: dir })).stdout.trim();
+    };
+    const first = await at("2026-09-29T12:00:00Z", "first");
+    const second = await at("2026-09-29T12:00:05Z", "second");
+    const log = [
+      { kind: "edit", agent: "claude-code", path: "a.txt", at: "2026-09-29T12:00:00.300Z" },
+      { kind: "commit", sha: first, at: "2026-09-29T12:00:00.800Z" },
+    ];
+    assert.deepEqual(await editedByFor(dir, first, log), { "claude-code": ["a.txt"] });
+    assert.equal(await editedByFor(dir, second, log), null, "0.300 is after 12:00:00 but before the commit at 0.800");
+    const later = [...log, { kind: "edit", agent: "claude-code", path: "a.txt", at: "2026-09-29T12:00:00.900Z" }];
+    assert.deepEqual(await editedByFor(dir, second, later), { "claude-code": ["a.txt"] });
   });
 });
 
