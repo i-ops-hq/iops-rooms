@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { basename, dirname, resolve } from "node:path";
-import { realpath } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import { readdir, realpath, stat } from "node:fs/promises";
+import { describeGitError } from "./git-history.js";
 
 const execFileAsync = promisify(execFile);
+const PROBE_TIMEOUT = 4000;
 
 async function git(cwd, args) {
   try {
@@ -16,6 +18,106 @@ async function git(cwd, args) {
   } catch {
     return "";
   }
+}
+
+/**
+ * Why git gave no answer here: one of four reasons, in git's own words where it gave any.
+ *
+ * The board used to read every git failure as "not a git checkout" and advise `git init`. Someone
+ * whose repository git would not open, because another user owns it, or who started Rooms from a
+ * shell with no git, was told their project was not a project. `rooms week` has named the real cause
+ * since 0.5.2; this gives the board, `doctor` and everything else that reads the checkout through
+ * here the same answer.
+ *
+ * - `not-a-repo`: nothing is wrong. This folder is not inside a repository.
+ * - `git-missing`: there is no git on the PATH this process was started with.
+ * - `git-refused`: git found the repository and declined it for dubious ownership, which WSL paths,
+ *   external drives and clones made with sudo all produce. git's first line does not carry the fix
+ *   and a later one does (`git config --global --add safe.directory …`), so that line is kept as `fix`.
+ * - `git-failed`: anything else, such as a timeout, or macOS's stub git before the command line tools
+ *   are installed, with the first line git printed.
+ */
+export function classifyGitFailure(err, timeout = PROBE_TIMEOUT) {
+  const stderr = String(err?.stderr || "");
+  if (err?.code === "ENOENT") return { reason: "git-missing", detail: describeGitError(err, [], timeout), fix: "" };
+  if (/not a git repository/i.test(stderr)) return { reason: "not-a-repo", detail: "", fix: "" };
+  const detail = describeGitError(err, ["rev-parse"], timeout);
+  if (/dubious ownership/i.test(stderr)) {
+    const fix = stderr
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.startsWith("git config --global --add safe.directory"));
+    return { reason: "git-refused", detail, fix: fix || "" };
+  }
+  return { reason: "git-failed", detail, fix: "" };
+}
+
+/** Whether `dir` is inside a git working tree and, when it is not, why (see classifyGitFailure). */
+export async function probeCheckout(dir) {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd: dir,
+      timeout: PROBE_TIMEOUT,
+      maxBuffer: 256_000,
+      // git translates its messages, and the four reasons are told apart by them: under a German
+      // locale "not a git repository" arrives as "Kein Git-Repository" and would read as a failure.
+      env: { ...process.env, LC_ALL: "C" },
+    });
+    return String(stdout || "").trim() === "true"
+      ? { ok: true, reason: "", detail: "", fix: "" }
+      : { ok: false, reason: "not-a-repo", detail: "", fix: "" };
+  } catch (err) {
+    return { ok: false, ...classifyGitFailure(err) };
+  }
+}
+
+/** The sentence for a checkout git could not read, by reason. */
+export function unreadableNote(probe) {
+  switch (probe?.reason) {
+    case "git-missing":
+      return "git is not on the PATH Rooms was started with, so nothing here can be read from git. Start Rooms from a shell where `git --version` works.";
+    case "git-refused":
+      return `git refused to read this repository: ${probe.detail}${probe.fix ? ` git's own fix: ${probe.fix}` : ""}`;
+    case "git-failed":
+      return `git failed here: ${probe.detail}`;
+    default:
+      return "Not a git checkout — branch stamps stay empty until you init git or set ROOMS_BRANCH.";
+  }
+}
+
+/**
+ * The git repositories inside `dir`, one or two folders down.
+ *
+ * `rooms open` in the folder that holds somebody's projects made a room there, and a board that could
+ * read none of them. This is what they meant instead. Asked of the filesystem rather than of git,
+ * because the only question is where the command should have been run, and a `.git` entry (a folder,
+ * or the file a worktree or submodule has) is enough to point at.
+ */
+export async function repositoriesBelow(dir, { depth = 2, limit = 50 } = {}) {
+  const found = [];
+  async function walk(folder, level) {
+    if (level > depth || found.length >= limit) return;
+    let entries;
+    try {
+      entries = await readdir(folder, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      const child = join(folder, entry.name);
+      try {
+        await stat(join(child, ".git"));
+        found.push(child);
+        continue;
+      } catch {
+        /* not a repository; look one level further */
+      }
+      await walk(child, level + 1);
+    }
+  }
+  await walk(resolve(dir), 1);
+  return found.sort();
 }
 
 /**
@@ -74,15 +176,18 @@ async function readTracking(projectDir) {
 /** Local git snapshot. Env ROOMS_BRANCH overrides current branch for smoke. */
 export async function readGitSnapshot(projectDir) {
   const envBranch = (process.env.ROOMS_BRANCH || "").trim();
-  const inside = await git(projectDir, ["rev-parse", "--is-inside-work-tree"]);
-  if (inside !== "true" && !envBranch) {
+  const probe = await probeCheckout(projectDir);
+  if (!probe.ok && !envBranch) {
     return {
       ok: false,
+      reason: probe.reason,
+      detail: probe.detail,
+      fix: probe.fix,
       current: "",
       defaultBranch: "",
       branches: [],
       head: "",
-      note: "Not a git checkout — branch stamps stay empty until you init git or set ROOMS_BRANCH.",
+      note: unreadableNote(probe),
     };
   }
   const current =
@@ -139,8 +244,18 @@ export async function readGitSnapshot(projectDir) {
  * Falls back to the directory itself when there is no repo — a plain folder can still hold a room.
  */
 export async function resolveProjectRoot(cwd = process.cwd()) {
+  return (await repositoryTop(cwd)) || resolve(cwd);
+}
+
+/**
+ * The top of the repository `cwd` is in, spelled the way the person reached it, or "" outside one.
+ *
+ * Also the ceiling for finding a room: a room above the top of a repository belongs to the folder
+ * holding it, not to the repository (see findRoomDir in store.js).
+ */
+export async function repositoryTop(cwd = process.cwd()) {
   const top = await git(cwd, ["rev-parse", "--show-toplevel"]);
-  if (!top) return resolve(cwd);
+  if (!top) return "";
 
   // git reports the toplevel with symlinks resolved, which is often not the path the person typed:
   // a workspace under a symlinked home, or macOS's /var -> /private/var, and `rooms open` answers
@@ -163,6 +278,33 @@ export async function resolveProjectRoot(cwd = process.cwd()) {
     if (parent === here) return top;
     here = parent;
   }
+}
+
+/**
+ * Where a checkout's room lives: the top of the main checkout, for the main checkout and for every
+ * worktree of it. "" outside a repository.
+ *
+ * People running agents in parallel give each one a worktree on its own branch. A worktree beside the
+ * main checkout (`git worktree add ../feature`) found no room, because the search walked up folders
+ * and never passed through the main one; one nested inside it (`.claude/worktrees/…`) found the room
+ * only because the folders happened to line up. git already knows they are one repository: every
+ * worktree shares the main checkout's `.git`, which `--git-common-dir` names. A bare repository's
+ * common directory is not inside any checkout, so a worktree of one keeps its own top.
+ *
+ * `top` may be passed when the caller already has it, to save a git call.
+ */
+export async function roomHome(cwd = process.cwd(), top = null) {
+  const checkoutTop = top ?? (await repositoryTop(cwd));
+  if (!checkoutTop) return "";
+  const common = await git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!common || basename(common) !== ".git") return checkoutTop;
+  const mainTop = dirname(common);
+  try {
+    if ((await realpath(mainTop)) === (await realpath(checkoutTop))) return checkoutTop;
+  } catch {
+    return checkoutTop;
+  }
+  return mainTop;
 }
 
 export async function resolveBranch(projectDir) {

@@ -328,9 +328,37 @@ async function shareDiff(opts) {
  */
 async function roomDirOrCreate() {
   const existing = await findRoomDir();
+  const here = existing || process.cwd();
+  const { probeCheckout, repositoriesBelow, unreadableNote } = await import("./git-info.js");
+  const probe = await probeCheckout(here);
+
+  // The folder that holds somebody's projects is not a project. Opening a board there made a room and
+  // a .gitignore in it, and a board reading "no git" about a folder full of repositories.
+  const repos = !probe.ok && probe.reason === "not-a-repo" ? await repositoriesBelow(here) : [];
+  if (repos.length) {
+    const names = repos.map((r) => relative(here, r).split(sep).join("/"));
+    const listed = names.length > 8 ? `${names.slice(0, 8).join(", ")} and ${names.length - 8} more` : names.join(", ");
+    const said =
+      `This folder is not a git repository. It holds ${repos.length}: ${listed}.\n` +
+      "Run rooms open inside one of them";
+    // A room made here by an earlier version is still opened, with the reason its board is empty.
+    if (existing) {
+      process.stderr.write(`${said} to see its history.\n`);
+      return existing;
+    }
+    throw new Error(`${said}. Nothing was created here.`);
+  }
+
   if (existing) return existing;
   const { meta, projectDir } = await initRoom({});
   process.stdout.write(`created room ${meta.id} for ${meta.name}\n`);
+  if (!probe.ok) {
+    process.stdout.write(
+      probe.reason === "not-a-repo"
+        ? "This folder is not a git repository, so its board will hold room posts only.\n"
+        : `${unreadableNote(probe)}\n`,
+    );
+  }
   return projectDir;
 }
 

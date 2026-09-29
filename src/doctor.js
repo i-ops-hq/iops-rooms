@@ -121,6 +121,24 @@ export async function runDoctor({
   const events = await readEvents(projectDir);
   const nonSystem = events.filter((e) => e.type !== "system");
 
+  // Whether git can read this project at all, and if not, why. Without this line a repository git
+  // refused to open reported "no git history", and one with room posts reported Healthy, while the
+  // board beside it could read nothing from git.
+  const { probeCheckout, unreadableNote } = await import("./git-info.js");
+  const gitProbe = await probeCheckout(projectDir);
+  const gitBroken = !gitProbe.ok && gitProbe.reason !== "not-a-repo";
+  checks.push({
+    id: "git",
+    ok: gitProbe.ok,
+    hard: false,
+    reason: gitProbe.reason,
+    detail: gitProbe.ok
+      ? "a git checkout, readable by the git on this PATH"
+      : gitProbe.reason === "not-a-repo"
+        ? "not a git checkout, so the board holds room posts only"
+        : unreadableNote(gitProbe),
+  });
+
   // Git history is the board.
   //
   // This check was written when a room's posts were the only thing on the page. Since the board
@@ -144,9 +162,11 @@ export async function runDoctor({
     id: "board",
     ok: !empty,
     hard: false,
-    detail: empty
-      ? `no git history and 0 posts — there is nothing for the board to show yet`
-      : `${commits} commit${commits === 1 ? "" : "s"} of git history · ${nonSystem.length} room post${nonSystem.length === 1 ? "" : "s"}`,
+    detail: gitBroken
+      ? `git could not be read here · ${nonSystem.length} room post${nonSystem.length === 1 ? "" : "s"}`
+      : empty
+        ? `no git history and 0 posts — there is nothing for the board to show yet`
+        : `${commits} commit${commits === 1 ? "" : "s"} of git history · ${nonSystem.length} room post${nonSystem.length === 1 ? "" : "s"}`,
   });
 
   let identityDetail = "";
@@ -219,6 +239,19 @@ export async function runDoctor({
     }
   }
 
+  // Posts can make a board look healthy while git reads nothing, so a broken git is never "Healthy",
+  // and its fix comes before anything optional.
+  if (gitBroken) {
+    if (severity === "ok") severity = "warn";
+    nextActions.unshift(
+      gitProbe.reason === "git-refused" && gitProbe.fix
+        ? `${gitProbe.fix}   # git's own fix, from its message`
+        : gitProbe.reason === "git-missing"
+          ? "install git, or start Rooms from a shell where `git --version` works"
+          : "git status   # shows git's full message for what failed",
+    );
+  }
+
   return summarize({
     checks,
     severity,
@@ -287,7 +320,10 @@ export function formatDoctorReport({
     lines.push(`${label}  ${c.id.padEnd(10)} ${c.detail}`);
   }
   lines.push("");
-  if (severity === "warn") {
+  const gitUnread = checks.find((c) => c.id === "git" && !c.ok && c.reason && c.reason !== "not-a-repo");
+  if (gitUnread) {
+    lines.push("git could not read this project, so the board has no history — see the git line above.");
+  } else if (severity === "warn") {
     lines.push("Working, with optional pieces not set up — see the WARN lines above.");
   } else if (severity === "fail") {
     lines.push("Unhealthy — fix the FAIL items above.");

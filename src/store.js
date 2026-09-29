@@ -10,7 +10,7 @@ import {
   stampEventIdentity,
   verifyEventIdentity,
 } from "./identity.js";
-import { resolveBranch, resolveProjectRoot } from "./git-info.js";
+import { repositoryTop, resolveBranch, roomHome } from "./git-info.js";
 
 export const ROOM_DIR_NAME = ".room";
 const META = "room.json";
@@ -112,15 +112,30 @@ async function copyAllowlistedRegularFile(srcPath, destPath) {
   await writeFile(destPath, body, "utf8");
 }
 
+/**
+ * The room for wherever a command was typed.
+ *
+ * Inside a repository the search stops at the repository's top. It used to walk to the filesystem
+ * root, so a room made in the folder above a repository, such as the folder holding someone's
+ * projects, was found from inside every repository under it, and each of them opened that room's
+ * board, which can read none of them: "no git", from inside a repository with a full history.
+ * After that, every worktree of the repository finds the main checkout's room (roomHome in
+ * git-info.js). Outside a repository the walk is unbounded, as before, so a plain folder's room is
+ * still found from its subfolders.
+ */
 export async function findRoomDir(start = process.cwd()) {
   let dir = resolve(start);
+  const top = await repositoryTop(dir);
   for (;;) {
-    const paths = roomPaths(dir);
-    if (await exists(paths.meta)) return dir;
+    if (await exists(roomPaths(dir).meta)) return dir;
+    if (top && dir === top) break;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
+  const home = await roomHome(dir, top);
+  if (home && home !== top && (await exists(roomPaths(home).meta))) return home;
+  return null;
 }
 
 export async function requireRoomDir(start) {
@@ -339,7 +354,8 @@ export async function initRoom({
 } = {}) {
   // A repository is one project. Without this, `rooms init` in src/api/ made src/api/.room/ —
   // a second room in the same repo, with its gitignore and merge driver in the wrong directory.
-  let projectDir = await resolveProjectRoot(resolve(cwd));
+  // A worktree is the same repository, so its room is the main checkout's (roomHome in git-info.js).
+  let projectDir = (await roomHome(resolve(cwd))) || resolve(cwd);
   const existing = await findRoomDir(projectDir);
   if (existing) {
     const meta = await readMeta(existing);

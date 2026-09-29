@@ -153,7 +153,7 @@ export function attributeAgent(trailer) {
  * reports ENOENT. Each gets its own sentence; everything else defers to git's own first line,
  * which is usually the best available ("fatal: ambiguous argument 'x'").
  */
-function describeGitError(err, args, timeout) {
+export function describeGitError(err, args, timeout) {
   if (!err) return "git failed";
   if (err.code === "ENOENT") return "git is not on PATH";
   if (err.killed || err.signal === "SIGTERM") return `git timed out after ${Math.round(timeout / 1000)}s`;
