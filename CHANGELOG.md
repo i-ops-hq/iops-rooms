@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.17
+
+### Right now: this checkout's uncommitted work, its upstream and its pull request
+
+The board's Git card said "3 uncommitted changes". It now says what they are, as counts:
+"uncommitted: +1,000 −21 in 14 files, and 3 new files", and, on a branch that is not the default,
+whether it has a pull request: "no pull request yet", "pull request #42, open", "a draft", "merged"
+or "closed without merging". `rooms week` ends with the same lines, from the same words, and
+`--json` carries them as `now`. These are the counts a member's status will carry to their team
+room, shown to the member first. Which files is never kept.
+
+The pull request is asked of GitHub through the person's own `gh`: one `gh pr view <branch>`,
+which sends the repository and the branch name to the GitHub the remote already points at, at most
+once a minute per branch, and never on the default branch. Only a branch the remote already has is
+asked about. A branch only on this machine reads "not pushed yet, so no pull request", known without
+asking, so a name like `fix-the-ceo-bug` is never sent anywhere it was not pushed. Not knowing is
+kept apart from none. No `gh`, `gh` signed out, a remote that is not on GitHub, or no answer in time
+each read "pull request unknown", with the reason; only GitHub saying there is none reads "no pull
+request yet". `ROOMS_NO_GH=1` turns the question off, and the test suite runs with it off, so no
+test asks GitHub anything.
+
+Before the first commit there is nothing to compare with, so the lines are unknown rather than
+zero, and the card counts the files alone.
+
 ## 0.5.16
 
 ### The board says what the terminal says

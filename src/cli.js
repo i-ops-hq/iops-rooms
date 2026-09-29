@@ -674,6 +674,11 @@ async function main() {
       const since = argv.since ? String(argv.since) : "7d";
       const r = await buildReport(dir, { since, paths, exclude });
       if (!r.ok) return failNotGit(r);
+      // The checkout as it stands, the same lines as the board's Git card.
+      const { readGitSnapshot } = await import("./git-info.js");
+      const { branchPullRequest } = await import("./scm.js");
+      const snap = await readGitSnapshot(dir);
+      const checkout = snap.ok ? { ...snap, pr: await branchPullRequest(dir, snap) } : null;
       // An empty window says how old the newest commit is and which window reaches it. Prose only;
       // --json is unchanged.
       let newest = null;
@@ -684,10 +689,10 @@ async function main() {
       // Week over week, because "am I leaning harder on one model" is the question a weekly
       // report is actually asked. Only for the default window — a delta against an arbitrary
       // --since would be comparing this window to a window nobody chose.
-      if (argv.json) return asJson(r, { name, window: `last ${since}` });
+      if (argv.json) return asJson(r, { name, window: `last ${since}`, checkout });
       const { weekOverWeek } = await import("./report.js");
       const delta = argv.since ? null : weekOverWeek(r, await buildReport(dir, { since: "14d", paths, exclude }));
-      process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta, newest }));
+      process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta, newest, checkout }));
       return;
     }
 

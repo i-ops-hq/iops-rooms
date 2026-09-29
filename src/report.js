@@ -14,6 +14,8 @@ import { CONFIG_NOTE, readAgentConfig, whyNothingRecorded } from "./agent-config
 import { readGitSnapshot } from "./git-info.js";
 import { activityFor } from "./activity.js";
 import { agentLabel } from "./agent-markers.js";
+import { trackingWords, uncommittedWords } from "./git-info.js";
+import { pullRequestWords } from "./scm.js";
 
 /** k/M once the digits stop being readable. Shared with the board's own shortener by shape, not code
  *  — this one is for a fixed-width terminal column and never returns more than five characters. */
@@ -285,9 +287,11 @@ export function formatObserved(observed) {
   return out.join("");
 }
 
-export function reportToJson(report, { name = "", window = "" } = {}) {
+export function reportToJson(report, { name = "", window = "", checkout = null } = {}) {
   const config = report.config || null;
   return {
+    // This checkout as it stands, apart from the window: uncommitted counts, upstream, pull request.
+    ...(checkout ? { now: nowToJson(checkout) } : {}),
     project: name,
     window,
     commits: { seen: report.seen, total: report.total, truncated: Boolean(report.truncated) },
@@ -499,7 +503,35 @@ export function weekOverWeek(current, prior) {
   return delta;
 }
 
-export function formatWeek(report, { name = "", window = "last 7 days", delta = null, newest = null, now = Date.now() } = {}) {
+/**
+ * This checkout as it stands, under the week: what is not committed, where the branch is against
+ * its upstream, and its pull request. The same lines the board's Git card shows, from the same words.
+ */
+export function formatNow(state) {
+  if (!state) return "";
+  const lines = [
+    `uncommitted: ${uncommittedWords(state.uncommitted) || "nothing"}`,
+    trackingWords(state).text,
+    pullRequestWords(state.pr),
+  ].filter(Boolean);
+  return `\nRight now, in this checkout (${state.current}):\n${lines.map((l) => `  ${l}\n`).join("")}`;
+}
+
+/** The checkout's state as data, for `--json`: counts, the upstream, and the pull request. */
+export function nowToJson(state) {
+  if (!state) return null;
+  const { files, added, removed, untracked } = state.uncommitted || {};
+  return {
+    branch: state.current,
+    uncommitted: { files, added, removed, untracked },
+    upstream: state.upstream || null,
+    ahead: state.ahead ?? null,
+    behind: state.behind ?? null,
+    pr: state.pr || null,
+  };
+}
+
+export function formatWeek(report, { name = "", window = "last 7 days", delta = null, newest = null, now = Date.now(), checkout = null } = {}) {
   const said = finding(report);
   const out = [said, said ? "\n" : "", header(name, window, report), "\n", formatMix(report, { delta })];
   if (!report.seen && newest) out.push(`\n${wrap(quietWindow(newest, now))}\n`);
@@ -510,6 +542,7 @@ export function formatWeek(report, { name = "", window = "last 7 days", delta = 
   out.push(formatConfig(report));
   out.push(formatWhyEmpty(report));
   out.push(formatObserved(report.observed));
+  out.push(formatNow(checkout));
   return out.join("");
 }
 

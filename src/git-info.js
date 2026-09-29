@@ -173,6 +173,51 @@ async function readTracking(projectDir) {
   };
 }
 
+/** `git diff --shortstat` as numbers: " 3 files changed, 10 insertions(+), 2 deletions(-)". */
+export function parseShortstat(text) {
+  const n = (re) => Number((String(text || "").match(re) || [])[1] || 0);
+  return { added: n(/(\d+) insertions?\(\+\)/), removed: n(/(\d+) deletions?\(-\)/) };
+}
+
+/**
+ * What is not committed yet, as counts only: tracked files changed, staged or not, with their
+ * lines; and new files git does not track yet. Which files is not kept, since this is what a
+ * member's status will carry to their team (docs/design/TEAM_LIVE.md §4.1). Lines are null when git
+ * could not say: before the first commit there is no HEAD to compare with, and a diff too large to
+ * finish in time is not reported as nothing.
+ */
+async function readUncommitted(projectDir, changes, head) {
+  const untracked = changes.filter((line) => line.startsWith("??")).length;
+  const files = changes.length - untracked;
+  if (!files) return { files, added: 0, removed: 0, untracked };
+  const stat = head ? await git(projectDir, ["diff", "--shortstat", "HEAD"]) : "";
+  if (!stat) return { files, added: null, removed: null, untracked };
+  return { files, ...parseShortstat(stat), untracked };
+}
+
+/** "+1,000 −21 in 14 files, and 3 new files": what is not committed, as counts. Empty when clean. */
+export function uncommittedWords(u) {
+  if (!u || (!u.files && !u.untracked)) return "";
+  const n = (v) => Number(v).toLocaleString("en-US");
+  const files = u.files ? `${n(u.files)} file${u.files === 1 ? "" : "s"}` : "";
+  const lines = u.files && u.added != null ? `+${n(u.added)} −${n(u.removed)} in ` : "";
+  const fresh = u.untracked ? `${n(u.untracked)} new file${u.untracked === 1 ? "" : "s"}` : "";
+  return [files && `${lines}${files}`, fresh].filter(Boolean).join(", and ");
+}
+
+/** Where the branch stands against its upstream, as the board's Git card and `rooms week` say it. */
+export function trackingWords(git) {
+  if (!git || !git.upstream) {
+    return { state: "none", text: git && git.remote ? "this branch tracks nothing yet" : "no remote configured" };
+  }
+  const ab = [];
+  if (git.ahead) ab.push(`${git.ahead} ahead`);
+  if (git.behind) ab.push(`${git.behind} behind`);
+  return ab.length
+    ? { state: "warn", text: `${ab.join(", ")} ${git.upstream}` }
+    : { state: "ok", text: `in step with ${git.upstream}` };
+}
+
 /** Local git snapshot. Env ROOMS_BRANCH overrides current branch for smoke. */
 export async function readGitSnapshot(projectDir) {
   const envBranch = (process.env.ROOMS_BRANCH || "").trim();
@@ -218,8 +263,16 @@ export async function readGitSnapshot(projectDir) {
   }
   const remote = sanitizeRemote(await git(projectDir, ["remote", "get-url", "origin"]));
   const porcelain = await git(projectDir, ["status", "--porcelain"]);
-  const dirty = porcelain ? porcelain.split(/\r?\n/).filter(Boolean).length : 0;
+  const changes = porcelain ? porcelain.split(/\r?\n/).filter(Boolean) : [];
+  const dirty = changes.length;
   const tracking = await readTracking(projectDir);
+  // Whether the remote already has this branch, as far as this clone knows: it tracks an upstream,
+  // or origin has a branch of the same name. Only such a branch is asked about on GitHub, so a
+  // local branch's name is never sent anywhere it was not already pushed.
+  const published = Boolean(
+    tracking.upstream ||
+      (current && current !== "HEAD" && (await git(projectDir, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${current}`]))),
+  );
   return {
     ok: true,
     current,
@@ -228,6 +281,8 @@ export async function readGitSnapshot(projectDir) {
     head,
     remote,
     dirty,
+    uncommitted: await readUncommitted(projectDir, changes, head),
+    published,
     ...tracking,
     note: "Read from the local checkout. Nothing is fetched and nothing is pushed.",
   };

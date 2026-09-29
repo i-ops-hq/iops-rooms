@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { LIVE_CLIENT_SNIPPET } from "./live-client.js";
-import { readGitSnapshot } from "./git-info.js";
+import { readGitSnapshot, trackingWords, uncommittedWords } from "./git-info.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { eventVerifiedBadge } from "./identity.js";
@@ -1377,7 +1377,7 @@ function gitUnreadable(git) {
  * it, so opening a board cannot mint an identity as a side effect, and the git side is the snapshot
  * already read for the branch panel.
  */
-export function renderHeroSide({ git, auth, meta } = {}) {
+export function renderHeroSide({ git, auth, meta, pr, prWords = "" } = {}) {
   const name = auth?.displayName || meta?.createdBy || "you";
   const login = auth?.github?.login || auth?.gitlab?.username || "";
   const host = auth?.github?.login ? "github.com" : auth?.gitlab?.username ? "gitlab.com" : "";
@@ -1419,9 +1419,7 @@ export function renderHeroSide({ git, auth, meta } = {}) {
       (why.fix ? sideFlag("none", why.fix) : "") +
       `</div>`;
   } else {
-    const ab = [];
-    if (git.ahead) ab.push(`${git.ahead} ahead`);
-    if (git.behind) ab.push(`${git.behind} behind`);
+    const tracking = trackingWords(git);
     gitCard =
       `<div class="side-card">` +
       `<span class="side-title">Git</span>` +
@@ -1431,11 +1429,16 @@ export function renderHeroSide({ git, auth, meta } = {}) {
       `</p>` +
       sideFlag(
         git.dirty ? "warn" : "ok",
-        git.dirty ? `${git.dirty} uncommitted change${git.dirty === 1 ? "" : "s"}` : "working tree clean",
+        git.dirty
+          ? uncommittedWords(git.uncommitted)
+            ? `uncommitted: ${uncommittedWords(git.uncommitted)}`
+            : `${git.dirty} uncommitted change${git.dirty === 1 ? "" : "s"}`
+          : "working tree clean",
       ) +
-      (git.upstream
-        ? sideFlag(ab.length ? "warn" : "ok", ab.length ? `${ab.join(", ")} ${git.upstream}` : `in step with ${git.upstream}`)
-        : sideFlag("none", git.remote ? "this branch tracks nothing yet" : "no remote configured")) +
+      sideFlag(tracking.state, tracking.text) +
+      (prWords
+        ? sideFlag({ none: "warn", closed: "warn", unknown: "none", unpushed: "none" }[pr?.state] || "ok", prWords)
+        : "") +
       `</div>`;
   }
 
@@ -1871,6 +1874,9 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   const roomLine = `${postersBlurb} Network ${networkLabel} — ${networkDetail}.`;
   const projectName = boardProjectName(meta, projectDir);
   const boardTitle = `Rooms · ${projectName}`;
+  // This branch's pull request, through the person's own gh (src/scm.js says exactly what is sent).
+  const { branchPullRequest, pullRequestWords } = await import("./scm.js");
+  const pr = git.ok ? await branchPullRequest(projectDir, git) : null;
   const rep = await import("./report.js");
   const { agentLabel } = await import("./agent-markers.js");
   const { whyNothingRecorded } = await import("./agent-config.js");
@@ -1902,7 +1908,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     "{{OBSERVED}}": renderObserved(observedView),
     "{{TITLE}}": escapeHtml(boardTitle),
     "{{FACTS}}": renderHeroFacts(opts.history, events, git, now),
-    "{{HERO_SIDE}}": renderHeroSide({ git, auth: opts.auth || null, meta }),
+    "{{HERO_SIDE}}": renderHeroSide({ git, auth: opts.auth || null, meta, pr, prWords: pullRequestWords(pr) }),
     "{{ROOM_LINE}}": escapeHtml(roomLine),
     "{{CODE}}": escapeHtml(meta.id || ""),
     "{{CREATED}}": escapeHtml(meta.createdAt || ""),

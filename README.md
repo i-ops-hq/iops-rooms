@@ -183,13 +183,30 @@ Pin a version. Do not run `@latest`.
 | Per-person totals: commits, merges, lines, which agent they lean on | `git log` | nothing |
 | The last 7 days as `rooms week` prints them: the finding, the rows, every caveat | `git log` | nothing |
 | Each agent session on this machine: its model, the files it edited, the commits that carry them | the agents' own hooks | `rooms hooks install --agent claude-code` |
+| This checkout right now: what is not committed, its upstream, its pull request | `git`, and your own `gh` for the pull request | `gh` signed in, for the pull request |
 | Live posts, presence, who is on which branch right now | `.room/` | the CLI or MCP |
 
 The first five work on a repo that has never heard of Rooms, including for teammates who never
 install it — because every clone already carries the whole history. The week is built from the same
 report as `rooms week`, with the same sentences, so a teammate who never opens a terminal reads
-what the terminal says, in the board's own window. Only the last two rows need anything installed or
-posted, and an open `rooms live` board updates as an agent edits.
+what the terminal says, in the board's own window. Agent sessions need the hooks, the pull request
+needs your own `gh` signed in, and live posts need someone to post. An open `rooms live` board
+updates as an agent edits.
+
+Every `rooms week` ends with the checkout as it stands, in the words the board's Git card uses:
+
+```
+Right now, in this checkout (now/right-now):
+  uncommitted: +38 −5 in 3 files, and 1 new file
+  this branch tracks nothing yet
+  not pushed yet, so no pull request
+```
+
+Counts only, never which files. The pull request is asked of GitHub through your own `gh`, only
+for a branch your remote already has, at most once a minute per branch and never on the default
+branch. A branch only on your machine reads "not pushed yet", and its name goes nowhere. "No pull
+request yet" means GitHub said so; anything short of that reads "pull request unknown", with the
+reason. `ROOMS_NO_GH=1` turns the question off.
 
 ### "Can't I just use `git log`?"
 
@@ -410,7 +427,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.16 mcp install
+npx -y iops-rooms@0.5.17 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -423,7 +440,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.16", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.17", "mcp"] } } }
 ```
 
 ## Commands
