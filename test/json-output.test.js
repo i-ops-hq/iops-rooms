@@ -73,7 +73,7 @@ test("why nothing was recorded is carried, and only when nothing was", async () 
   await repo(async ({ dir, commit }) => {
     await commit("CLAUDE.md", "#\n");
     const empty = reportToJson(await buildReport(dir), {});
-    assert.match(empty.whyNothingRecorded || "", /Claude Code writes this trailer itself/);
+    assert.match(empty.whyNothingRecorded || "", /Claude Code writes this trailer only on commits it makes itself/);
 
     await commit("a.txt", "1\n", CLAUDE);
     const some = reportToJson(await buildReport(dir), {});

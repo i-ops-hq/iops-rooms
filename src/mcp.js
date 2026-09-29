@@ -237,6 +237,7 @@ async function callTool(name, args = {}) {
       const report = await runDoctor({
         cwd: process.cwd(),
         livePort: args.port,
+        viaMcp: true,
       });
       return textResult(report.format());
     }
@@ -254,7 +255,7 @@ async function handle(msg) {
     return ok(id, {
       protocolVersion: params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "iops-rooms", version: "0.5.11" },
+      serverInfo: { name: "iops-rooms", version: "0.5.12" },
     });
   }
   if (method === "notifications/initialized" || method === "initialized") {

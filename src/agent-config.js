@@ -166,10 +166,15 @@ export function whyNothingRecorded(config) {
   if (!config || !config.ok) return "";
   const declared = config.agents || [];
   if (!declared.length) {
+    // This said "if none was used this is simply the answer". Reproduced on a clean profile, a
+    // repository built with Claude Code's CLI and committed by hand got exactly that sentence, which
+    // reads as Rooms saying no agent was involved. An agent that edits and leaves the committing to
+    // a person writes nothing, so the history reads the same either way, and the sentence says so.
     return config.crossVendor
       ? "An AGENTS.md is committed here but it names no vendor, so there is nothing to compare " +
         "these commits against. If an agent was used and wrote no trailer, nothing here can tell."
-      : "Nothing here declares an agent either, so if none was used this is simply the answer.";
+      : "Nothing here declares an agent either. An agent that edits files and leaves the " +
+        "committing to you writes no trailer, so this reads the same whether one was used or not.";
   }
 
   const attesting = declared.filter((a) => WRITES_ITS_OWN_TRAILER[a.id]);
@@ -177,9 +182,13 @@ export function whyNothingRecorded(config) {
   const names = (list) => list.map((a) => a.label).join(" and ");
 
   if (attesting.length) {
+    // The trailer goes only on commits the agent makes itself. Letting a CLI agent edit and then
+    // committing by hand leaves nothing, so that cause is named first. This used to offer two
+    // causes, turned off or predates it, and a person committing by hand fits neither.
     return (
-      `${names(attesting)} writes this trailer itself, and none of these commits carries one — ` +
-      "so either it was turned off, or this window predates it. " +
+      `${names(attesting)} writes this trailer only on commits it makes itself, and none of ` +
+      "these commits carries one. A commit made by hand carries nothing, even when the agent edited " +
+      "every file in it; so does one made with its trailer turned off, or before it was used here. " +
       "Rooms cannot add one: a trailer it wrote would be a claim about authorship made by " +
       "something that was not there."
     );

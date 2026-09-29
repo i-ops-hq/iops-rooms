@@ -260,20 +260,21 @@ Three things about how that second line is produced:
 
 ### When nothing is recorded, it says whether that is expected
 
-`no agent recorded 100%` is the most common first run, and three different situations produce it:
-the setup is broken, the tool in use never wrote trailers, or no agent was involved. A reader cannot
-tell which from a bar at 100%, so they cannot tell whether to go looking — and in two of the three
-the answer is that nothing is wrong.
+`no agent recorded 100%` is the most common first run, and several different situations produce
+it: the agent edited and a person made the commits, the setup is broken, the tool in use never
+writes trailers, or no agent was involved. A reader cannot tell which from a bar at 100%, so they
+cannot tell whether to go looking — and in most of them the answer is that nothing is wrong.
 
 ```
 Cursor does not write a Co-Authored-By trailer, so an empty result here is
 the expected one rather than a fault. There is nothing to switch on.
 ```
 ```
-Claude Code writes this trailer itself, and none of these commits carries
-one — so either it was turned off, or this window predates it. Rooms cannot
-add one: a trailer it wrote would be a claim about authorship made by
-something that was not there.
+Claude Code writes this trailer only on commits it makes itself, and none of
+these commits carries one. A commit made by hand carries nothing, even when
+the agent edited every file in it; so does one made with its trailer turned
+off, or before it was used here. Rooms cannot add one: a trailer it wrote
+would be a claim about authorship made by something that was not there.
 ```
 
 It is **silent the moment anything is attributed** — at any attribution at all you have evidence the
@@ -364,7 +365,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.11 mcp install
+npx -y iops-rooms@0.5.12 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -377,7 +378,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.11", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.12", "mcp"] } } }
 ```
 
 ## Commands

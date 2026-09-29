@@ -1251,9 +1251,9 @@ export function renderHeroFacts(history, events, git, now = Date.now()) {
   // denominator stays whole. It was attributed + plain, which stopped covering all of them the
   // day co-authored-but-not-an-agent became its own bucket.
   //
-  // Each term is coerced because one missing field must not turn the denominator into NaN: that
-  // renders as "none agent-assisted", which is a false claim about the repo rather than a gap in
-  // the page. Zero is the honest reading of an absent count.
+  // Each term is coerced because one missing field must not turn the denominator into NaN, which
+  // would be a false claim about the repo rather than a gap in the page. Zero is the honest reading
+  // of an absent count.
   const attributed = Number(history.agents.attributed) || 0;
   const coauthored = Number(history.agents.coauthored) || 0;
   const plain = Number(history.agents.plain) || 0;
@@ -1285,8 +1285,13 @@ export function renderHeroFacts(history, events, git, now = Date.now()) {
       detail: top ? `most by ${clip(top.name, 22)} (${top.commits})` : "",
     }) +
     factCard({
-      value: pct ? `${pct}%` : "none",
-      label: "agent-assisted",
+      // "none agent-assisted" was a claim about use made from an absence of trailers, the one thing
+      // the README says this tool must not do, and on a reproduced board for a repository built
+      // with Claude Code's CLI and committed by hand it said no agent helped. With nothing recorded
+      // the card now counts what was read. And a share under half a percent rounded to "none"
+      // with the agent's name printed beneath it.
+      value: attributed === 0 ? `0 of ${seen}` : pct >= 1 ? `${pct}%` : "<1%",
+      label: attributed === 0 ? "commits record an agent" : "agent-assisted",
       // The number this tool exists to produce. It is a floor, not a measurement: an agent that
       // writes no trailer leaves no trace, so the true share can only be higher.
       detail: agents.length

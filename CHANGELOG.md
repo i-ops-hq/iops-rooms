@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.5.12
+
+### A first run that records nothing says what it could not see
+
+Reproduced on a clean profile holding only Claude Code CLI sessions, which is how a first-time user
+reported that Rooms "returned empty":
+
+- **Committing by hand is named.** Claude Code writes its `Co-Authored-By` trailer only on commits
+  it makes itself, so letting it edit and then committing by hand records nothing. The note under an
+  empty result offered two causes, turned off or predates it, and left this one out. It is named
+  first now. With nothing declared at all, the note no longer says "if none was used this is simply
+  the answer": an agent that leaves the committing to you writes nothing, so the history reads the
+  same either way.
+- **The board's agent card counts what was read.** It said `none agent-assisted`, a claim about use
+  made from an absence of trailers. It now says `0 of 6 commits record an agent`. A share under half
+  a percent rounded to `none` with the agent named beneath it; it reads `<1%`.
+- **A quiet week says where the last commit is.** `rooms week` answered a repository last committed
+  ten days ago with "0 commits" and nothing more. It now says how old the newest commit is and names
+  a window that reaches it, `rooms week --since 14d`, which a test runs to check it does.
+- **`doctor` over MCP knows it is over MCP.** A server registered with `claude mcp add` leaves no
+  project file, so `doctor`, called through MCP, warned that MCP was not set up.
+- **Help says attribution needs nothing installed.** It said Cursor and Claude Code "only show up if
+  the Rooms MCP is installed", which is true of room posts and not of attribution.
+- **`rooms week` outside a repository is recognised in any locale.** git translates its messages,
+  and under a German locale the not-a-repository case printed git's German failure without the hint.
+
+### SECURITY.md says what is written outside `.room/`
+
+It listed writing outside `.room/` among the things this package never does, and the first
+`rooms open` has always appended `.room/` to the project's `.gitignore`. It now names that line and
+every command that writes elsewhere, and a test fails if the first `rooms open` in a new repository
+writes anything else.
+
 ## 0.5.11
 
 ### A board that cannot read git says why

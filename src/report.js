@@ -373,9 +373,21 @@ export function wrap(text, width = 76, indent = "") {
   return lines.map((l) => indent + l).join("\n");
 }
 
-export function formatWeek(report, { name = "", window = "last 7 days", delta = null } = {}) {
+/**
+ * The way on from an empty window: how old the newest commit is, and a window that reaches it.
+ * The suggested window is one `sinceArg` understands, and a test runs it to check it does reach.
+ */
+export function quietWindow(newest, now = Date.now()) {
+  const days = Math.max(1, Math.ceil((now - newest) / 86_400_000));
+  const reach =
+    days <= 14 ? "14d" : days <= 30 ? "30d" : days <= 90 ? "90d" : days <= 365 ? "1y" : `${Math.ceil(days / 365)}y`;
+  return `The newest commit here is ${days} day${days === 1 ? "" : "s"} old; rooms week --since ${reach} reads back to it.`;
+}
+
+export function formatWeek(report, { name = "", window = "last 7 days", delta = null, newest = null, now = Date.now() } = {}) {
   const said = finding(report);
   const out = [said, said ? "\n" : "", header(name, window, report), "\n", formatMix(report, { delta })];
+  if (!report.seen && newest) out.push(`\n${wrap(quietWindow(newest, now))}\n`);
   if (report.truncated) {
     out.push(`\nReading the newest ${report.seen} of ${report.total} commits in this window.\n`);
   }
