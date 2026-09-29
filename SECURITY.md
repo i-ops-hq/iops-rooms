@@ -28,6 +28,17 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   commit`, which the git hook from `rooms hooks install` runs after each commit. It appends one line
   per commit to `.room/agent-activity.jsonl`: the commit, and the agent, version, entrypoint and
   model those variables named. A test fails if any other variable reaches that file
+- With `rooms hooks install --agent claude-code`, which shows the change and asks first: add Rooms'
+  hooks to `.claude/settings.local.json` (or `~/.claude/settings.json` with `--user`), keeping every
+  other hook and a copy of the file as it was, and list that file in `.git/info/exclude`.
+  `rooms hooks uninstall --agent claude-code` takes out only what Rooms added
+- Read, from the JSON Claude Code's hooks pass on stdin, the event name, the session id (kept only
+  as a 12-character hash), the model a session starts with, the tool's name and the edited file's
+  path, and nothing else. That
+  payload also carries the whole file for `Write`, the tool's output, the last message and the
+  transcript's path; none of them is kept, and the transcript is never opened. A test fails if any
+  of it reaches `.room/agent-activity.jsonl`. The hook prints nothing and exits 0, so it never
+  speaks to the agent
 - Write outside `.room/` only when a command says so: `rooms mcp install` (the MCP configs and the
   skill copies), `rooms hooks install` (`.git/hooks/`), `rooms index --open`
   (`~/.iops-rooms/index.html`), and a path you name (`badge --out`, `export`, `export-room`)
@@ -74,7 +85,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.13 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.14 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

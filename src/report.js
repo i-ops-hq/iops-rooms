@@ -215,14 +215,31 @@ export function observedFrom(commits, activity) {
   const made = seen.filter((a) => a.madeIn);
   const byAgent = {};
   for (const a of made) byAgent[a.madeIn] = (byAgent[a.madeIn] || 0) + 1;
+  // Commits carrying files an agent's own hook saw it edit, by agent. A commit two agents edited
+  // counts once in the total and once for each of them.
+  const edited = seen.filter((a) => a.editedBy && Object.keys(a.editedBy).length);
+  const editedByAgent = {};
+  for (const a of edited) for (const id of Object.keys(a.editedBy)) editedByAgent[id] = (editedByAgent[id] || 0) + 1;
   const since = records.map((a) => String(a.at || "")).filter(Boolean).sort()[0] || null;
-  return { since, commits: (commits || []).length, observed: seen.length, madeInSession: made.length, byAgent };
+  return {
+    since,
+    commits: (commits || []).length,
+    observed: seen.length,
+    madeInSession: made.length,
+    byAgent,
+    agentEdited: edited.length,
+    editedByAgent,
+    // Whether any agent's own hooks have reported here at all, which is what makes "0 of 2" an
+    // answer rather than the silence of something nobody installed.
+    agentHooks: (activity || []).some((a) => a && (a.kind === "edit" || a.kind === "session")),
+  };
 }
 
 /** The sentence that travels with any observed count, for the same reason FLOOR_NOTE travels with a share. */
 export const OBSERVED_NOTE =
-  "A commit made by hand in your own terminal shows no session, even when an agent edited its " +
-  "files. These counts come from the git hook, not from trailers, and are never added to the rows above.";
+  "Where a commit was made comes from the git hook, and which files an agent edited from the " +
+  "agent's own hooks, only where they are installed. Neither is a claim about whose lines a commit " +
+  "holds, and neither is added to the rows above.";
 
 /** The block for `rooms week`: counts only, and when the hook began observing. */
 export function formatObserved(observed) {
@@ -241,6 +258,18 @@ export function formatObserved(observed) {
     `  made inside an agent session  ${observed.madeInSession} of ${observed.observed} observed` +
       `${agents ? ` (${agents})` : ""}\n`,
   );
+  // Only where an agent's hooks have reported something, so a repository without them is not told
+  // "0 of 2" about something nothing was watching.
+  if (observed.agentHooks) {
+    const editors = Object.entries(observed.editedByAgent)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, n]) => `${agentLabel(id)} ${n}`)
+      .join(", ");
+    out.push(
+      `  carry files an agent edited   ${observed.agentEdited} of ${observed.observed} observed` +
+        `${editors ? ` (${editors})` : ""}\n`,
+    );
+  }
   if (observed.commits > observed.observed) {
     out.push(`  not observed                  ${observed.commits - observed.observed}, made before the hook or elsewhere\n`);
   }

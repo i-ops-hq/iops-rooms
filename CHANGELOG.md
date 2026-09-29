@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.5.14
+
+### An agent's edits, committed by hand, are seen
+
+The commonest way to use a CLI agent left no trace: it edits, and you commit by hand from another
+terminal, so the commit carries no trailer and none of the agent's variables. Claude Code's own
+hooks do see the edits. `rooms hooks install --agent claude-code` adds them, and `rooms week` gains
+a line in the observed block:
+
+    carry files an agent edited   1 of 2 observed (Claude Code 1)
+
+Each edit is kept as which session (a hash of its id) edited which file of this project, and when.
+The git hook then notes, on each commit, which of its files an agent edited in this checkout since
+the commit before it. An edit in another worktree is not credited to this one's commit.
+
+Claude Code's hook payload also carries the whole file for `Write`, the tool's output, the last
+message and the transcript's path. None of it is kept, and a test fails if any of it reaches the
+log. The hook prints nothing and exits 0 whatever happens, because Claude Code adds a SessionStart
+hook's output to the model's context and shows a failing hook's stderr to the agent.
+
+The install shows what it will change and asks, or needs `--yes` without a terminal. It merges into
+`.claude/settings.local.json`, keeps every other hook, keeps the file as it was beside it, and lists
+it in `.git/info/exclude` so it cannot be committed by accident. `rooms hooks uninstall --agent
+claude-code` takes out only what Rooms added: byte for byte when nothing else changed since.
+
+Tried on two live sessions before release. On Claude Code Desktop the hook took effect on the
+session's next edit, without a restart. On a fresh terminal session, `claude` wrote one file and
+edited another, and a commit made afterwards from the person's own shell carried both, credited to
+Claude Code, with the session kept only as a hash of its id. An edit made through the agent's shell,
+with `sed` or a script, is not reported, and the output says so. The agent's version and
+entrypoint reach the commands it runs but not its hooks, so a session records its model and not
+those two. The install's undo line names the command that ran, rather than whichever `rooms` is on
+the PATH.
+
 ## 0.5.13
 
 ### Commits made inside an agent session
