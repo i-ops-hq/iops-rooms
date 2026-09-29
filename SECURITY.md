@@ -30,7 +30,8 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   model those variables named. A test fails if any other variable reaches that file
 - With `rooms hooks install --agent claude-code`, which shows the change and asks first: add Rooms'
   hooks to `.claude/settings.local.json` (or `~/.claude/settings.json` with `--user`), keeping every
-  other hook and a copy of the file as it was, and list that file in `.git/info/exclude`.
+  other hook and a copy of the file from before Rooms first changed it, and list that file in
+  `.git/info/exclude`.
   `rooms hooks uninstall --agent claude-code` takes out only what Rooms added
 - Read, from the JSON Claude Code's hooks pass on stdin, the event name, the session id (kept only
   as a 12-character hash), the model a session starts with, the tool's name and the edited file's
@@ -85,7 +86,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.14 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.15 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
