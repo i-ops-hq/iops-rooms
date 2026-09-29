@@ -156,6 +156,17 @@ export function claudeHookCommand({ nodeBin = process.execPath, cliPath }) {
 
 const isOurs = (hook) => typeof hook?.command === "string" && /\bagent-hook claude-code\b/.test(hook.command);
 
+// Asked of the hooks themselves. Comparing the file with itself minus our entries also counted the
+// tidying `withoutClaudeHooks` does, so an empty "hooks": {} read as Rooms hooks present; searching
+// the text for the command also matched a permission rule that names it.
+function holdsOurs(settings) {
+  const hooks = settings?.hooks;
+  if (!hooks || typeof hooks !== "object") return false;
+  return Object.values(hooks).some(
+    (groups) => Array.isArray(groups) && groups.some((g) => Array.isArray(g?.hooks) && g.hooks.some(isOurs)),
+  );
+}
+
 /**
  * Settings with the Rooms hooks added, replacing any earlier Rooms entry and leaving every other hook
  * exactly where it was. Pure, so the preview is the same object that gets written.
@@ -220,18 +231,26 @@ export async function planClaudeHooks({ cwd = process.cwd(), user = false, home,
   const path = await claudeSettingsPath({ cwd, user, home });
   const { exists, raw, settings } = await readSettings(path);
   const after = withClaudeHooks(settings, claudeHookCommand({ nodeBin, cliPath }));
-  return { path, exists, before: raw, after: `${JSON.stringify(after, null, 2)}\n` };
+  // The backup is the file as it was before Rooms first touched it. Installing again used to replace
+  // it with the already-installed file, and uninstalling then restored the Rooms hooks it was meant
+  // to remove. So an existing backup is kept, and a file that already holds Rooms hooks is never one.
+  // Decided here, once, because the preview and the write both read it: the preview used to promise
+  // a copy on every install into an existing file, including the ones where none was made.
+  const hasOurs = exists && holdsOurs(settings);
+  const copy = (await readFile(`${path}.rooms-backup`, "utf8").then(() => true, () => false))
+    ? "kept"
+    : exists && !hasOurs
+      ? "write"
+      : "none";
+  return { path, exists, hasOurs, copy, before: raw, after: `${JSON.stringify(after, null, 2)}\n` };
 }
 
 /** Write the planned change, keep what was there, and keep the personal file out of git. */
 export async function applyClaudeHooks(plan, { cwd = process.cwd(), user = false } = {}) {
   await mkdir(dirname(plan.path), { recursive: true });
-  // The backup is the file as it was before Rooms first touched it. Installing again used to replace
-  // it with the already-installed file, and uninstalling then restored the Rooms hooks it was meant
-  // to remove. So an existing backup is kept, and a file that already holds Rooms hooks is never one.
   const backup = `${plan.path}.rooms-backup`;
-  const hasOurs = plan.exists && plan.before.includes("agent-hook claude-code");
-  if (plan.exists && !hasOurs && !(await readFile(backup, "utf8").then(() => true, () => false))) {
+  // Checked again: a copy that appeared while the person read the preview is still never replaced.
+  if (plan.copy === "write" && !(await readFile(backup, "utf8").then(() => true, () => false))) {
     await writeFile(backup, plan.before, "utf8");
   }
   await writeFile(plan.path, plan.after, "utf8");
@@ -243,8 +262,8 @@ export async function removeClaudeHooks({ cwd = process.cwd(), user = false, hom
   const path = await claudeSettingsPath({ cwd, user, home });
   const { exists, settings } = await readSettings(path);
   if (!exists) return { path, removed: false };
+  if (!holdsOurs(settings)) return { path, removed: false };
   const after = withoutClaudeHooks(settings);
-  if (JSON.stringify(after) === JSON.stringify(settings)) return { path, removed: false };
   let backup = null;
   try {
     backup = await readFile(`${path}.rooms-backup`, "utf8");

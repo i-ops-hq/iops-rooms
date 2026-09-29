@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { fromClaudeCode } from "../src/agent-hooks.js";
+import { applyClaudeHooks, fromClaudeCode, planClaudeHooks } from "../src/agent-hooks.js";
 
 const exec = promisify(execFile);
 const cli = join(fileURLToPath(new URL("..", import.meta.url)), "src", "cli.js");
@@ -238,11 +238,85 @@ test("installing for Claude Code keeps every other hook, and uninstalling leaves
   });
 });
 
+test("the install says a copy of the file is kept only when it keeps one", async () => {
+  await scratch(async (dir) => {
+    await repoWithRoom(dir);
+    const settings = join(dir, ".claude", "settings.local.json");
+    const copy = `${settings}.rooms-backup`;
+    await mkdir(join(dir, ".claude"));
+    const original = '{ "permissions": { "allow": [] } }\n';
+    await writeFile(settings, original, "utf8");
+
+    const first = await run(dir, ["hooks", "install", "--agent", "claude-code", "--yes"]);
+    assert.equal(first.code, 0, first.err);
+    assert.match(first.out, /every hook already in the file stays as it is\n/);
+    assert.match(first.out, /a copy of the file as it is now is kept beside it/);
+    assert.equal(await readFile(copy, "utf8"), original);
+
+    // The file holds Rooms hooks and nothing is beside it: the state 0.5.14 promised a copy in, and
+    // made none, rightly, since a copy of Rooms hooks would put them back on uninstall.
+    await rm(copy);
+    const again = await run(dir, ["hooks", "install", "--agent", "claude-code", "--yes"]);
+    assert.equal(again.code, 0, again.err);
+    assert.match(again.out, /the Rooms hooks already in it are replaced; every other hook stays as it is/);
+    assert.doesNotMatch(again.out, /copy/);
+    assert.equal(await exists(copy), false);
+
+    // A copy from an earlier install is named as that, and left alone.
+    await writeFile(copy, original, "utf8");
+    const kept = await run(dir, ["hooks", "install", "--agent", "claude-code", "--yes"]);
+    assert.equal(kept.code, 0, kept.err);
+    assert.match(kept.out, /the copy beside it, from before Rooms first changed the file, is kept/);
+    assert.equal(await readFile(copy, "utf8"), original);
+  });
+});
+
+test("a permission rule naming the hook is not a Rooms hook, and nothing to remove changes nothing", async () => {
+  await scratch(async (dir) => {
+    await repoWithRoom(dir);
+    const settings = join(dir, ".claude", "settings.local.json");
+    await mkdir(join(dir, ".claude"));
+    const allowed = '{ "permissions": { "allow": ["Bash(rooms agent-hook claude-code)"] } }\n';
+    await writeFile(settings, allowed, "utf8");
+    const installed = await run(dir, ["hooks", "install", "--agent", "claude-code", "--yes"]);
+    assert.equal(installed.code, 0, installed.err);
+    assert.doesNotMatch(installed.out, /already in it are replaced/);
+    assert.equal(await readFile(`${settings}.rooms-backup`, "utf8"), allowed, "so its copy is made");
+    await run(dir, ["hooks", "uninstall", "--agent", "claude-code"]);
+    assert.equal(await readFile(settings, "utf8"), allowed);
+
+    // An empty hooks object, in the person's own spacing, holds no Rooms hooks to take out.
+    const empty = '{"hooks": {},   "model": "x"}\n';
+    await writeFile(settings, empty, "utf8");
+    const removed = await run(dir, ["hooks", "uninstall", "--agent", "claude-code"]);
+    assert.equal(removed.code, 0, removed.err);
+    assert.match(removed.out, /^no Rooms hooks in /);
+    assert.equal(await readFile(settings, "utf8"), empty, "byte for byte");
+  });
+});
+
+test("a copy that appears while the preview is read is not replaced", async () => {
+  await scratch(async (dir) => {
+    await repoWithRoom(dir);
+    const settings = join(dir, ".claude", "settings.local.json");
+    await mkdir(join(dir, ".claude"));
+    await writeFile(settings, "{}\n", "utf8");
+    const plan = await planClaudeHooks({ cwd: dir, cliPath: cli });
+    assert.equal(plan.copy, "write");
+    await writeFile(`${settings}.rooms-backup`, "earlier\n", "utf8");
+    await applyClaudeHooks(plan, { cwd: dir });
+    assert.equal(await readFile(`${settings}.rooms-backup`, "utf8"), "earlier\n");
+    assert.match(await readFile(settings, "utf8"), /agent-hook claude-code/);
+  });
+});
+
 test("a settings file Rooms created is removed again, with its line in .git/info/exclude", async () => {
   await scratch(async (dir) => {
     await repoWithRoom(dir);
     const settings = join(dir, ".claude", "settings.local.json");
-    await run(dir, ["hooks", "install", "--agent", "claude-code", "--yes"]);
+    const installed = await run(dir, ["hooks", "install", "--agent", "claude-code", "--yes"]);
+    assert.match(installed.out, /settings\.local\.json {2}\(new file\)\n/);
+    assert.doesNotMatch(installed.out, /copy|stays as it is/, "nothing was there to keep");
     assert.ok(await exists(settings));
     const exclude = join(dir, ".git", "info", "exclude");
     assert.match(await readFile(exclude, "utf8"), /^\.claude\/settings\.local\.json$/m);

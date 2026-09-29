@@ -989,7 +989,16 @@ async function main() {
       `Claude Code  ${plan.path}${plan.exists ? "" : "  (new file)"}\n` +
         "  + SessionStart, SessionEnd, and PostToolUse on Edit|Write|MultiEdit|NotebookEdit\n" +
         `  runs  ${a.claudeHookCommand({ cliPath: CLI_PATH })}\n` +
-        (plan.exists ? "  every hook already in the file stays as it is; a copy is kept beside it\n" : "") +
+        (plan.hasOurs
+          ? "  the Rooms hooks already in it are replaced; every other hook stays as it is\n"
+          : plan.exists
+            ? "  every hook already in the file stays as it is\n"
+            : "") +
+        (plan.copy === "write"
+          ? "  a copy of the file as it is now is kept beside it, for uninstall\n"
+          : plan.copy === "kept"
+            ? "  the copy beside it, from before Rooms first changed the file, is kept\n"
+            : "") +
         (user ? "" : "  the file is added to .git/info/exclude, so it cannot be committed by accident\n") +
         "git          the post-commit hook, which joins the edits to the commit that carries them\n" +
         "Kept, in .room/agent-activity.jsonl: which session, which file in this project it edited, and\n" +
