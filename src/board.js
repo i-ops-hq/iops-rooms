@@ -1232,11 +1232,9 @@ export function renderHeroFacts(history, events, git, now = Date.now()) {
         detail: t == null ? "nothing posted yet" : formatWhen(lastPost),
       }) +
       factCard({
-        value: git?.ok ? shortBranch(git.current || "—", 16) : "no git",
+        value: git?.ok ? shortBranch(git.current || "—", 16) : gitUnreadable(git).value,
         label: git?.ok ? "branch" : "history",
-        detail: git?.ok
-          ? "the checkout this board was written from"
-          : "run git init here and the board fills in",
+        detail: git?.ok ? "the checkout this board was written from" : gitUnreadable(git).detail,
       }) +
       `</div>`
     );
@@ -1323,6 +1321,49 @@ function sideFlag(state, text) {
 }
 
 /**
+ * What the board says when it could not read git, by the reason `readGitSnapshot` gives.
+ *
+ * It used to be "no git" and "run git init here" whatever happened. That is right for a folder that
+ * is not a repository and wrong for the other three: a repository git refused to open, a shell with
+ * no git, a git that failed. For the first of those, `git init` is advice about a repository that
+ * already exists. A snapshot with no reason is read as not-a-repo, which is what it meant before.
+ */
+function gitUnreadable(git) {
+  switch (git?.reason) {
+    case "git-missing":
+      return {
+        value: "no git",
+        detail: "git is not on the PATH Rooms was started with",
+        side: "git not found",
+        flag: "start Rooms from a shell where git --version works",
+      };
+    case "git-refused":
+      return {
+        value: "unread",
+        detail: "git refused to read this repository",
+        side: "git refused this repository",
+        flag: git.detail || "git refused to read it",
+        fix: git.fix ? `git's own fix: ${git.fix}` : "",
+      };
+    case "git-failed":
+      return {
+        value: "unread",
+        detail: "git failed here",
+        side: "git failed here",
+        flag: git.detail || "git failed",
+      };
+    default:
+      return {
+        value: "no git",
+        detail: "run git init here and the board fills in",
+        side: "not a git checkout",
+        flag: "git init here and the history fills this board",
+        quiet: true,
+      };
+  }
+}
+
+/**
  * Who you are and what this checkout is connected to.
  *
  * Both were missing from the board, and their absence read as a pending state: the page talked
@@ -1364,11 +1405,13 @@ export function renderHeroSide({ git, auth, meta } = {}) {
 
   let gitCard;
   if (!git || !git.ok) {
+    const why = gitUnreadable(git);
     gitCard =
       `<div class="side-card">` +
       `<span class="side-title">Git</span>` +
-      `<p class="side-repo">not a git checkout</p>` +
-      sideFlag("none", "git init here and the history fills this board") +
+      `<p class="side-repo">${escapeHtml(why.side)}</p>` +
+      sideFlag(why.quiet ? "none" : "warn", why.flag) +
+      (why.fix ? sideFlag("none", why.fix) : "") +
       `</div>`;
   } else {
     const ab = [];
