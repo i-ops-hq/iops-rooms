@@ -286,6 +286,32 @@ something that was not there. The numbers here are worth something precisely bec
 attested to its own work. Manufacturing the evidence we then measure would be the most complete
 version of the mistake this project exists to avoid.
 
+### Commits made inside an agent session
+
+A trailer is an agent attesting to its own commit, and most agents write none, or write one only on
+commits they make themselves. The git hook `rooms hooks install` adds can say one more thing: whether
+a commit was made inside an agent's session. Agents set variables for the commands they run —
+Claude Code sets `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` and `AI_AGENT` — and a commit made from
+inside the session inherits them. Any agent, a custom one included, can set
+`AI_AGENT=<name>_<version>_agent`, and `AI_AGENT_MODEL` for the model.
+
+```
+Observed on this machine since 2026-09-29, by the git hook you installed:
+  made inside an agent session  1 of 2 observed (Claude Code 1)
+  not observed                  1, made before the hook or elsewhere
+
+A commit made by hand in your own terminal shows no session, even when an
+agent edited its files. These counts come from the git hook, not from
+trailers, and are never added to the rows above.
+```
+
+It reads those four names and nothing else from the environment, and writes one line per commit to
+`.room/agent-activity.jsonl`. It sees only this machine, only since the hook was installed, and a
+commit that is rebased gets a new id it has not seen. Where a commit was made is not who wrote it: a
+person can commit from inside an agent's shell, and an agent's edits can be committed from anywhere,
+which is also why it cannot see the commonest case, an agent's edits committed by hand in another
+terminal. Already have the hook? Run `rooms hooks install` again to add this.
+
 ### What this will not tell you
 
 - **Which lines an agent wrote.** Rooms reads commits, not keystrokes. Line-level provenance is a
@@ -365,7 +391,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.12 mcp install
+npx -y iops-rooms@0.5.13 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -378,7 +404,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.12", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.13", "mcp"] } } }
 ```
 
 ## Commands

@@ -23,6 +23,11 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   written, and the first `rooms open` has always written this line
 - Write local identity under `~/.iops-rooms/`: `device.json`, `prompt.json` (the answer to the
   one-time offer to link GitHub), and optionally `identity.json` and `device.key` (mode 0600)
+- Read four environment variables agents set for the commands they run, `AI_AGENT`,
+  `AI_AGENT_MODEL`, `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT`, and no other, in `rooms record
+  commit`, which the git hook from `rooms hooks install` runs after each commit. It appends one line
+  per commit to `.room/agent-activity.jsonl`: the commit, and the agent, version, entrypoint and
+  model those variables named. A test fails if any other variable reaches that file
 - Write outside `.room/` only when a command says so: `rooms mcp install` (the MCP configs and the
   skill copies), `rooms hooks install` (`.git/hooks/`), `rooms index --open`
   (`~/.iops-rooms/index.html`), and a path you name (`badge --out`, `export`, `export-room`)
@@ -69,7 +74,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.12 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.13 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

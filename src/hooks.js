@@ -56,6 +56,28 @@ async function gitRoot(cwd = process.cwd()) {
   }
 }
 
+/**
+ * Where git looks for this checkout's hooks.
+ *
+ * It was `<top>/.git/hooks`, which is wrong twice. In a worktree `.git` is a file, so installing
+ * failed outright, and agents running in parallel are exactly who gets a worktree each. And with
+ * `core.hooksPath` set (husky sets it), git never ran a hook written there. git names the place.
+ */
+async function hooksDirFor(cwd, root) {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--path-format=absolute", "--git-path", "hooks"],
+      { cwd, timeout: 4000 },
+    );
+    const dir = String(stdout || "").trim();
+    if (dir) return dir;
+  } catch {
+    /* an older git: fall back to the usual place */
+  }
+  return join(root, ".git", "hooks");
+}
+
 function resolveNodeBin() {
   return process.execPath;
 }
@@ -82,6 +104,8 @@ STAT=$(git show --stat --pretty=format: HEAD 2>/dev/null | head -c 4000 || true)
 STAT=$(printf '%s' "$STAT" | sed -E 's#(^|[[:space:]/])(\\.env(\\.[^[:space:]]*)?|[^[:space:]]*\\.pem|[^[:space:]]*\\.key|id_rsa|id_ed25519|[^[:space:]]*credentials[^[:space:]]*|[^[:space:]]*secret[^[:space:]]*)#\\1[redacted-secret-path]#gI')
 MSG=$(printf 'commit %s: %s\\n%s' "$HASH" "$SUBJECT" "$STAT")
 "$NODE" "$CLI" post "$MSG" >/dev/null 2>&1 || true
+# Whether this commit was made inside an agent session, from the variables the agent set.
+"$NODE" "$CLI" record commit >/dev/null 2>&1 || true
 `;
 }
 
@@ -142,7 +166,7 @@ export async function installHooks({
   if (!root) {
     throw new Error("Not a git repository. `rooms hooks install` needs git.");
   }
-  const hooksDir = join(root, ".git", "hooks");
+  const hooksDir = await hooksDirFor(cwd, root);
   await mkdir(hooksDir, { recursive: true });
   const written = [];
   const opts = { nodeBin: nodeBin || resolveNodeBin(), cliPath: cliPath || CLI_PATH };
@@ -165,7 +189,7 @@ export async function uninstallHooks({ cwd = process.cwd() } = {}) {
   if (!root) {
     throw new Error("Not a git repository.");
   }
-  const hooksDir = join(root, ".git", "hooks");
+  const hooksDir = await hooksDirFor(cwd, root);
   const removed = [];
   for (const name of ["post-commit", "post-checkout"]) {
     const path = join(hooksDir, name);
