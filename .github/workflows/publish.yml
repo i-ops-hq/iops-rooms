@@ -7,6 +7,7 @@ name: publish
 # RELEASING: package.json is the version. The tag only triggers, and it must agree.
 #   1. bump "version" in package.json   2. add the CHANGELOG heading
 #   3. commit                           4. git tag v<X.Y.Z> && git push origin v<X.Y.Z>
+# Once npm has it, the `release` job below makes the GitHub Release from that CHANGELOG section.
 #
 # Authentication is OIDC only, and there is deliberately no NPM_TOKEN secret in this repository.
 # A long-lived publish credential sitting in a settings page is a standing risk that nothing here
@@ -110,3 +111,31 @@ jobs:
         # and if no trusted publisher is configured this fails loudly rather than falling back to
         # a credential nobody meant to store.
         run: npm publish --provenance --access public
+
+  # The GitHub Release for the tag, titled and described from its CHANGELOG section by
+  # scripts/release-notes.mjs. Until 0.5.15 nothing made one, so the Releases page stopped at the
+  # last one made by hand while npm moved on. A job of its own so that the job holding the publishing
+  # identity keeps a read-only token: this one can write to the repository and cannot publish.
+  release:
+    needs: publish
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: The Release, unless the tag has one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "$GITHUB_REF_NAME already has a Release; nothing to do."
+            exit 0
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/release-notes.mjs "$VERSION" > "$RUNNER_TEMP/notes.md"
+          TITLE=$(node scripts/release-notes.mjs "$VERSION" --title)
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"

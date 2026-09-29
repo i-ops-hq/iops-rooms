@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.15
+
+### The install says a copy is kept only when it keeps one
+
+`rooms hooks install --agent claude-code` said "a copy is kept beside it" on every install into a
+settings file that already existed. Installing again, into a file that already held Rooms hooks,
+made no copy, and rightly: a copy of Rooms hooks would put them back on uninstall. The preview and
+the write now read one decision, and the preview says which happens: a copy of the file as it is now
+is kept; the copy from before Rooms first changed the file is kept; or the Rooms hooks already in
+it are replaced, and nothing is copied. Seen the first time a working install was pointed at a
+global 0.5.14.
+
+### Uninstall with nothing to take out changes nothing
+
+Whether a file held Rooms hooks was decided by comparing it with itself minus them, and that
+comparison also counted the tidying done on the way. A settings file with an empty `"hooks": {}`
+and no Rooms hooks was answered "removed the Rooms hooks" and rewritten, without the empty object
+and in Rooms' formatting instead of the person's. Install had its own version: it searched the text
+for the hook's command, so a permission rule naming that command read as an install, and no copy
+was made. Both now look at the hooks themselves.
+
+### Each version gets a GitHub Release
+
+The Releases page stopped at v0.5.0, the last one made by hand, while npm reached 0.5.14. Once npm
+has a version, the publish workflow now makes its Release: titled with the first heading of its
+CHANGELOG section, described by the section. The lines of each paragraph are joined first, because
+a Release shows every newline inside a paragraph as a line break. It is a job of its own, whose
+token can write to the repository and holds no npm identity; the publishing job's stays read-only.
+
 ## 0.5.14
 
 ### An agent's edits, committed by hand, are seen
