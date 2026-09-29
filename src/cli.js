@@ -998,7 +998,11 @@ async function main() {
     await installHooks({ cwd: process.cwd(), force: Boolean(argv.force) });
     await a.applyClaudeHooks(plan, { cwd: process.cwd(), user });
     process.stdout.write(
-      `installed. Claude Code reads new hooks when a session starts.\n` +
+      // Not "when a session starts": the first time this was tried, a Claude Code Desktop session
+      // already running took the hook at once, on its next edit. Whether the terminal CLI does the
+      // same is not checked yet, so the line says what to do if it does not.
+      `installed. Claude Code uses it from its next edit; if a session that is already open records\n` +
+        `nothing, start a new one.\n` +
         `undo: rooms hooks uninstall --agent claude-code${user ? " --user" : ""}\n`,
     );
     return;
