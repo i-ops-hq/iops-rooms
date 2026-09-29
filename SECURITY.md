@@ -52,6 +52,13 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   name holding HTML reaches the page as markup
 - Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes, the agent activity log included
 - Optional: read local `git` for branch stamps; optional read-only `gh` for `scm-status` (never uploads the room)
+- With `rooms shortcut`, which shows what it will write and asks first: write one launcher, an
+  AppleScript application on macOS (built with `osacompile`), a `.cmd` on Windows or a `.desktop`
+  entry on Linux, to the Desktop, the Linux applications menu, or the folder named with `--to`. It
+  runs only this Node, this install of Rooms and `open`, in this project, with every path quoted for
+  its format; a test runs each format against a folder whose name is a shell attack. A path holding
+  a control character is refused, and so is a Rooms running from npx's cache. It replaces or removes
+  only a launcher it wrote
 - Ask GitHub whether the checked-out branch has a pull request, for `rooms week`, the board and the
   live board: one `gh pr view <branch>` through your own `gh`, which sends the repository and the
   branch name to the GitHub your remote already points at. Only for a branch that remote already
@@ -96,7 +103,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.17 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.18 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

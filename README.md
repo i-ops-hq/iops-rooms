@@ -208,6 +208,21 @@ branch. A branch only on your machine reads "not pushed yet", and its name goes 
 request yet" means GitHub said so; anything short of that reads "pull request unknown", with the
 reason. `ROOMS_NO_GH=1` turns the question off.
 
+### For teammates who never open a terminal
+
+Someone who does runs this once, on that teammate's machine, in the project:
+
+```bash
+rooms shortcut
+```
+
+It writes one file to double-click, which opens the board in its own window: an application on the
+macOS Desktop, a `.cmd` on the Windows Desktop, or an entry in the Linux applications menu. It shows
+what it will write and asks first. The file runs only this Node and this install of Rooms, `open`,
+in this project, with every path quoted for its format; `rooms shortcut remove` takes it away, and
+neither touches a file Rooms did not write. Run from npx's cache it refuses, since npm may clear
+that cache: install with `npm i -g iops-rooms` first.
+
 ### "Can't I just use `git log`?"
 
 Mostly, yes — and you should know how far it gets you before installing anything. This is the
@@ -427,7 +442,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.17 mcp install
+npx -y iops-rooms@0.5.18 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -440,7 +455,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.17", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.18", "mcp"] } } }
 ```
 
 ## Commands
