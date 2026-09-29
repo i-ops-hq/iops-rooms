@@ -237,6 +237,7 @@ async function callTool(name, args = {}) {
       const report = await runDoctor({
         cwd: process.cwd(),
         livePort: args.port,
+        viaMcp: true,
       });
       return textResult(report.format());
     }

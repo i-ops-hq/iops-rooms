@@ -52,8 +52,10 @@ const note = (report) => formatWhyEmpty(report).replace(/\s+/g, " ").trim();
 test("an agent that writes its own trailer, and none recorded, is a discrepancy", async () => {
   await repo(["CLAUDE.md"], async (dir) => {
     const text = note(await buildReport(dir));
-    assert.match(text, /Claude Code writes this trailer itself/);
-    assert.match(text, /turned off, or this window predates it/);
+    assert.match(text, /Claude Code writes this trailer only on commits it makes itself/);
+    // The commonest cause, and the one the first version left out: a person committing by hand.
+    assert.match(text, /A commit made by hand carries nothing, even when the agent edited every file/);
+    assert.match(text, /trailer turned off, or before it was used here/);
     // The line that stops this becoming an advertisement for a thing we could do and should not.
     assert.match(text, /Rooms cannot add one/);
   });
@@ -69,9 +71,13 @@ test("an agent that writes no trailer means an empty result is expected, not bro
   });
 });
 
-test("nothing declared and nothing recorded is simply the answer", async () => {
+test("nothing declared and nothing recorded is not a verdict that no agent was used", async () => {
   await repo([], async (dir) => {
-    assert.match(note(await buildReport(dir)), /Nothing here declares an agent either/);
+    const text = note(await buildReport(dir));
+    assert.match(text, /Nothing here declares an agent either/);
+    assert.match(text, /reads the same whether one was used or not/);
+    // A Claude Code CLI user who commits by hand read the old sentence as "no agent was used".
+    assert.doesNotMatch(text, /simply the answer|none was used/);
   });
 });
 
@@ -79,7 +85,7 @@ test("an AGENTS.md alone names no vendor, so there is nothing to compare against
   await repo(["AGENTS.md"], async (dir) => {
     const text = note(await buildReport(dir));
     assert.match(text, /names no vendor/);
-    assert.doesNotMatch(text, /writes this trailer itself/, "AGENTS.md implicates no vendor");
+    assert.doesNotMatch(text, /writes this trailer only on commits/, "AGENTS.md implicates no vendor");
   });
 });
 
@@ -92,7 +98,7 @@ test("one attributed commit and the note disappears", async () => {
     const report = await buildReport(dir);
     assert.ok(report.agents.attributed > 0, "the fixture should have attributed this commit");
     assert.equal(formatWhyEmpty(report), "");
-    assert.doesNotMatch(formatWeek(report), /writes this trailer itself/);
+    assert.doesNotMatch(formatWeek(report), /writes this trailer only on commits/);
   }, { trailer: CLAUDE });
 });
 
@@ -143,6 +149,6 @@ test("an attesting agent wins over a quiet one when both are declared", async ()
       { id: "cursor", label: "Cursor", files: [".cursor/"] },
     ],
   });
-  assert.match(text, /Claude Code writes this trailer itself/);
+  assert.match(text, /Claude Code writes this trailer only on commits it makes itself/);
   assert.doesNotMatch(text, /nothing to switch on/);
 });

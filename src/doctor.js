@@ -93,6 +93,7 @@ export async function runDoctor({
   cwd = process.cwd(),
   livePort = LIVE_DEFAULT_PORT,
   liveHost = LIVE_HOST,
+  viaMcp = false,
 } = {}) {
   const checks = [];
   const nextActions = [];
@@ -193,7 +194,12 @@ export async function runDoctor({
     });
   }
 
-  const mcp = await checkMcpHint(projectDir);
+  // Asked through MCP, the question answers itself: a client is running Rooms right now. It used to
+  // look only for a project file, so a server registered with `claude mcp add`, which lives in
+  // Claude Code's own settings, was told over MCP that MCP was not set up.
+  const mcp = viaMcp
+    ? { ok: true, path: null, detail: "this check came over MCP, so a client is running Rooms right now" }
+    : await checkMcpHint(projectDir);
   checks.push({
     id: "mcp",
     ok: mcp.ok,

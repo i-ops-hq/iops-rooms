@@ -83,7 +83,8 @@ Attribution comes from the Co-Authored-By trailers agents write themselves.
 no trailer, so every share is a floor, never a measurement.
 
 One .room/ per project. Other AI windows are not scanned.
-Cursor/Claude Code only show up if the Rooms MCP is installed and they post.
+The attribution above needs nothing installed. Room posts from Cursor, Claude Code
+or Codex appear only when the Rooms MCP is installed and the agent posts.
 Hooks are local opt-in only — never auto-installed; not IDE telemetry.
 Auth mints a local verified GitHub/GitLab identity only — does not upload room events.
 `;
@@ -657,6 +658,13 @@ async function main() {
       const since = argv.since ? String(argv.since) : "7d";
       const r = await buildReport(dir, { since, paths, exclude });
       if (!r.ok) return failNotGit(r);
+      // An empty window says how old the newest commit is and which window reaches it. Prose only;
+      // --json is unchanged.
+      let newest = null;
+      if (!r.seen && !argv.json) {
+        const { newestCommitAt } = await import("./git-history.js");
+        newest = await newestCommitAt(dir, { paths, exclude });
+      }
       // Week over week, because "am I leaning harder on one model" is the question a weekly
       // report is actually asked. Only for the default window — a delta against an arbitrary
       // --since would be comparing this window to a window nobody chose.
@@ -676,7 +684,7 @@ async function main() {
           }
         }
       }
-      process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta }));
+      process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta, newest }));
       return;
     }
 

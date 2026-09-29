@@ -177,9 +177,14 @@ export function describeGitError(err, args, timeout) {
  * Callers that genuinely tolerate absence (an optional probe like `symbolic-ref` on a detached
  * HEAD) read `.out` and carry on. Callers that report a NUMBER check `.ok` first.
  */
-export async function git(cwd, args, { timeout = 20_000, maxBuffer = 64 * 1024 * 1024 } = {}) {
+export async function git(cwd, args, { timeout = 20_000, maxBuffer = 64 * 1024 * 1024, env = null } = {}) {
   try {
-    const { stdout } = await execFileAsync("git", args, { cwd, timeout, maxBuffer });
+    const { stdout } = await execFileAsync("git", args, {
+      cwd,
+      timeout,
+      maxBuffer,
+      ...(env ? { env: { ...process.env, ...env } } : {}),
+    });
     return { ok: true, out: String(stdout || ""), err: "" };
   } catch (err) {
     return { ok: false, out: "", err: describeGitError(err, args, timeout) };
@@ -221,13 +226,30 @@ export function pathArgs({ paths = [], exclude = [] } = {}) {
   return ["--", ...(inc.length ? inc : [":(glob)**"]), ...exc];
 }
 
+/**
+ * When the newest commit here was made, in milliseconds, or null when there is none.
+ *
+ * For a window with nothing in it. `rooms week` answered a repository whose last commit was ten
+ * days old with "0 commits" and "no commits in this window", and no way on. The caller's paths
+ * apply, so this is the newest commit the same question would have counted.
+ */
+export async function newestCommitAt(projectDir, { paths = [], exclude = [] } = {}) {
+  const res = await git(projectDir, ["log", "-1", "--format=%ct", "HEAD", ...pathArgs({ paths, exclude })], {
+    timeout: 4000,
+  });
+  const seconds = Number(res.out.trim());
+  return res.ok && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
+}
+
 export async function readCommits(
   projectDir,
   { limit = DEFAULT_COMMIT_LIMIT, since = "", paths = [], exclude = [], range = "" } = {},
 ) {
   // Outside a repo git exits 128 with its own "fatal: not a git repository". That one case keeps
-  // the shorter sentence, because the CLI pairs it with a hint that is only true here.
-  const probe = await git(projectDir, ["rev-parse", "--is-inside-work-tree"], { timeout: 4000 });
+  // the shorter sentence, because the CLI pairs it with a hint that is only true here. Asked in
+  // English, because git translates the message and the case is recognised by it: under a German
+  // locale it arrives as "Kein Git-Repository" and was printed as a failure instead.
+  const probe = await git(projectDir, ["rev-parse", "--is-inside-work-tree"], { timeout: 4000, env: { LC_ALL: "C" } });
   if (!probe.ok || probe.out.trim() !== "true") {
     const note = !probe.ok && !/not a git repository/i.test(probe.err) ? probe.err : "not a git checkout";
     return { ok: false, commits: [], total: 0, truncated: 0, note };

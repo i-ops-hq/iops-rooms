@@ -7,7 +7,7 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 - Open sockets / `fetch` for **room traffic** or telemetry (no phone-home). Optional `rooms auth github` / `rooms auth gitlab` are the sole exceptions: OAuth **device flow** only, to mint a **local** verified identity — they do **not** upload `.room/` events
 - Bind a listen socket to anything other than `127.0.0.1` (optional `rooms live` is localhost-only)
 - Read `process.env` wholesale or hunt for `.env`, SSH keys, or cloud credentials
-- Write outside `.room/` in the project it resolved (except local identity under `~/.iops-rooms/`: `device.json`, optional `identity.json` + `device.key` mode 0600)
+- Write outside `.room/` in the project it resolved without a command that says so. The exceptions are listed under "What it does", and a test fails if `rooms open` in a new repository writes anything else
 - **Read** a file outside that project for `share-diff --path`, or a file whose name looks like a secret, without you saying so explicitly — see below
 - Run shell commands or `eval` user/agent text
 - Install other packages at runtime
@@ -18,6 +18,14 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 ## What it does
 
 - Read/write `.room/room.json`, `.room/events.jsonl`, `.room/board.html`
+- Append `.room/` to the project's `.gitignore` the first time a room is made there, unless the room
+  is shared (`rooms init --share`). Until 0.5.12 this list said nothing outside `.room/` was ever
+  written, and the first `rooms open` has always written this line
+- Write local identity under `~/.iops-rooms/`: `device.json`, `prompt.json` (the answer to the
+  one-time offer to link GitHub), and optionally `identity.json` and `device.key` (mode 0600)
+- Write outside `.room/` only when a command says so: `rooms mcp install` (the MCP configs and the
+  skill copies), `rooms hooks install` (`.git/hooks/`), `rooms index --open`
+  (`~/.iops-rooms/index.html`), and a path you name (`badge --out`, `export`, `export-room`)
 - Stamp each event with a stable `deviceId` + display name. `ROOMS_ACTOR` claims to be a person, cannot be checked, and is marked **unverified**. `ROOMS_DEVICE_ID` only labels the machine — required in VMs, where a cloned template shares one `device.json` and an ephemeral one has none — so it does not block signing; the event records `deviceAsserted`
 - Optional: after `rooms auth github` / `rooms auth gitlab`, stamp posts with GitHub/GitLab claim + local ed25519 signature (public key on the event; private key stays in `~/.iops-rooms/device.key`)
 - Speak MCP over **stdio only**

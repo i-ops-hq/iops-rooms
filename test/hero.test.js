@@ -74,7 +74,9 @@ test("the agent share is of the commits actually read, and is honest when there 
     git(),
     NOW,
   );
-  assert.match(none, /<b>none<\/b><span>agent-assisted<\/span>/);
+  // What was read, never a verdict about use: "none agent-assisted" said no agent helped.
+  assert.match(none, /<b>0 of 100<\/b><span>commits record an agent<\/span>/);
+  assert.doesNotMatch(none, /agent-assisted/);
   assert.match(none, /no Co-Authored-By trailers/, "the reason, not a bare zero");
 
   const half = renderHeroFacts(
@@ -84,6 +86,27 @@ test("the agent share is of the commits actually read, and is honest when there 
     NOW,
   );
   assert.match(half, /<b>50%<\/b>/, "4 of 8 seen, not 4 of the 100 total");
+});
+
+test("a share under half a percent is not rounded to none with the agent named beneath it", () => {
+  // 1 of 251 rounded to 0, so the card read "none agent-assisted · Claude Opus 5" and contradicted
+  // itself. 3 of 1,000 did the same.
+  const cases = [
+    [1, 250, "&lt;1%"],
+    [3, 997, "&lt;1%"],
+    [1, 199, "1%"],
+  ];
+  assert.equal(cases.length, 3);
+  for (const [attributed, plain, shown] of cases) {
+    const html = renderHeroFacts(
+      history({ agents: { agents: [{ ...claude, commits: attributed }], attributed, plain } }),
+      [],
+      git(),
+      NOW,
+    );
+    assert.ok(html.includes(`<b>${shown}</b><span>agent-assisted</span>`), `${attributed} of ${attributed + plain} shows ${shown}`);
+    assert.doesNotMatch(html, /<b>none<\/b>|<b>0 of/, `${attributed} recorded is not nothing recorded`);
+  }
 });
 
 test("the branch card counts branches beside the trunk and says where they went", () => {
