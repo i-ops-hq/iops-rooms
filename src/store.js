@@ -300,7 +300,26 @@ export async function refreshBoard(projectDir) {
   } catch {
     auth = null;
   }
-  await writeBoard(paths.board, meta, events, { projectDir, history, auth });
+  // The last seven days as `rooms week` reads them, and what the hooks on this machine recorded, so
+  // the board says what the terminal says. Neither is fatal: a board without them is the old board.
+  let week = null;
+  let prior = null;
+  let newest = null;
+  let activity = [];
+  try {
+    const { buildReport } = await import("./report.js");
+    week = await buildReport(projectDir, { since: "7d" });
+    if (week.ok) prior = await buildReport(projectDir, { since: "14d" });
+    if (week.ok && !week.seen) {
+      const { newestCommitAt } = await import("./git-history.js");
+      newest = await newestCommitAt(projectDir);
+    }
+    const { readActivity } = await import("./activity.js");
+    activity = await readActivity(projectDir);
+  } catch {
+    week = null;
+  }
+  await writeBoard(paths.board, meta, events, { projectDir, history, auth, week, prior, newest, activity });
   return paths.board;
 }
 

@@ -46,8 +46,11 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 - Stamp each event with a stable `deviceId` + display name. `ROOMS_ACTOR` claims to be a person, cannot be checked, and is marked **unverified**. `ROOMS_DEVICE_ID` only labels the machine — required in VMs, where a cloned template shares one `device.json` and an ephemeral one has none — so it does not block signing; the event records `deviceAsserted`
 - Optional: after `rooms auth github` / `rooms auth gitlab`, stamp posts with GitHub/GitLab claim + local ed25519 signature (public key on the event; private key stays in `~/.iops-rooms/device.key`)
 - Speak MCP over **stdio only**
-- Render a static HTML file from `templates/board.html`
-- Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes
+- Render a static HTML file from `templates/board.html`, including each agent session's model and the
+  paths it edited, from `.room/agent-activity.jsonl`. A shared room's log is merged from teammates'
+  commits, so every value from it is escaped as text, and a test fails if a path, model or agent
+  name holding HTML reaches the page as markup
+- Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes, the agent activity log included
 - Optional: read local `git` for branch stamps; optional read-only `gh` for `scm-status` (never uploads the room)
 - Optional: export/import a `.room/` folder for git-friendly handoff (still offline)
 
@@ -86,7 +89,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.15 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.16 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

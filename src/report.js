@@ -169,16 +169,24 @@ export function formatWhyEmpty(report) {
  * would make "nothing declared" and "not looked at" identical to a reader.
  */
 export function formatConfig(report) {
-  const config = report.config;
-  if (!config) return "";
-  if (!config.ok) return `\nAgent config: ${config.note}.\n`;
+  const said = configSentences(report);
+  if (!said.length) return "";
+  if (!report.config.ok) return `\n${said[0]}\n`;
+  return `\n${said.map((text) => wrap(text)).join("\n")}\n`;
+}
+
+/** The sentences `formatConfig` wraps for a terminal, for surfaces that lay text out themselves. */
+export function configSentences(report) {
+  const config = report && report.config;
+  if (!config) return [];
+  if (!config.ok) return [`Agent config: ${config.note}.`];
 
   const named = config.agents.map((a) => `${a.label} (${a.files.join(", ")})`);
   if (!named.length && !config.crossVendor) {
-    return "\n" + wrap(
+    return [
       "This repository commits no agent config file — no AGENTS.md, CLAUDE.md, .claude/, " +
-      ".cursor/ or the rest — so the trailers above are the only evidence there is.",
-    ) + "\n";
+        ".cursor/ or the rest — so the trailers above are the only evidence there is.",
+    ];
   }
 
   const parts = [...named];
@@ -186,7 +194,7 @@ export function formatConfig(report) {
   const list = parts.length === 1
     ? parts[0]
     : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-  return `\n${wrap(`Configured for: ${list}.`)}\n${wrap(CONFIG_NOTE)}\n`;
+  return [`Configured for: ${list}.`, CONFIG_NOTE];
 }
 
 /**
@@ -377,13 +385,18 @@ export function formatMix(report, { delta = null } = {}) {
  * overlap, the percentages are that commit split between them and always total 100.
  */
 function splitNote(report) {
+  const text = splitSentence(report);
+  return text ? `\n${wrap(text, 74, "  ")}\n` : "";
+}
+
+export function splitSentence(report) {
   const n = Number(report.multi) || 0;
   if (!n) return "";
-  const text =
+  return (
     `${n} commit${n === 1 ? "" : "s"} record${n === 1 ? "s" : ""} more than one agent. ` +
     "The counts are commits an agent appears on, so they overlap. The percentages split each " +
-    "such commit evenly, so they still total 100.";
-  return `\n${wrap(text, 74, "  ")}\n`;
+    "such commit evenly, so they still total 100."
+  );
 }
 
 /**
@@ -396,7 +409,7 @@ function splitNote(report) {
  * The caveats stay exactly where they are. A floor stated after the number is honesty; instead of
  * the number it is a tool that will not say what it found.
  */
-function finding(report) {
+export function finding(report) {
   const skip = new Set(["unrecorded", "coauthor", "coauthor-bot"]);
   const agents = (report.rows || [])
     .filter((row) => Number(row.commits) > 0 && !skip.has(row.id))
@@ -468,6 +481,22 @@ export function quietWindow(newest, now = Date.now()) {
   const reach =
     days <= 14 ? "14d" : days <= 30 ? "30d" : days <= 90 ? "90d" : days <= 365 ? "1y" : `${Math.ceil(days / 365)}y`;
   return `The newest commit here is ${days} day${days === 1 ? "" : "s"} old; rooms week --since ${reach} reads back to it.`;
+}
+
+/**
+ * Each row's change against the week before, or null. Only when there IS a previous week: on a
+ * repository two days old every row read "+39", which is arithmetically true and says nothing — a
+ * comparison against a window with no commits in it is just the current number with a plus sign.
+ */
+export function weekOverWeek(current, prior) {
+  if (!current || !current.ok || !prior || !prior.ok || !(prior.seen > current.seen)) return null;
+  const before = new Map(prior.rows.map((row) => [row.id, row.commits]));
+  const delta = {};
+  for (const row of current.rows) {
+    const priorHalf = (before.get(row.id) || 0) - row.commits;
+    delta[row.id] = row.commits - priorHalf;
+  }
+  return delta;
 }
 
 export function formatWeek(report, { name = "", window = "last 7 days", delta = null, newest = null, now = Date.now() } = {}) {

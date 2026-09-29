@@ -75,40 +75,71 @@ export async function checkoutRef(cwd) {
 }
 
 /**
- * The files of commit `sha` that an agent's own hook saw it edit in this checkout since the commit
- * before it, by agent: `{ "claude-code": ["src/a.go"] }`, or null when there are none.
+ * The files of commit `sha` that an agent's own hook saw it edit in this checkout since each file
+ * was last committed, by agent: `{ "claude-code": ["src/a.go"] }`, or null when there are none.
  *
- * Since the parent commit, because an edit before that belonged to an earlier commit or to none. An
- * edit left uncommitted across a commit that did not include it is missed, which undercounts rather
- * than overcounts, the same direction as every other count here.
+ * Per file, not per commit. The window used to open at the commit before this one, so work split
+ * into two commits lost every edit made before the first: the second commit carried files the agent
+ * had written, one second after a commit that did not include them, and recorded nothing. An edit
+ * before a file's own last commit belonged to that commit or to none. A file this commit deletes is
+ * not carried by it.
  */
 export async function editedByFor(cwd, sha, activity) {
-  const edits = (activity || []).filter((a) => a && a.kind === "edit" && a.path && a.agent);
-  if (!edits.length) return null;
-  const files = await git(cwd, ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", sha], { timeout: 4000 });
-  if (!files.ok) return null;
-  const changed = new Set(files.out.split("\0").filter(Boolean));
-  if (!changed.size) return null;
-  const parent = await git(cwd, ["log", "-1", "--format=%cI", `${sha}^`], { timeout: 4000 });
   const here = await checkoutRef(cwd);
-  // git keeps commit times to the second, so an edit in the same second as the previous commit could
-  // not be told apart from one after it. The hook's own record of that commit has milliseconds, and
-  // whichever is later starts the window.
-  const recorded = (activity || [])
-    .filter((a) => a && a.kind === "commit" && (!a.checkout || a.checkout === here))
-    .map((a) => Date.parse(a.at))
-    .filter(Number.isFinite);
-  const since = Math.max(
-    parent.ok && parent.out.trim() ? Date.parse(parent.out.trim()) : 0,
-    recorded.length ? Math.max(...recorded) : 0,
+  const edits = (activity || []).filter(
+    (a) => a && a.kind === "edit" && a.path && a.agent && !(a.checkout && here && a.checkout !== here),
   );
+  if (!edits.length) return null;
+  const listed = await git(
+    cwd,
+    ["diff-tree", "--root", "--no-commit-id", "--name-status", "--no-renames", "-r", "-z", sha],
+    { timeout: 4000 },
+  );
+  if (!listed.ok) return null;
+  const fields = listed.out.split("\0");
+  const status = new Map();
+  for (let i = 0; i + 1 < fields.length; i += 2) if (fields[i] && fields[i + 1]) status.set(fields[i + 1], fields[i]);
+  const editedHere = new Set(edits.map((e) => e.path));
+  const files = [...status].filter(([path, s]) => s !== "D" && editedHere.has(path)).map(([path]) => path).slice(0, 200);
+  if (!files.length) return null;
+  // git keeps commit times to the second, so an edit in the same second as a file's last commit
+  // could not be told apart from one after it. The hook's own record of that commit has
+  // milliseconds, and whichever is later opens the window.
+  const recordedAt = new Map(
+    (activity || [])
+      .filter((a) => a && a.kind === "commit" && a.sha && (!a.checkout || a.checkout === here))
+      .map((a) => [a.sha, Date.parse(a.at)]),
+  );
+  const parentAt = async () => {
+    const parent = await git(cwd, ["log", "-1", "--format=%H %cI", `${sha}^`], { timeout: 4000 });
+    return windowStart(parent, recordedAt);
+  };
+  const since = new Map();
+  // Eight at a time: this runs inside the git hook, after every commit, and a large commit of files
+  // an agent touched must not start a process per file all at once.
+  for (let i = 0; i < files.length; i += 8) {
+    await Promise.all(
+      files.slice(i, i + 8).map(async (path) => {
+        // Added here: nothing before this commit held the file, so every edit to it counts.
+        if (status.get(path) === "A") return since.set(path, 0);
+        const last = await git(cwd, ["log", "-1", "--format=%H %cI", `${sha}^`, "--", path], { timeout: 4000 });
+        // Where git cannot say, the commit before this one: narrower, so it can only undercount.
+        since.set(path, last.ok && last.out.trim() ? windowStart(last, recordedAt) : await parentAt());
+      }),
+    );
+  }
   const byAgent = {};
   for (const e of edits) {
-    if (!changed.has(e.path)) continue;
-    if (e.checkout && here && e.checkout !== here) continue;
-    if (!(Date.parse(e.at) > since)) continue;
+    if (!since.has(e.path)) continue;
+    if (!(Date.parse(e.at) > since.get(e.path))) continue;
     (byAgent[e.agent] ||= new Set()).add(e.path);
   }
   const out = Object.fromEntries(Object.entries(byAgent).map(([agent, paths]) => [agent, [...paths].sort().slice(0, 50)]));
   return Object.keys(out).length ? out : null;
+}
+
+/** When a commit printed as `%H %cI` was made, to the millisecond where the hook recorded it. */
+function windowStart(result, recordedAt) {
+  const [commit, iso] = result.ok ? result.out.trim().split(" ") : [];
+  return Math.max(iso ? Date.parse(iso) || 0 : 0, recordedAt.get(commit) || 0);
 }
