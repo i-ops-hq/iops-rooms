@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.5.13
+
+### Commits made inside an agent session
+
+Most agents write no `Co-Authored-By` trailer, and Claude Code writes one only on commits it makes
+itself, so the trailers leave most agent work unrecorded. The git hook from `rooms hooks install`
+now records one more fact about each commit: whether it was made inside an agent's session. Agents
+set variables for the commands they run, and a commit made from inside the session inherits them:
+Claude Code sets `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` and `AI_AGENT`, and any agent, a custom one
+included, can set `AI_AGENT=<name>_<version>_agent` and `AI_AGENT_MODEL`.
+
+`rooms week` shows what the hook observed in a block of its own, as counts, with the date it began
+observing and how many commits it did not see. It is never added to the trailer rows, and `--json`
+carries it as `observed`, beside `rows` rather than in them. Where the hook has never run there is
+no block and `observed` is `null`, which is not the same as zero.
+
+Only those four variables are read, and nothing else from the environment; a test puts tokens in
+the environment and fails if one reaches the record. Where a commit was made is not who wrote it,
+and the output says what the hook cannot see: a commit made by hand in another terminal shows no
+session, even when an agent edited its files. Run `rooms hooks install` again to add this to a hook
+installed earlier.
+
+### Hooks install where git looks for them
+
+`rooms hooks install` wrote into `<top>/.git/hooks`. In a worktree `.git` is a file, so installing
+failed, and agents running in parallel are exactly who get a worktree each. With `core.hooksPath`
+set, as husky sets it, git never ran the hook at all. It now asks git where hooks go.
+
+### A quiet week's age is rounded
+
+0.5.12 said "11 days old" of a commit ten days and a few seconds old, found by probing the
+published package. It rounds to the nearest day now.
+
 ## 0.5.12
 
 ### A first run that records nothing says what it could not see
