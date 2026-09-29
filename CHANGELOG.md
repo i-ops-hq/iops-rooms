@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.5.11
+
+### A board that cannot read git says why
+
+A first-time user got a board reading "no git" and nothing about the project, for a repository with
+a full history. The board read the checkout through a helper that turned every git failure into
+"not a git checkout" and advised `git init`, while `rooms week` had named git's real failure since
+0.5.2. Four different things produce that board, and it now says which:
+
+- **git refused the repository** for dubious ownership, which WSL paths, external drives and clones
+  made with `sudo` all produce. The board quotes git, and shows the fix git itself suggests:
+  `git config --global --add safe.directory <path>`.
+- **There is no git on the PATH** Rooms was started with.
+- **git failed**, such as macOS's stub before the command line tools are installed, with the line
+  git printed.
+- **The folder is not a repository.** This is the only one still told to run `git init`.
+
+`rooms doctor` has a `git` line with the same reason, puts git's fix first, and no longer calls a
+board healthy while git can read nothing from it. git is asked in English whatever the locale,
+because the reasons are told apart by its words, and under a German locale "not a git repository"
+arrives as "Kein Git-Repository".
+
+### A room belongs to its own repository
+
+`rooms open` in the folder that holds your projects made a room there. Every repository under that
+folder then found that room, because the search walked all the way up, and opened its board, which
+can read none of them. Moving to the right folder and trying again changed nothing. The search now
+stops at the top of the repository.
+
+In a folder that holds repositories, `rooms open` names them and makes nothing. A room an earlier
+version made there still opens, and says why its board is empty.
+
+Every worktree of a repository now shares the main checkout's room. A worktree beside the main
+checkout found no room before, and one nested inside it found the room only because the folders
+happened to line up.
+
 ## 0.5.10
 
 ### The first line is the finding
