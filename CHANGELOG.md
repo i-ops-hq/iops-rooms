@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.16
+
+### The board says what the terminal says
+
+Everything `rooms week` printed about the last seven days, and everything the hooks observed, was
+terminal-only: a teammate who never opens one saw none of it. The board now has both, in its own
+window as before, near the top:
+
+- **This week:** the finding line, the rows with their counts, shares and change on the week before,
+  and every caveat printed under them: the floor, what the repository is configured for, why nothing
+  was recorded. Built from the same report as `rooms week`, with the same sentences, so the two cannot
+  disagree, and a test compares them on one repository.
+- **Agent sessions on this machine:** the observed counts, as counts and never shares, then each
+  session with its agent, model, when it was first seen and the files it edited. Claude Code reports
+  a start again when it compacts a session, so a session is "started" only when its start came first,
+  and one with no end is "no end recorded", never "running". With nothing recorded, the section says
+  so and how to start, rather than showing zeros.
+
+An open `rooms live` board now reloads when the activity log changes, so it shows an agent's edits as
+they happen. The log is shared through git in a team room, so every value from it is escaped, and a
+test puts a path, a model and an agent name holding HTML into it. Long words in room posts wrap: a
+path or commit subject with no space in it made the whole page wider than a 375px phone screen.
+
+### Work committed in pieces carries the agent's edits in each piece
+
+Which of a commit's files an agent edited was judged from the commit before it, so work split into
+two commits lost every edit made before the first. Seen here: a commit holding two files written with
+Claude Code's Write tool, made less than a second after a commit that did not include them, recorded
+nothing.
+Each file is now judged since its own last commit, to the millisecond where the hook recorded it; a
+file the commit deletes is not carried. Commits recorded before this keep what was recorded.
+
 ## 0.5.15
 
 ### The install says a copy is kept only when it keeps one

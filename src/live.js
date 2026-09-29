@@ -1,9 +1,11 @@
 import { createServer } from "node:http";
 import { watch } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { refreshBoard, roomPaths } from "./store.js";
 import { LIVE_CLIENT_SNIPPET } from "./live-client.js";
+import { ACTIVITY_FILE } from "./activity.js";
 
 export const LIVE_HOST = "127.0.0.1";
 export const LIVE_DEFAULT_PORT = 7840;
@@ -57,7 +59,7 @@ export async function startLiveBoard(projectDir, opts = {}) {
 
   const clients = new Set();
   let debounce = null;
-  let lastBytes = -1;
+  let lastBytes = "";
 
   async function push() {
     try {
@@ -182,7 +184,8 @@ export async function startLiveBoard(projectDir, opts = {}) {
         return;
       }
       const name = String(filename);
-      if (name === "events.jsonl" || name === "room.json") schedulePush();
+      // The activity log too, so an open board shows an agent's session and edits as they happen.
+      if (name === "events.jsonl" || name === "room.json" || name === ACTIVITY_FILE) schedulePush();
     });
   } catch (err) {
     process.stderr.write(`live: file watching unavailable (${err.message || err}); polling only\n`);
@@ -191,8 +194,10 @@ export async function startLiveBoard(projectDir, opts = {}) {
   const poll = setInterval(async () => {
     try {
       const buf = await readFile(paths.events);
-      if (buf.length !== lastBytes) {
-        lastBytes = buf.length;
+      const activity = await stat(join(paths.root, ACTIVITY_FILE)).then((st) => st.size, () => 0);
+      const bytes = `${buf.length}:${activity}`;
+      if (bytes !== lastBytes) {
+        lastBytes = bytes;
         schedulePush();
       }
     } catch {

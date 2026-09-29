@@ -1658,6 +1658,169 @@ ${renderBranchGraph(model, { now: opts.now != null ? Number(opts.now) : Date.now
 </section>`;
 }
 
+/** The agent families the board colours, from an id a hook or trailer gave. */
+function familyOf(id) {
+  const key = String(id || "").toLowerCase();
+  if (key.startsWith("claude")) return "claude";
+  for (const f of ["cursor", "codex", "copilot", "gemini", "jules", "aider", "amazonq", "windsurf"]) {
+    if (key.startsWith(f)) return f;
+  }
+  return key === "unrecorded" ? "human" : "other";
+}
+
+function dayTime(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  return new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * The last seven days, as `rooms week` prints them, for the people who will never open a terminal.
+ *
+ * Built from the same report, with the same sentences, so the board and the terminal cannot tell a
+ * reader two different things. Counts and the same floored percentages as the terminal's rows;
+ * every caveat the terminal prints under them is printed here under them too.
+ */
+export function renderWeek(view) {
+  if (!view) return "";
+  const esc = escapeHtml;
+  const bits = [`${view.seen} commit${view.seen === 1 ? "" : "s"}`];
+  if (view.insertions || view.deletions) bits.push(`+${shortNum(view.insertions)} −${shortNum(view.deletions)}`);
+  if (view.people) bits.push(`${view.people} ${view.people === 1 ? "person" : "people"}`);
+  const rows = (view.rows || [])
+    .map((r) => {
+      const d = r.delta ? `<span class="wk-delta" title="against the 7 days before">${r.delta > 0 ? "+" : "−"}${Math.abs(r.delta)}</span>` : "";
+      const models = (r.variants || []).length > 1
+        ? `<span class="wk-models">${r.variants
+            .slice(0, 4)
+            .map((v) => `<span class="bb-mini" data-family="${esc(familyOf(r.id))}">${esc(v.label)} ${v.commits}</span>`)
+            .join("")}${r.variants.length > 4 ? `<span class="bb-mini">and ${r.variants.length - 4} more</span>` : ""}</span>`
+        : "";
+      return `<li class="wk-row" data-family="${esc(familyOf(r.id))}">
+  <span class="wk-label"><span class="bb-swatch" aria-hidden="true"></span>${esc(r.label)}${models}</span>
+  <span class="wk-count">${r.commits}</span>
+  <span class="wk-bar" aria-hidden="true"><i style="width:${Math.max(r.pct > 0 ? 2 : 0, Math.min(100, Number(r.pct) || 0))}%"></i></span>
+  <span class="wk-pct">${Number(r.pct) || 0}%${d}</span>
+</li>`;
+    })
+    .join("");
+  const notes = [view.split, view.truncated, view.seen ? view.floor : "", ...(view.seen ? view.config || [] : []), view.why]
+    .filter(Boolean)
+    .map((text) => `<p class="wk-note">${esc(text)}</p>`)
+    .join("");
+  const body = view.seen
+    ? `<p class="week-meta">${esc(view.window)} · ${esc(bits.join(" · "))}</p>
+  <ul class="week-mix">${rows}</ul>`
+    : `<p class="week-meta">${esc(view.window)} · no commits</p>
+  ${view.quiet ? `<p class="wk-note">${esc(view.quiet)}</p>` : ""}`;
+  return `<section class="week" aria-label="the last 7 days">
+  <h2 class="bb-heading">This week</h2>
+  ${view.finding ? `<p class="week-finding">${esc(view.finding)}</p>` : ""}
+  ${body}
+  ${notes}
+</section>`;
+}
+
+/** Sessions an agent's own hooks reported, newest first, from the activity log. */
+export function sessionsFrom(activity, { since = 0 } = {}) {
+  const byKey = new Map();
+  for (const a of activity || []) {
+    if (!a || !a.session || !a.agent || (a.kind !== "session" && a.kind !== "edit")) continue;
+    const at = String(a.at || "");
+    const key = `${a.agent}\u0000${a.session}`;
+    const s = byKey.get(key) || { agent: a.agent, start: null, end: null, model: null, first: at, last: at, files: new Set() };
+    // A terminal session that restarts itself reports a second start under the same id: the first
+    // one is when it began.
+    if (a.kind === "session" && a.phase === "start") {
+      if (!s.start || at < s.start) s.start = at;
+      if (!s.model && a.model) s.model = String(a.model);
+    }
+    if (a.kind === "session" && a.phase === "end") s.end = at;
+    if (a.kind === "edit" && a.path) s.files.add(String(a.path));
+    if (at < s.first) s.first = at;
+    if (at > s.last) s.last = at;
+    byKey.set(key, s);
+  }
+  return [...byKey.values()]
+    .filter((s) => Date.parse(s.last) >= since)
+    .sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : 0))
+    .map((s) => ({ ...s, files: [...s.files].sort() }));
+}
+
+/**
+ * What the hooks on this machine observed: the counts `rooms week` prints under "Observed on this
+ * machine", then each agent session with the files it edited.
+ *
+ * Counts, never percentages, and kept apart from the trailer rows above: this is a third source,
+ * one machine's hooks, and blending it in would make the trailers look more complete than they
+ * are. A session with no end is "no end recorded", never "running": a crash leaves the same gap.
+ */
+export function renderObserved(view) {
+  if (!view) return "";
+  const esc = escapeHtml;
+  const label = view.label || ((id) => id);
+  const o = view.observed;
+  const sessions = view.sessions || [];
+  const setup = "rooms hooks install --agent claude-code";
+  if (!o && !sessions.length) {
+    return `<section class="observed" aria-label="agent sessions on this machine">
+  <h2 class="bb-heading">Agent sessions on this machine</h2>
+  <p class="obs-empty">Nothing is recorded on this machine yet. With Rooms' hooks installed in this project, this shows each agent session, the files it edited, and which commits carry them. Set up once, from this project: <code>${esc(setup)}</code></p>
+</section>`;
+  }
+  const by = (counts) =>
+    Object.entries(counts || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, n]) => `${label(id)} ${n}`)
+      .join(", ");
+  const tile = (value, text, detail) =>
+    `<div class="obs-tile"><b>${esc(value)}</b><span>${esc(text)}</span>${detail ? `<em>${esc(detail)}</em>` : ""}</div>`;
+  const tiles = [];
+  if (o && o.commits) {
+    tiles.push(tile(`${o.madeInSession} of ${o.observed}`, "commits made inside an agent session", by(o.byAgent) || "seen by the git hook"));
+    if (o.agentHooks) tiles.push(tile(`${o.agentEdited} of ${o.observed}`, "commits carry files an agent edited", by(o.editedByAgent) || "from the agents' own hooks"));
+    const unseen = o.commits - o.observed;
+    if (unseen > 0) tiles.push(tile(String(unseen), `${unseen === 1 ? "commit" : "commits"} not observed`, "made before the hook, or elsewhere"));
+  }
+  const shownSessions = sessions.slice(0, 8);
+  const list = shownSessions
+    .map((s) => {
+      // Claude Code reports a start again when a session is compacted, under the same id, so a
+      // start is the beginning only when nothing from the session came before it.
+      const began = s.start && s.start <= s.first ? `started ${dayTime(s.start)}` : `first seen ${dayTime(s.first)}`;
+      const ended = s.end ? ` – ${dayTime(s.end)}` : " · no end recorded";
+      const files = s.files.length
+        ? `<details class="obs-files"><summary>${s.files.length} file${s.files.length === 1 ? "" : "s"} edited</summary><ul>${s.files
+            .slice(0, 40)
+            .map((f) => `<li><code>${esc(f)}</code></li>`)
+            .join("")}${s.files.length > 40 ? `<li>and ${s.files.length - 40} more</li>` : ""}</ul></details>`
+        : `<span class="obs-none">no edits reported</span>`;
+      return `<li class="obs-session" data-family="${esc(familyOf(s.agent))}">
+  <span class="obs-agent"><span class="bb-swatch" aria-hidden="true"></span>${esc(label(s.agent))}</span>
+  ${s.model ? `<span class="obs-model">${esc(s.model)}</span>` : ""}
+  <span class="obs-when">${esc(began + ended)}</span>
+  ${files}
+</li>`;
+    })
+    .join("");
+  const more = sessions.length > shownSessions.length
+    ? `<p class="wk-note">and ${sessions.length - shownSessions.length} earlier session${sessions.length - shownSessions.length === 1 ? "" : "s"} this week</p>`
+    : "";
+  const noHooks = o && !o.agentHooks
+    ? `<p class="obs-empty">No agent's own hooks have reported here, so which files an agent edited is not known. For Claude Code, from this project: <code>${esc(setup)}</code></p>`
+    : "";
+  const since = o && o.since ? String(o.since).slice(0, 10) : "";
+  return `<section class="observed" aria-label="agent sessions on this machine">
+  <h2 class="bb-heading">Agent sessions on this machine</h2>
+  <p class="bb-note">What the hooks installed here observed${since ? ` since ${esc(since)}` : ""}, over the last 7 days. Only this machine, and only where the hooks are installed.</p>
+  ${tiles.length ? `<div class="obs-tiles">${tiles.join("")}</div>` : ""}
+  ${list ? `<ul class="obs-sessions">${list}</ul>` : ""}
+  ${more}
+  ${noHooks}
+  <p class="wk-note">${esc(view.note || "")} An edit made through the agent's shell, with <code>sed</code> or a script, is not reported.</p>
+</section>`;
+}
+
 export async function writeBoard(boardPath, meta, events, opts = {}) {
   let template = await readFile(TEMPLATE, "utf8");
   const projectDir = opts.projectDir || process.cwd();
@@ -1708,7 +1871,35 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   const roomLine = `${postersBlurb} Network ${networkLabel} — ${networkDetail}.`;
   const projectName = boardProjectName(meta, projectDir);
   const boardTitle = `Rooms · ${projectName}`;
+  const rep = await import("./report.js");
+  const { agentLabel } = await import("./agent-markers.js");
+  const { whyNothingRecorded } = await import("./agent-config.js");
+  const week = opts.week && opts.week.ok ? opts.week : null;
+  const delta = week ? rep.weekOverWeek(week, opts.prior) : null;
+  const weekView = week && {
+    window: "Last 7 days",
+    seen: week.seen,
+    insertions: week.insertions,
+    deletions: week.deletions,
+    people: week.contributors.length,
+    finding: rep.finding(week).trim(),
+    rows: week.rows.map((r) => ({ ...r, delta: delta ? delta[r.id] || 0 : 0 })),
+    floor: rep.FLOOR_NOTE,
+    split: rep.splitSentence(week),
+    truncated: week.truncated ? `Reading the newest ${week.seen} of ${week.total} commits in this window.` : "",
+    config: rep.configSentences(week),
+    why: week.seen && week.agents.attributed === 0 ? whyNothingRecorded(week.config) : "",
+    quiet: !week.seen && opts.newest ? rep.quietWindow(opts.newest, now) : "",
+  };
+  const observedView = week && {
+    observed: week.observed,
+    note: rep.OBSERVED_NOTE,
+    sessions: sessionsFrom(opts.activity || [], { since: now - 7 * 86_400_000 }),
+    label: agentLabel,
+  };
   const replacements = {
+    "{{WEEK}}": renderWeek(weekView),
+    "{{OBSERVED}}": renderObserved(observedView),
     "{{TITLE}}": escapeHtml(boardTitle),
     "{{FACTS}}": renderHeroFacts(opts.history, events, git, now),
     "{{HERO_SIDE}}": renderHeroSide({ git, auth: opts.auth || null, meta }),

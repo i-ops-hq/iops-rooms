@@ -685,21 +685,8 @@ async function main() {
       // report is actually asked. Only for the default window — a delta against an arbitrary
       // --since would be comparing this window to a window nobody chose.
       if (argv.json) return asJson(r, { name, window: `last ${since}` });
-      let delta = null;
-      if (!argv.since) {
-        const prior = await buildReport(dir, { since: "14d", paths, exclude });
-        // Only when there IS a previous week. On a repo two days old every row read "+39", which
-        // is arithmetically true and says nothing — a comparison against a window with no commits
-        // in it is just the current number with a plus sign.
-        if (prior.ok && prior.seen > r.seen) {
-          const before = new Map(prior.rows.map((row) => [row.id, row.commits]));
-          delta = {};
-          for (const row of r.rows) {
-            const priorHalf = (before.get(row.id) || 0) - row.commits;
-            delta[row.id] = row.commits - priorHalf;
-          }
-        }
-      }
+      const { weekOverWeek } = await import("./report.js");
+      const delta = argv.since ? null : weekOverWeek(r, await buildReport(dir, { since: "14d", paths, exclude }));
       process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta, newest }));
       return;
     }

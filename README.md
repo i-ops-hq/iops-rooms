@@ -181,11 +181,15 @@ Pin a version. Do not run `@latest`.
 | Which agent co-authored it — Claude Opus 5, Fable, Cursor, Codex | `Co-Authored-By` trailers | nothing |
 | Branches splitting from main and rejoining, with PR numbers | merge commits | nothing |
 | Per-person totals: commits, merges, lines, which agent they lean on | `git log` | nothing |
+| The last 7 days as `rooms week` prints them: the finding, the rows, every caveat | `git log` | nothing |
+| Each agent session on this machine: its model, the files it edited, the commits that carry them | the agents' own hooks | `rooms hooks install --agent claude-code` |
 | Live posts, presence, who is on which branch right now | `.room/` | the CLI or MCP |
 
-The first four work on a repo that has never heard of Rooms, including for teammates who never
-install it — because every clone already carries the whole history. Only the last row needs anyone
-to post anything.
+The first five work on a repo that has never heard of Rooms, including for teammates who never
+install it — because every clone already carries the whole history. The week is built from the same
+report as `rooms week`, with the same sentences, so a teammate who never opens a terminal reads
+what the terminal says, in the board's own window. Only the last two rows need anything installed or
+posted, and an open `rooms live` board updates as an agent edits.
 
 ### "Can't I just use `git log`?"
 
@@ -320,7 +324,9 @@ when. Never code, prompts, replies or the transcript: Claude Code's hook payload
 those, and a test fails if any of it reaches the file. It sees only this machine and only since the
 hooks were installed; an edit made through the agent's shell (`sed`, a script) is not reported; a
 rebased commit gets an id it has not seen. Neither where a commit was made nor which files an agent
-touched is a claim about whose lines are in it. The Claude Code settings go in
+touched is a claim about whose lines are in it. An edit counts toward the commit that carries its
+file next, so work committed in pieces is counted in each piece. The board shows the same counts,
+and each session with the files it edited. The Claude Code settings go in
 `.claude/settings.local.json`, listed in `.git/info/exclude`, and `rooms hooks uninstall --agent
 claude-code` takes out only what Rooms added. Already have the git hook? Run `rooms hooks install`
 again.
@@ -404,7 +410,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.15 mcp install
+npx -y iops-rooms@0.5.16 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -417,7 +423,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.15", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.16", "mcp"] } } }
 ```
 
 ## Commands
