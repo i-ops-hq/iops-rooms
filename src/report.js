@@ -302,6 +302,50 @@ function splitNote(report) {
   return `\n${wrap(text, 74, "  ")}\n`;
 }
 
+/**
+ * The one sentence a reader repeats, before the dashboard they have to read.
+ *
+ * The data was always here and the tool made people infer it: a header, a bar and two caveats, with
+ * the finding sitting inside the bar. On this repository that is "Claude co-authored 24 of the last
+ * 24 commits here", which is about their repository rather than about the tool having run.
+ *
+ * The caveats stay exactly where they are. A floor stated after the number is honesty; instead of
+ * the number it is a tool that will not say what it found.
+ */
+function finding(report) {
+  const skip = new Set(["unrecorded", "coauthor", "coauthor-bot"]);
+  const agents = (report.rows || [])
+    .filter((row) => Number(row.commits) > 0 && !skip.has(row.id))
+    .sort((a, b) => b.commits - a.commits);
+  if (!report.seen) return "";
+  // The majority case, and the one the sentence above does not reach: Cursor and Copilot write no
+  // trailer, so a first-time reader of a normal repository got the old dashboard and no finding.
+  // The gap IS the finding, and it is a better one — a statistic about somebody else's tool is
+  // less interesting than a hole in your own record. Worded so it says what was read and nothing
+  // more: no trailer is not no agent, which is what the note underneath has always said.
+  if (!agents.length) {
+    const declared = (report.config && report.config.ok ? report.config.agents || [] : [])
+      .map((agent) => agent.label);
+    const also = declared.length
+      ? `, and ${declared.length === 1 ? `${declared[0]} is` : `${declared.join(", ")} are`} configured in this repository`
+      : "";
+    const said = report.seen === 1
+      ? "The last commit here records no agent"
+      : `None of the last ${report.seen} commits here records an agent`;
+    return `${said}${also}.\n`;
+  }
+  const [top, ...rest] = agents;
+  // "1 of the last 1 commit" is arithmetic where a sentence belongs.
+  if (report.seen === 1 && top.commits === 1 && !rest.length) {
+    return `${top.label} co-authored the last commit here.\n`;
+  }
+  const of = `of the last ${report.seen} commit${report.seen === 1 ? "" : "s"} here`;
+  const others = rest.length
+    ? `, and ${rest.map((row) => `${row.label} ${row.commits}`).join(", ")}`
+    : "";
+  return `${top.label} co-authored ${top.commits} ${of}${others}.\n`;
+}
+
 function header(name, window, report) {
   const bits = [`${report.seen} commit${report.seen === 1 ? "" : "s"}`];
   if (report.insertions || report.deletions) {
@@ -330,7 +374,8 @@ export function wrap(text, width = 76, indent = "") {
 }
 
 export function formatWeek(report, { name = "", window = "last 7 days", delta = null } = {}) {
-  const out = [header(name, window, report), "\n", formatMix(report, { delta })];
+  const said = finding(report);
+  const out = [said, said ? "\n" : "", header(name, window, report), "\n", formatMix(report, { delta })];
   if (report.truncated) {
     out.push(`\nReading the newest ${report.seen} of ${report.total} commits in this window.\n`);
   }
