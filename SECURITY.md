@@ -33,7 +33,8 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   other hook and a copy of the file as it was, and list that file in `.git/info/exclude`.
   `rooms hooks uninstall --agent claude-code` takes out only what Rooms added
 - Read, from the JSON Claude Code's hooks pass on stdin, the event name, the session id (kept only
-  as a 12-character hash), the tool's name and the edited file's path, and nothing else. That
+  as a 12-character hash), the model a session starts with, the tool's name and the edited file's
+  path, and nothing else. That
   payload also carries the whole file for `Write`, the tool's output, the last message and the
   transcript's path; none of them is kept, and the transcript is never opened. A test fails if any
   of it reaches `.room/agent-activity.jsonl`. The hook prints nothing and exits 0, so it never

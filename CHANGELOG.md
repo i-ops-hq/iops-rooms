@@ -25,9 +25,14 @@ The install shows what it will change and asks, or needs `--yes` without a termi
 it in `.git/info/exclude` so it cannot be committed by accident. `rooms hooks uninstall --agent
 claude-code` takes out only what Rooms added: byte for byte when nothing else changed since.
 
-Tried first on a live Claude Code Desktop session: the hook took effect on the session's next edit,
-without a restart, and recorded only the fields above. An edit made through the agent's shell,
-with `sed` or a script, is not reported, and the output says so.
+Tried on two live sessions before release. On Claude Code Desktop the hook took effect on the
+session's next edit, without a restart. On a fresh terminal session, `claude` wrote one file and
+edited another, and a commit made afterwards from the person's own shell carried both, credited to
+Claude Code, with the session kept only as a hash of its id. An edit made through the agent's shell,
+with `sed` or a script, is not reported, and the output says so. The agent's version and
+entrypoint reach the commands it runs but not its hooks, so a session records its model and not
+those two. The install's undo line names the command that ran, rather than whichever `rooms` is on
+the PATH.
 
 ## 0.5.13
 

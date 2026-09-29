@@ -216,6 +216,8 @@ test("installing for Claude Code keeps every other hook, and uninstalling leaves
 
     const installed = await run(dir, ["hooks", "install", "--agent", "claude-code", "--yes"]);
     assert.equal(installed.code, 0, installed.err);
+    // The undo line names the build that ran, here a file run with node, not whatever `rooms` is.
+    assert.ok(installed.out.includes(`undo: node "${cli}" hooks uninstall --agent claude-code`), installed.out);
     const after = JSON.parse(await readFile(settings, "utf8"));
     assert.deepEqual(after.permissions, { allow: ["Bash(go test:*)"] });
     assert.match(after.hooks.Stop[0].hooks[0].command, /assurance@0\.1\.11/, "the other tool's hook is kept");

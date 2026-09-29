@@ -123,6 +123,21 @@ const VERSION = (() => {
   }
 })();
 
+/**
+ * How to run this same build again, for a line the person will copy.
+ *
+ * The undo line said `rooms …`, and the first person to follow it had run a checkout with
+ * `node …/src/cli.js` while the `rooms` on their PATH was an older release that did not know the
+ * flag. So the line names what ran: the bin by its name, npx by its version, a file by its path.
+ */
+function rerunCommand() {
+  const script = process.argv[1] || "";
+  if (/[\\/]_npx[\\/]/.test(script)) return `npx -y iops-rooms@${VERSION}`;
+  const name = script.split(/[\\/]/).pop();
+  if (name === "rooms" || name === "iops-rooms") return name;
+  return `node "${script}"`;
+}
+
 function args(argv) {
   const out = { _: [], _bad: [], _unknown: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -1003,7 +1018,7 @@ async function main() {
       // same is not checked yet, so the line says what to do if it does not.
       `installed. Claude Code uses it from its next edit; if a session that is already open records\n` +
         `nothing, start a new one.\n` +
-        `undo: rooms hooks uninstall --agent claude-code${user ? " --user" : ""}\n`,
+        `undo: ${rerunCommand()} hooks uninstall --agent claude-code${user ? " --user" : ""}\n`,
     );
     return;
   }
