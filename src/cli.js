@@ -101,11 +101,11 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
  */
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
-  "code", "provider", "host", "client-id", "window-size",
+  "code", "provider", "host", "client-id", "window-size", "agent",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
-  "json",
+  "json", "yes", "user",
 ]);
 
 /**
@@ -916,22 +916,91 @@ async function main() {
       const head = await git(process.cwd(), ["rev-parse", "HEAD"], { timeout: 4000 });
       if (!head.ok) return;
       const { agentFromEnv } = await import("./agent-markers.js");
-      const { appendActivity } = await import("./activity.js");
+      const { appendActivity, readActivity, editedByFor, checkoutRef } = await import("./activity.js");
       const { resolveBranch } = await import("./git-info.js");
       const found = agentFromEnv(process.env);
+      const sha = head.out.trim();
       await appendActivity(dir, {
         kind: "commit",
-        sha: head.out.trim(),
+        sha,
         madeIn: found?.agent ?? null,
         agentVersion: found?.version ?? null,
         entry: found?.entry ?? null,
         model: found?.model ?? null,
+        // The files of this commit an agent's own hook saw it edit here since the previous commit:
+        // what shows the commonest case, edits committed by hand from another terminal.
+        editedBy: await editedByFor(process.cwd(), sha, await readActivity(dir)),
+        checkout: await checkoutRef(process.cwd()),
         branch: (await resolveBranch(process.cwd())) || "",
         source: "git-hook",
       });
     } catch {
       /* never fail a commit */
     }
+    return;
+  }
+
+  if (cmd === "agent-hook") {
+    // Run by an agent's own hook on each event. It prints nothing and exits 0 whatever happens:
+    // Claude Code adds a SessionStart hook's output to the model's context, and shows a failing
+    // PostToolUse hook's stderr to the agent.
+    try {
+      const { runAgentHook } = await import("./agent-hooks.js");
+      await runAgentHook(rest[0]);
+    } catch {
+      /* nothing reaches the agent */
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  if (cmd === "hooks" && argv.agent) {
+    const agent = String(argv.agent);
+    if (agent !== "claude-code") {
+      throw new Error(`no hooks for "${agent}" yet: claude-code is the one supported so far`);
+    }
+    const sub = rest[0] || "";
+    const a = await import("./agent-hooks.js");
+    const { installHooks, CLI_PATH } = await import("./hooks.js");
+    const user = Boolean(argv.user);
+    if (sub === "uninstall") {
+      const r = await a.removeClaudeHooks({ cwd: process.cwd(), user });
+      process.stdout.write(r.removed ? `removed the Rooms hooks from ${r.path}\n` : `no Rooms hooks in ${r.path}\n`);
+      return;
+    }
+    if (sub !== "install") throw new Error("usage: rooms hooks install --agent claude-code [--user] [--yes] | rooms hooks uninstall --agent claude-code [--user]");
+    const plan = await a.planClaudeHooks({ cwd: process.cwd(), user, cliPath: CLI_PATH });
+    process.stdout.write(
+      `Claude Code  ${plan.path}${plan.exists ? "" : "  (new file)"}\n` +
+        "  + SessionStart, SessionEnd, and PostToolUse on Edit|Write|MultiEdit|NotebookEdit\n" +
+        `  runs  ${a.claudeHookCommand({ cliPath: CLI_PATH })}\n` +
+        (plan.exists ? "  every hook already in the file stays as it is; a copy is kept beside it\n" : "") +
+        (user ? "" : "  the file is added to .git/info/exclude, so it cannot be committed by accident\n") +
+        "git          the post-commit hook, which joins the edits to the commit that carries them\n" +
+        "Kept, in .room/agent-activity.jsonl: which session, which file in this project it edited, and\n" +
+        "when. Never code, prompts, replies or the transcript. Nothing is sent anywhere.\n",
+    );
+    if (!argv.yes) {
+      if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        process.stderr.write("Not a terminal, so nothing was changed. Run it yourself, or add --yes once you have read the above.\n");
+        process.exitCode = 2;
+        return;
+      }
+      const { createInterface } = await import("node:readline/promises");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = (await rl.question("Install? [y/N] ")).trim().toLowerCase();
+      rl.close();
+      if (answer !== "y" && answer !== "yes") {
+        process.stdout.write("Nothing was changed.\n");
+        return;
+      }
+    }
+    await installHooks({ cwd: process.cwd(), force: Boolean(argv.force) });
+    await a.applyClaudeHooks(plan, { cwd: process.cwd(), user });
+    process.stdout.write(
+      `installed. Claude Code reads new hooks when a session starts.\n` +
+        `undo: rooms hooks uninstall --agent claude-code${user ? " --user" : ""}\n`,
+    );
     return;
   }
 
