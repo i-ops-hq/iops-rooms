@@ -66,6 +66,7 @@ The board and the room:
   rooms index [--open]
   rooms hooks install [--force]
   rooms hooks uninstall
+  rooms record commit          run by the git hook: notes whether a commit was made inside an agent session
   rooms mcp
   rooms mcp install   # Cursor + Claude Code + Codex (project-local)
   rooms auth github
@@ -900,6 +901,37 @@ async function main() {
     });
     process.stdout.write(report.format());
     process.exitCode = report.exitCode;
+    return;
+  }
+
+  if (cmd === "record") {
+    if (rest[0] !== "commit") throw new Error("usage: rooms record commit");
+    // Run by the git hook after every commit, so it must never slow or fail one: it prints nothing
+    // and exits 0 whatever happens. Where there is no room it records nothing and creates nothing.
+    try {
+      const dir = await findRoomDir();
+      if (!dir) return;
+      // HEAD of THIS checkout: in a worktree it differs from the main checkout the room lives in.
+      const { git } = await import("./git-history.js");
+      const head = await git(process.cwd(), ["rev-parse", "HEAD"], { timeout: 4000 });
+      if (!head.ok) return;
+      const { agentFromEnv } = await import("./agent-markers.js");
+      const { appendActivity } = await import("./activity.js");
+      const { resolveBranch } = await import("./git-info.js");
+      const found = agentFromEnv(process.env);
+      await appendActivity(dir, {
+        kind: "commit",
+        sha: head.out.trim(),
+        madeIn: found?.agent ?? null,
+        agentVersion: found?.version ?? null,
+        entry: found?.entry ?? null,
+        model: found?.model ?? null,
+        branch: (await resolveBranch(process.cwd())) || "",
+        source: "git-hook",
+      });
+    } catch {
+      /* never fail a commit */
+    }
     return;
   }
 

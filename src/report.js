@@ -12,6 +12,8 @@
 import { readCommits, rollUpAgents, rollUpContributors, sinceArg } from "./git-history.js";
 import { CONFIG_NOTE, readAgentConfig, whyNothingRecorded } from "./agent-config.js";
 import { readGitSnapshot } from "./git-info.js";
+import { activityFor } from "./activity.js";
+import { agentLabel } from "./agent-markers.js";
 
 /** k/M once the digits stop being readable. Shared with the board's own shortener by shape, not code
  *  — this one is for a fixed-width terminal column and never returns more than five characters. */
@@ -124,6 +126,9 @@ export async function buildReport(projectDir, opts = {}) {
     agents,
     contributors,
     config,
+    // A third source, kept apart from both of the others: what the git hook observed on this
+    // machine about where each commit was made. Never added into `rows` or `agents`.
+    observed: observedFrom(r.commits, await activityFor(projectDir)),
     since: sinceArg(since),
     range,
     paths,
@@ -196,6 +201,53 @@ export function formatConfig(report) {
  * the repository declares, and why nothing was recorded are all carried. They are not decoration:
  * each one exists because a number was once read as more than it was.
  */
+/**
+ * What the git hook observed about the commits in a window, or null where it never ran.
+ *
+ * Only commits the hook saw are counted, and the rest are reported as not observed rather than as
+ * made by hand: the hook sees only this machine, and only since it was installed.
+ */
+export function observedFrom(commits, activity) {
+  const records = (activity || []).filter((a) => a && a.kind === "commit" && a.sha);
+  if (!records.length) return null;
+  const bySha = new Map(records.map((a) => [a.sha, a]));
+  const seen = (commits || []).filter((c) => bySha.has(c.sha)).map((c) => bySha.get(c.sha));
+  const made = seen.filter((a) => a.madeIn);
+  const byAgent = {};
+  for (const a of made) byAgent[a.madeIn] = (byAgent[a.madeIn] || 0) + 1;
+  const since = records.map((a) => String(a.at || "")).filter(Boolean).sort()[0] || null;
+  return { since, commits: (commits || []).length, observed: seen.length, madeInSession: made.length, byAgent };
+}
+
+/** The sentence that travels with any observed count, for the same reason FLOOR_NOTE travels with a share. */
+export const OBSERVED_NOTE =
+  "A commit made by hand in your own terminal shows no session, even when an agent edited its " +
+  "files. These counts come from the git hook, not from trailers, and are never added to the rows above.";
+
+/** The block for `rooms week`: counts only, and when the hook began observing. */
+export function formatObserved(observed) {
+  if (!observed) return "";
+  const since = String(observed.since || "").slice(0, 10);
+  const out = [`\nObserved on this machine since ${since}, by the git hook you installed:\n`];
+  if (!observed.observed) {
+    out.push(`  none of these ${observed.commits} commits: they were made before the hook, or elsewhere\n`);
+    return out.join("");
+  }
+  const agents = Object.entries(observed.byAgent)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, n]) => `${agentLabel(id)} ${n}`)
+    .join(", ");
+  out.push(
+    `  made inside an agent session  ${observed.madeInSession} of ${observed.observed} observed` +
+      `${agents ? ` (${agents})` : ""}\n`,
+  );
+  if (observed.commits > observed.observed) {
+    out.push(`  not observed                  ${observed.commits - observed.observed}, made before the hook or elsewhere\n`);
+  }
+  out.push(`\n${wrap(OBSERVED_NOTE)}\n`);
+  return out.join("");
+}
+
 export function reportToJson(report, { name = "", window = "" } = {}) {
   const config = report.config || null;
   return {
@@ -232,6 +284,9 @@ export function reportToJson(report, { name = "", window = "" } = {}) {
         }
       : null,
     whyNothingRecorded: report.agents.attributed === 0 ? whyNothingRecorded(config) || null : null,
+    // Beside the rows, never inside them: where the git hook saw each commit made. Null where the
+    // hook has never run, which is not the same as zero.
+    observed: report.observed ? { ...report.observed, note: OBSERVED_NOTE } : null,
     floor: FLOOR_NOTE,
   };
 }
@@ -378,7 +433,9 @@ export function wrap(text, width = 76, indent = "") {
  * The suggested window is one `sinceArg` understands, and a test runs it to check it does reach.
  */
 export function quietWindow(newest, now = Date.now()) {
-  const days = Math.max(1, Math.ceil((now - newest) / 86_400_000));
+  // Rounded, not rounded up: 0.5.12 said "11 days old" of a commit ten days and a few seconds old,
+  // found by probing the published package.
+  const days = Math.max(1, Math.round((now - newest) / 86_400_000));
   const reach =
     days <= 14 ? "14d" : days <= 30 ? "30d" : days <= 90 ? "90d" : days <= 365 ? "1y" : `${Math.ceil(days / 365)}y`;
   return `The newest commit here is ${days} day${days === 1 ? "" : "s"} old; rooms week --since ${reach} reads back to it.`;
@@ -394,6 +451,7 @@ export function formatWeek(report, { name = "", window = "last 7 days", delta = 
   out.push(`\n${wrap(FLOOR_NOTE)}\n`);
   out.push(formatConfig(report));
   out.push(formatWhyEmpty(report));
+  out.push(formatObserved(report.observed));
   return out.join("");
 }
 

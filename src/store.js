@@ -160,9 +160,10 @@ export async function ensureGitignore(projectDir, share) {
     // for an append-only log; parseEventsJsonl dedupes by id so a union can never double-render.
     await writeFile(
       join(paths.root, ".gitattributes"),
-      `# An append-only log. Keep both sides of a merge instead of conflicting on every
+      `# Append-only logs. Keep both sides of a merge instead of conflicting on every
 # concurrent post; ids are unique and duplicate lines are dropped on read.
 events.jsonl merge=union
+agent-activity.jsonl merge=union
 `,
       "utf8",
     );

@@ -18,3 +18,9 @@ if (!process.env.ROOMS_HOME) {
 }
 // No test wants a browser window, and a headless CI box has nothing to open one with.
 process.env.ROOMS_NO_OPEN = process.env.ROOMS_NO_OPEN || "1";
+
+// The suite also runs inside agents' shells (this repository is built in one), and those set the
+// variables Rooms reads to tell where a commit was made. Left in, a test of a commit made by hand
+// passes in CI and fails inside Claude Code. A test that wants a marker sets it itself.
+import { MARKER_NAMES } from "../src/agent-markers.js";
+for (const name of MARKER_NAMES) delete process.env[name];
