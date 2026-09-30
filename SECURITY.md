@@ -71,6 +71,12 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   left out and counted), and write `~/.iops-rooms/teams/<team>.board.html`, with every value
   escaped. Anyone with write access to the team room can write any file in it, so a status is as
   trustworthy as that access
+- With `rooms team live`: serve the team board on `127.0.0.1` only, answering only a request that
+  asked for this machine by name (the same check as `rooms live`, in the one file that opens a
+  socket). Every interval, thirty seconds at the least, fetch the team room with git and, only if
+  you already said yes to sharing with this team, push your status for this project when it
+  changed, after asking GitHub again whether the team room is private. It stops when you stop it,
+  and a check already running finishes first
 - With `rooms shortcut`, which shows what it will write and asks first: write one launcher, an
   AppleScript application on macOS (built with `osacompile`), a `.cmd` on Windows or a `.desktop`
   entry on Linux, to the Desktop, the Linux applications menu, or the folder named with `--to`. It
@@ -122,7 +128,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.6.0 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.6.1 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

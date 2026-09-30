@@ -159,6 +159,7 @@
       .member-line[data-state="none"]::before { content: "— "; color: var(--ink-3); }
       .member-agents { color: var(--ink-3); font-size: 12px; margin: 6px 0 0; }
       .empty { color: var(--ink-2); font-size: 15px; }
+      .checked { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); margin: 14px 0 0; }
       @media (max-width: 720px) { .wrap { padding: 0 16px; } }
     </style>
   </head>
@@ -168,6 +169,7 @@
         <span class="eyebrow">I-Ops · Rooms · Team</span>
         <h1 class="h-display">{{NAME}}</h1>
         <p class="lead">{{SUMMARY}}</p>
+        {{CHECKED}}
       </div>
     </header>
     <main class="wrap stage">

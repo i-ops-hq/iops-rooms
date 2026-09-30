@@ -218,6 +218,7 @@ rooms team init --name acme       # once, in a clone of a new private repository
 rooms team join acme/team-room    # in each project, on each member's machine
 rooms team sync                   # shows your status and asks before the first push
 rooms team board                  # everyone's status, in its own window
+rooms team live                   # the same board, kept current while it is open
 ```
 
 A status holds the project; if you share it, the branch and its upstream; how far it is ahead or
@@ -226,6 +227,12 @@ many agent sessions your hooks saw in the last seven days. Never a file name, a 
 commit message or a prompt. `--no-branch` leaves the branch out, and `--dry-run` shows the file
 without sharing it. Rooms pushes only your own status file, one per project, with your own git, and
 only after you have seen it and said yes; an unchanged status is not pushed again.
+
+`rooms team live` keeps the board current while its window is open: every five minutes (`--every`,
+thirty seconds at the least) it fetches the team room with git, which asks nothing of GitHub's API,
+and the page says when it last looked. If you have already shared once with `rooms team sync`, it
+also shares your status for this project when it changes; `--no-share` keeps it read-only. It runs
+only while it is open, with nothing left running in the background.
 
 A team room on GitHub must be private. Rooms asks GitHub through your own `gh` on every sync, and
 refuses a public one unless you pass `--public`; where it cannot ask, you confirm with
@@ -467,7 +474,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.6.0 mcp install
+npx -y iops-rooms@0.6.1 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -480,7 +487,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.6.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.6.1", "mcp"] } } }
 ```
 
 ## Commands
