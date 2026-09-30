@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.6.0
+
+### A team room, through the team's own GitHub
+
+Rooms was one person's view of one project. A team room is a private repository the team owns, where
+each member's Rooms shares a small status of the work on their machine and reads everyone else's.
+GitHub is the medium and the access control; nothing goes through an I-Ops server.
+
+- `rooms team init`, in a clone of a new repository, writes the team room's four files and makes one
+  local commit. It does not push.
+- `rooms team join <owner/repo>`, in a project, clones the team room into Rooms's own folder with the
+  member's git, and links the project to it. A folder works too.
+- `rooms team sync` writes `status/<login>/<project>.json`, commits that one path, and pushes it. The
+  first push shows the whole file and asks. An unchanged status is not pushed again, and a push that
+  loses a race with a teammate's is caught up once, which cannot conflict, since no one else writes
+  that file.
+- `rooms team board` builds everyone's status into a page on the viewer's machine and opens it in
+  the board's own window, with projects and members in alphabetical order and nothing ranked.
+
+A status holds counts and states from an allowlist: the project, optionally the branch and its
+upstream (`--no-branch` leaves them out), ahead and behind, the pull request's state, what is not
+committed as counts of files and lines, and agent sessions and files edited in the last seven days.
+Never a file name, a line of code, a commit message or a prompt; a test plants a file called
+`secret-plan.txt` and fails if its name or content reaches the team room.
+
+The team room must be private. Every sync asks GitHub through the member's own `gh` and refuses a
+public repository unless `--public` is given, since a public one would publish every status to the
+internet; where Rooms cannot ask, the member confirms with `--confirm-private`. The board is built
+locally rather than served by GitHub Pages, which publishes to the whole internet on every plan
+except Enterprise Cloud. A status read from the team room is checked field by field, and one filed
+under another member's folder, with a negative count or with a field too long is left out and
+counted. Every value is escaped, and a test plants HTML in a teammate's status.
+
+This is the first minor release since 0.5.0: Rooms now pushes, one file, with the member's consent.
+
 ## 0.5.18
 
 ### A board to double-click
