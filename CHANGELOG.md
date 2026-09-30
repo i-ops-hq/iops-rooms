@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.5.18
+
+### A board to double-click
+
+`rooms shortcut` writes a file that opens the project's board in its own window: an application on
+the macOS Desktop, a `.cmd` on the Windows Desktop, or an entry in the Linux applications menu. It is
+for the people on a team who never open a terminal. Someone who does runs it once on their machine,
+and from then on the board is an icon. It shows what it will write and asks first, or needs `--yes`
+without a terminal. `rooms shortcut remove` takes the launcher away, and neither command touches a
+file Rooms did not write.
+
+A launcher is a command kept in a file and run later, from a double-click, with nobody watching.
+The project's folder name is written into it, and a folder name is text anyone can choose. So each
+format quotes every path in its own way: single-quoted for the shell inside the macOS application,
+doubled `%`, no delayed expansion and UTF-8 in the `.cmd` (cmd reads a batch file in the console's
+code page, which turned `C:\Users\José` into something else), and the Desktop Entry's two layers of escaping,
+which a path ending in a backslash needs both of, with `%` doubled so a folder called `%f` never
+becomes a field code. Tests run the macOS script through AppleScript itself, the shell command
+through `sh`, and the `.cmd` through `cmd` on Windows, each against a folder whose name is an attack
+(`x'; touch pwned; '`), and read the Desktop Entry back by the specification's rules. A path holding
+a control character is refused outright.
+
+The launcher runs this Node and this install of Rooms, since a double-click gets a bare PATH, not the
+one a shell profile builds. Run from npx's cache, which npm may clear, it refuses and says to install
+globally first. On macOS a failure shows a dialog, and on Windows a project that has moved stops the
+launcher instead of making a room wherever `cmd` started.
+
 ## 0.5.17
 
 ### Right now: this checkout's uncommitted work, its upstream and its pull request

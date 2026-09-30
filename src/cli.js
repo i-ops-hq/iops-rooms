@@ -64,6 +64,8 @@ The board and the room:
   rooms import-room <dir>
   rooms whoami
   rooms index [--open]
+  rooms shortcut [--to <folder>] [--yes]   a file to double-click that opens this board
+  rooms shortcut remove [--to <folder>]
   rooms hooks install [--force]
   rooms hooks uninstall
   rooms record commit          run by the git hook: notes whether a commit was made inside an agent session
@@ -101,7 +103,7 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
  */
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
-  "code", "provider", "host", "client-id", "window-size", "agent",
+  "code", "provider", "host", "client-id", "window-size", "agent", "to",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
@@ -958,6 +960,62 @@ async function main() {
       /* nothing reaches the agent */
     }
     process.exitCode = 0;
+    return;
+  }
+
+  if (cmd === "shortcut") {
+    // A launcher for people who never open a terminal: someone who does runs this once on their
+    // machine, and from then on the board is an icon. It shows what it will write and asks first.
+    const sub = rest[0] || "";
+    if (sub && sub !== "remove") throw new Error("usage: rooms shortcut [--to <folder>] [--yes] | rooms shortcut remove [--to <folder>]");
+    const s = await import("./shortcut.js");
+    const { CLI_PATH } = await import("./hooks.js");
+    const { resolveProjectRoot } = await import("./git-info.js");
+    const { boardProjectName } = await import("./board.js");
+    const projectDir = await resolveProjectRoot(process.cwd());
+    const meta = await readMeta(projectDir).catch(() => ({}));
+    const folder = argv.to ? resolve(String(argv.to)) : await s.defaultFolder();
+    const p = s.plan({ folder, name: boardProjectName(meta, projectDir), nodeBin: process.execPath, cliPath: CLI_PATH, projectDir });
+    const to = argv.to ? ` --to "${folder}"` : "";
+    if (sub === "remove") {
+      const r = await s.removeLauncher(p);
+      process.stdout.write(
+        r === "removed" ? `removed ${p.path}\n`
+          : r === "not-ours" ? `${p.path} was not written by Rooms, so it was left alone\n`
+            : `no launcher at ${p.path}\n`,
+      );
+      return;
+    }
+    const why = s.refusal(p.target);
+    if (why) throw new Error(`No launcher was written: ${why}.`);
+    process.stdout.write(
+      `Launcher  ${p.path}\n` +
+        `  opens   the Rooms board for ${projectDir}, in its own window\n` +
+        `  runs    ${process.execPath} ${CLI_PATH} open, in that folder\n` +
+        (p.os === "linux" ? "  it is listed in your applications menu\n" : "") +
+        "Nothing else is written, and it runs nothing but that.\n",
+    );
+    if (!argv.yes) {
+      if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        process.stderr.write("Not a terminal, so nothing was changed. Run it yourself, or add --yes once you have read the above.\n");
+        process.exitCode = 2;
+        return;
+      }
+      const { createInterface } = await import("node:readline/promises");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = (await rl.question("Write it? [y/N] ")).trim().toLowerCase();
+      rl.close();
+      if (answer !== "y" && answer !== "yes") {
+        process.stdout.write("Nothing was changed.\n");
+        return;
+      }
+    }
+    await s.writeLauncher(p);
+    process.stdout.write(
+      `written. Double-click it to open the board. It runs this Node and this install of Rooms; if\n` +
+        `either moves, run rooms shortcut again.\n` +
+        `remove: ${rerunCommand()} shortcut remove${to}\n`,
+    );
     return;
   }
 
