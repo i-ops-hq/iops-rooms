@@ -9,6 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,8 +30,9 @@ const cli = join(fileURLToPath(new URL("..", import.meta.url)), "src", "cli.js")
 const exists = (p) => access(p).then(() => true, () => false);
 const os = platform();
 // Names a person could give a folder, each aimed at a different layer of quoting.
+// Windows refuses < > : " / \\ | ? * in a name, so its list is what cmd can still be fooled by.
 const HOSTILE = os === "win32"
-  ? ["100% & done", "a ^ b | c", "x !path! y", "semi;colon (1)"]
+  ? ["100% & done", "a ^ b & c", "x !path! y", "semi;colon (1)", "%PATH% and %CD%", "café ü 中文"]
   : ["x'; touch pwned; '", 'q"$(touch pwned2)"', "b`touch pwned3`", "sp ace\\slash %d"];
 
 async function scratch(fn) {
@@ -104,7 +106,8 @@ test("the Windows launcher does the same when cmd runs it, and stops if the proj
       await exec("cmd.exe", ["/d", "/c", file], { cwd: dir, timeout: 20000 });
       const ran = JSON.parse(await readFile(rec.log, "utf8"));
       // Compared as real paths: Windows temp folders often come back in their 8.3 short form.
-      assert.deepEqual([await realpath.native(ran.cwd), ran.args], [await realpath.native(projectDir), ["open"]], name);
+      // (`.native` is on node:fs's realpathSync; node:fs/promises's realpath has none.)
+      assert.deepEqual([realpathSync.native(ran.cwd), ran.args], [realpathSync.native(projectDir), ["open"]], name);
       await rm(rec.log);
     }
     const file = join(dir, "moved.cmd");
@@ -159,6 +162,12 @@ test("the Linux launcher reads back, by the specification's rules, as exactly th
   const text = linuxDesktop({ nodeBin: "/n", cliPath: "/c", projectDir: "/p", name: "a\nExec=/bin/evil" });
   assert.deepEqual(text.split("\n").filter((l) => l.startsWith("Exec=")), ['Exec="/n" "/c" open']);
   assert.deepEqual(readDesktop(text).argv, ["/n", "/c", "open"]);
+});
+
+test("the Windows launcher switches to UTF-8 before it reads a path", () => {
+  const lines = windowsCmd({ nodeBin: "C:\\n\\node.exe", cliPath: "C:\\r\\cli.js", projectDir: "C:\\Users\\José" }).split("\r\n");
+  const utf8 = lines.indexOf("chcp 65001 >nul");
+  assert.ok(utf8 > -1 && utf8 < lines.findIndex((l) => l.includes("José")), lines.join("\n"));
 });
 
 test("a path with a line break, or Rooms running from npx's cache, is refused", () => {

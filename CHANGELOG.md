@@ -14,7 +14,8 @@ file Rooms did not write.
 A launcher is a command kept in a file and run later, from a double-click, with nobody watching.
 The project's folder name is written into it, and a folder name is text anyone can choose. So each
 format quotes every path in its own way: single-quoted for the shell inside the macOS application,
-doubled `%` and no delayed expansion in the `.cmd`, and the Desktop Entry's two layers of escaping,
+doubled `%`, no delayed expansion and UTF-8 in the `.cmd` (cmd reads a batch file in the console's
+code page, which turned `C:\Users\José` into something else), and the Desktop Entry's two layers of escaping,
 which a path ending in a backslash needs both of, with `%` doubled so a folder called `%f` never
 becomes a field code. Tests run the macOS script through AppleScript itself, the shell command
 through `sh`, and the `.cmd` through `cmd` on Windows, each against a folder whose name is an attack

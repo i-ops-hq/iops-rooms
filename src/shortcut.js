@@ -60,12 +60,15 @@ export function macScript(target, { dialog = true } = {}) {
 
 /**
  * Windows: a .cmd file. A Windows path cannot hold `"`, so double quotes are safe around it; `%`
- * still expands inside them, so it is doubled, and delayed expansion is turned off for `!`.
+ * still expands inside them, so it is doubled, and delayed expansion is turned off for `!`. cmd
+ * reads a batch file in the console's code page, not UTF-8, so a path such as `C:\Users\José` came
+ * out as something else; the code page is switched to UTF-8 before any path is read.
  */
 export function windowsCmd({ nodeBin, cliPath, projectDir }) {
   const q = (value) => `"${String(value).replace(/%/g, "%%")}"`;
   return [
     "@echo off",
+    "chcp 65001 >nul",
     `rem ${LAUNCHER_MARK}`,
     "setlocal DisableDelayedExpansion",
     // If the project has moved, stop: Rooms run from wherever cmd starts would make a room there.
