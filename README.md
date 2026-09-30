@@ -208,6 +208,31 @@ branch. A branch only on your machine reads "not pushed yet", and its name goes 
 request yet" means GitHub said so; anything short of that reads "pull request unknown", with the
 reason. `ROOMS_NO_GH=1` turns the question off.
 
+### A team room, through your own GitHub
+
+When several people work on a project, each one's Rooms can share a small status with the others
+through a private repository the team owns. Nothing goes through an I-Ops server.
+
+```bash
+rooms team init --name acme       # once, in a clone of a new private repository; then git push
+rooms team join acme/team-room    # in each project, on each member's machine
+rooms team sync                   # shows your status and asks before the first push
+rooms team board                  # everyone's status, in its own window
+```
+
+A status holds the project; if you share it, the branch and its upstream; how far it is ahead or
+behind; its pull request's state; what is not committed yet, as counts of files and lines; and how
+many agent sessions your hooks saw in the last seven days. Never a file name, a line of code, a
+commit message or a prompt. `--no-branch` leaves the branch out, and `--dry-run` shows the file
+without sharing it. Rooms pushes only your own status file, one per project, with your own git, and
+only after you have seen it and said yes; an unchanged status is not pushed again.
+
+A team room on GitHub must be private. Rooms asks GitHub through your own `gh` on every sync, and
+refuses a public one unless you pass `--public`; where it cannot ask, you confirm with
+`--confirm-private`. The board is built on each viewer's machine rather than published, because
+GitHub Pages serves a site to the whole internet on every plan except Enterprise Cloud. Anyone who
+can write to the team room can write any file in it, so a status is as trustworthy as that access.
+
 ### For teammates who never open a terminal
 
 Someone who does runs this once, on that teammate's machine, in the project:
@@ -442,7 +467,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.5.18 mcp install
+npx -y iops-rooms@0.6.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -455,7 +480,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.5.18", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.6.0", "mcp"] } } }
 ```
 
 ## Commands

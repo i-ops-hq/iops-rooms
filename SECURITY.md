@@ -4,7 +4,7 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 
 ## What this package will never do
 
-- Open sockets / `fetch` for **room traffic** or telemetry (no phone-home). Optional `rooms auth github` / `rooms auth gitlab` are the sole exceptions: OAuth **device flow** only, to mint a **local** verified identity — they do **not** upload `.room/` events
+- Open sockets / `fetch` for **room traffic** or telemetry (no phone-home), or send anything to I-Ops. The network is reached only through your own `git` and `gh`, for what "What it does" lists (your verified identity, a branch's pull request, the team room), and through the OAuth **device flow** of `rooms auth github` / `rooms auth gitlab` when `gh` is not there, which mints a **local** verified identity and does **not** upload `.room/` events
 - Bind a listen socket to anything other than `127.0.0.1` (optional `rooms live` is localhost-only)
 - Read `process.env` wholesale or hunt for `.env`, SSH keys, or cloud credentials
 - Write outside `.room/` in the project it resolved without a command that says so. The exceptions are listed under "What it does", and a test fails if `rooms open` in a new repository writes anything else
@@ -52,6 +52,25 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   name holding HTML reaches the page as markup
 - Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes, the agent activity log included
 - Optional: read local `git` for branch stamps; optional read-only `gh` for `scm-status` (never uploads the room)
+- With `rooms team init`, which shows what it will write and asks first: write `room.json`,
+  `README.md`, `status/.gitkeep` and `.gitattributes` into the team room's clone and make one local
+  commit. It never pushes; you do
+- With `rooms team join <owner/repo>`, which asks first: clone `https://github.com/<owner>/<repo>.git`
+  into `~/.iops-rooms/teams/<owner>/<repo>` with your own git, and record the team room and which
+  project belongs to it in `~/.iops-rooms/teams.json`. Joining from a folder clones nothing
+- With `rooms team sync`: pull the team room (fast-forward only), write your status to
+  `status/<login>/<project>.json`, commit that one path, and push it with your own git. The first
+  push to a team room shows the whole file and asks. A status holds only the project, optionally the
+  branch and its upstream, ahead and behind, the pull request's state, what is not committed as
+  counts, and agent sessions and files edited as counts; never a file name, a line of code, a
+  commit message or a prompt, and a test fails if anything else reaches it. An unchanged status is
+  not pushed. Every sync asks GitHub, through your own `gh repo view`, whether the team room is
+  private, and refuses a public one unless `--public` is given; where it cannot ask, it needs
+  `--confirm-private`
+- With `rooms team board`: pull the team room, read each status field by field (anything else is
+  left out and counted), and write `~/.iops-rooms/teams/<team>.board.html`, with every value
+  escaped. Anyone with write access to the team room can write any file in it, so a status is as
+  trustworthy as that access
 - With `rooms shortcut`, which shows what it will write and asks first: write one launcher, an
   AppleScript application on macOS (built with `osacompile`), a `.cmd` on Windows or a `.desktop`
   entry on Linux, to the Desktop, the Linux applications menu, or the folder named with `--to`. It
@@ -103,7 +122,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.18 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.6.0 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
