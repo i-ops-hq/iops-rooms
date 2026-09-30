@@ -50,7 +50,7 @@ export function memberCard(s, now = Date.now()) {
 </li>`;
 }
 
-export async function renderTeamBoard({ name, id, statuses, skipped = 0, pulled = true, now = Date.now() }) {
+export async function renderTeamBoard({ name, id, statuses, skipped = 0, pulled = true, now = Date.now(), checked = "" }) {
   const members = new Set(statuses.map((s) => s.member));
   const projects = [...new Set(statuses.map((s) => s.project))];
   const newest = statuses.reduce((t, s) => Math.max(t, Date.parse(s.at)), 0);
@@ -78,6 +78,7 @@ export async function renderTeamBoard({ name, id, statuses, skipped = 0, pulled 
     "{{NAME}}": esc(name),
     "{{SUMMARY}}": esc(summary),
     "{{NOTE}}": esc(note),
+    "{{CHECKED}}": checked ? `<p class="checked" data-checked>${esc(checked)}</p>` : "",
     "{{PROJECTS}}": sections || `<p class="empty">${esc(`No statuses in ${id} yet.`)}</p>`,
   };
   return Object.entries(values).reduce((html, [token, value]) => html.replaceAll(token, value), template);

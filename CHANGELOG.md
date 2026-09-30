@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.1
+
+### The team board, kept current while it is open
+
+`rooms team live` serves the team board on this machine and keeps it current. Every five minutes
+(`--every`, thirty seconds at the least) it fetches the team room with git, which asks nothing of
+GitHub's API, and reloads the page only when something arrived; otherwise the page just updates
+the line that says when it last looked, since "live" is only ever "as of then". If the member
+already said yes to sharing with this team, with `rooms team sync`, it also shares their status for
+this project whenever it changed; `--no-share` keeps it read-only, and without that earlier yes it
+never shares. It runs only while it is open, with no background service to install or forget.
+
+Before each push it asks GitHub again whether the team room is private, so a room made public while
+the board is open gets nothing more, and the page says why. Closing waits for a check already
+running, so nothing is fetched, committed or pushed after it returns.
+
+The page is served on 127.0.0.1, only to a request that asked for this machine by name, through a
+`serveLocal` that `src/live.js` now exports: that file stays the one place in Rooms that opens a
+socket, which a test already enforces, and a new page cannot leave the Host check out.
+
 ## 0.6.0
 
 ### A team room, through the team's own GitHub

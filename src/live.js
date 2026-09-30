@@ -53,6 +53,30 @@ export function hostIsLocal(hostHeader, port) {
   return parsed[3] === undefined || Number(parsed[3]) === Number(port);
 }
 
+/**
+ * A server on 127.0.0.1 only, answering only a request that asked for this machine by name. The team
+ * board serves through this, so this file stays the one place in Rooms that opens a socket, and a
+ * new page cannot leave out the Host check.
+ */
+export async function serveLocal(handler, { port = 0 } = {}) {
+  const server = createServer((req, res) => {
+    if (!hostIsLocal(req.headers.host, server.address()?.port)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("this board is served to localhost only\n");
+      return;
+    }
+    handler(req, res);
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, LIVE_HOST, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  return server;
+}
+
 export async function startLiveBoard(projectDir, opts = {}) {
   const paths = roomPaths(projectDir);
   await refreshBoard(projectDir);

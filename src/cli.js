@@ -68,6 +68,7 @@ The board and the room:
   rooms team join <owner/repo | folder>    link this project to a team room
   rooms team sync [--no-branch] [--dry-run]  share this project's status with the team
   rooms team board [--team <owner/repo>]   everyone's status, in its own window
+  rooms team live [--every 5m] [--no-share] the team board, kept current while it is open
   rooms shortcut [--to <folder>] [--yes]   a file to double-click that opens this board
   rooms shortcut remove [--to <folder>]
   rooms hooks install [--force]
@@ -107,11 +108,11 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
  */
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
-  "code", "provider", "host", "client-id", "window-size", "agent", "to", "team",
+  "code", "provider", "host", "client-id", "window-size", "agent", "to", "team", "every",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
-  "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run",
+  "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run", "no-share",
 ]);
 
 /**
@@ -162,6 +163,16 @@ async function confirmOrStop(argv, question) {
   if (answer === "y" || answer === "yes") return true;
   process.stdout.write("Nothing was changed.\n");
   return false;
+}
+
+/** "5m", "90s", "2h" as milliseconds; five minutes by default, and never under thirty seconds. */
+function parseEvery(value) {
+  if (value === undefined || value === null || value === "") return 300_000;
+  const m = /^(\d+)\s*(s|m|h)?$/i.exec(String(value).trim());
+  if (!m) throw new Error(`--every takes a time like 5m, 90s or 1h, not "${value}"`);
+  const ms = Number(m[1]) * { s: 1000, m: 60_000, h: 3_600_000 }[(m[2] || "m").toLowerCase()];
+  if (ms < 30_000) throw new Error("--every is thirty seconds at the least: each check fetches the team room");
+  return ms;
 }
 
 /** `rooms team …`: the team room through the team's own GitHub (src/team.js). */
@@ -295,6 +306,47 @@ async function team(rest, argv) {
     const done = await t.applySync({ clonePath: room.path, plan });
     if (!done.ok) throw new Error(`Nothing was shared: ${done.why}`);
     process.stdout.write(`shared ${plan.rel} with ${id}\n`);
+    return;
+  }
+
+  if (sub === "live") {
+    // The team board, kept current while it is open: fetched with git every interval, and this
+    // member's status shared when it changes, only if they already said yes with rooms team sync.
+    const reg = await t.readRegistry();
+    const linked = await t.teamForProject(process.cwd());
+    const ids = Object.keys(reg.teams);
+    const id = argv.team ? String(argv.team) : linked.id || (ids.length === 1 ? ids[0] : null);
+    if (!id || !reg.teams[id]) {
+      throw new Error(ids.length ? `Which team room? rooms team live --team <one of: ${ids.join(", ")}>` : "No team room yet: rooms team join <owner/repo>");
+    }
+    const room = reg.teams[id];
+    const everyMs = parseEvery(argv.every);
+    const login = (await authStatus()).github?.login || null;
+    const onThisProject = linked.id === id;
+    const share = Boolean(!argv["no-share"] && room.sharing && onThisProject && login);
+    // Asked of GitHub before anything is pushed from here, as sync asks it, and again before every
+    // push while the board is open.
+    const mayShare = () =>
+      t.checkPrivate(room.remote ? { host: room.remote.split("/")[0], path: room.remote.split("/").slice(1).join("/") } : null, {
+        confirmPrivate: Boolean(room.confirmedPrivate),
+        allowPublic: Boolean(room.allowPublic),
+      });
+    if (share) {
+      const priv = await mayShare();
+      if (!priv.ok) throw new Error(`Not started: ${priv.why}. To go ahead: ${priv.fix}.`);
+    }
+    const { startTeamLive } = await import("./team-live.js");
+    const live = await startTeamLive({ id, room, projectDir: onThisProject ? linked.top : null, login, share, withBranch: !argv["no-branch"], everyMs, port: argv.port ? Number(argv.port) : 0, mayShare });
+    const opened = openPath(live.url, { app: argv.app !== false && !argv.tab });
+    const why = share ? "yes, when it changes" : argv["no-share"] ? "no (--no-share)" : !onThisProject ? "no: run it inside a project linked to this team" : !room.sharing ? "no: share once with rooms team sync first" : "no: this machine has no GitHub login linked";
+    process.stdout.write(
+      `team live  ${live.url}\n` +
+        `checks    every ${everyMs >= 60_000 ? `${Math.round(everyMs / 60_000)} minute${Math.round(everyMs / 60_000) === 1 ? "" : "s"}` : `${Math.round(everyMs / 1000)} seconds`}, with git; nothing is asked of GitHub's API to fetch\n` +
+        `shares    your status for this project: ${why}\n` +
+        (opened.mode === "app" ? "window    its own app window (--tab for a browser tab instead)\n" : "") +
+        "(bind 127.0.0.1 only — Ctrl+C to stop)\n",
+    );
+    await new Promise(() => {});
     return;
   }
 
