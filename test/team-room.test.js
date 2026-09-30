@@ -16,7 +16,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { applySync, checkPrivate, planSync, readStatuses, validStatus } from "../src/team.js";
 
 const exec = promisify(execFile);
@@ -52,7 +52,9 @@ const git = (cwd, ...args) => exec("git", args, { cwd }).then((r) => r.stdout.tr
 /** A person: their Rooms home, a GitHub login on it, and their own clones of the team room and web. */
 async function person(dir, login) {
   const home = join(dir, login, "home");
-  await exec(process.execPath, ["-e", `import(${JSON.stringify(join(root, "src", "identity.js"))}).then((m) => m.installFixtureIdentity({ login: ${JSON.stringify(login)} }))`], {
+  // A file URL, not a path: on Windows, import() reads "D:\\…" as a URL whose scheme is "d:".
+  const identity = pathToFileURL(join(root, "src", "identity.js")).href;
+  await exec(process.execPath, ["-e", `import(${JSON.stringify(identity)}).then((m) => m.installFixtureIdentity({ login: ${JSON.stringify(login)} }))`], {
     env: { ...process.env, ROOMS_HOME: home },
   });
   const team = join(dir, login, "team");
