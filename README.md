@@ -219,6 +219,7 @@ rooms team join acme/team-room    # in each project, on each member's machine
 rooms team sync                   # shows your status and asks before the first push
 rooms team board                  # everyone's status, in its own window
 rooms team live                   # the same board, kept current while it is open
+rooms team workflow               # once, in the team room: BOARD.md, for people who only read GitHub
 ```
 
 A status holds the project; if you share it, the branch and its upstream; how far it is ahead or
@@ -233,6 +234,13 @@ thirty seconds at the least) it fetches the team room with git, which asks nothi
 and the page says when it last looked. If you have already shared once with `rooms team sync`, it
 also shares your status for this project when it changes; `--no-share` keeps it read-only. It runs
 only while it is open, with nothing left running in the background.
+
+For people who read the team room on GitHub and run nothing, `rooms team workflow` adds a GitHub
+Action that rebuilds `BOARD.md` from the status files every hour (`--hours`) and on demand. GitHub
+shows it only to people who can read the repository, so a stakeholder needs read access and nothing
+else. The Action runs an exact version of Rooms, may only write the repository, and commits
+`BOARD.md` only when a status changed; it tells you what it costs in Actions minutes before you add
+it. Pushing it needs a login that may change workflows (`gh auth refresh -s workflow`).
 
 A team room on GitHub must be private. Rooms asks GitHub through your own `gh` on every sync, and
 refuses a public one unless you pass `--public`; where it cannot ask, you confirm with
@@ -474,7 +482,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.6.1 mcp install
+npx -y iops-rooms@0.6.2 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -487,7 +495,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.6.1", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.6.2", "mcp"] } } }
 ```
 
 ## Commands

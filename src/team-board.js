@@ -83,3 +83,63 @@ export async function renderTeamBoard({ name, id, statuses, skipped = 0, pulled 
   };
   return Object.entries(values).reduce((html, [token, value]) => html.replaceAll(token, value), template);
 }
+
+/**
+ * Text for a Markdown table cell. Every character Markdown or HTML could read as syntax is escaped,
+ * and control characters become spaces: a teammate's branch named `![x](https://…)` must not load
+ * an image for everyone who opens BOARD.md, and a `|` must not start a column of its own.
+ */
+export function mdText(value) {
+  return String(value)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\\`*_{}\[\]()<>#!|~&]/g, (c) => `\\${c}`);
+}
+
+function utc(iso) {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? `${new Date(t).toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
+}
+
+/**
+ * The team board as Markdown, for BOARD.md in the team room, where GitHub shows it to whoever can
+ * read the repository and no one else. It carries no time of its own, only each member's, so an
+ * hourly rebuild with nothing new changes nothing and commits nothing.
+ */
+export function renderTeamMarkdown({ name, statuses, skipped = 0 }) {
+  const members = new Set(statuses.map((s) => s.member));
+  const projects = [...new Set(statuses.map((s) => s.project))];
+  const out = [
+    `# ${mdText(name)} · team room`,
+    "",
+    statuses.length
+      ? `${members.size} member${members.size === 1 ? "" : "s"} sharing, across ${projects.length} project${projects.length === 1 ? "" : "s"}.`
+      : "Nobody has shared a status here yet. From a project: `rooms team sync`.",
+    "",
+    "What each member chose to share from their own machine, as of their last `rooms team sync`: counts and " +
+      "states, never a file name or a line of code. Nothing here is ranked, and a member who has not synced " +
+      "lately is shown as they were." +
+      (skipped ? ` ${skipped} file${skipped === 1 ? " was" : "s were"} not a status this version reads, and ${skipped === 1 ? "is" : "are"} left out.` : ""),
+  ];
+  for (const project of projects) {
+    out.push("", `## ${mdText(project)}`, "", "| member | branch | uncommitted | upstream | pull request | agents, last 7 days | shared |", "|---|---|---|---|---|---|---|");
+    for (const s of statuses.filter((x) => x.project === project)) {
+      const shared = "branch" in s;
+      const tracking = shared ? trackingWords({ upstream: s.upstream, ahead: s.ahead, behind: s.behind, remote: true }).text : "not shared";
+      const agents = Object.entries(s.agents7d || {})
+        .map(([id, a]) => `${agentLabel(id)}: ${a.sessions} session${a.sessions === 1 ? "" : "s"}, ${a.filesEdited} file${a.filesEdited === 1 ? "" : "s"}`)
+        .join(" · ");
+      const cells = [
+        s.member,
+        shared ? s.branch || "detached" : "not shared",
+        uncommittedWords(s.uncommitted) || "nothing",
+        tracking,
+        pullRequestWords(s.pr) || "on the default branch",
+        agents || "none seen",
+        utc(s.at),
+      ];
+      out.push(`| ${cells.map(mdText).join(" | ")} |`);
+    }
+  }
+  out.push("", "<sub>Built by iops-rooms from the status files in this repository. Rebuilt by the rooms board workflow.</sub>", "");
+  return out.join("\n");
+}

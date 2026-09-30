@@ -334,3 +334,67 @@ export async function teamForProject(projectDir) {
   const id = reg.projects[top];
   return id && reg.teams[id] ? { reg, top, id, team: reg.teams[id] } : { reg, top, id: null, team: null };
 }
+
+// ---- BOARD.md, rebuilt by GitHub Actions in the team room (T5) ---------------------------------
+
+/** The Actions this workflow uses, pinned to a commit as this repository's own workflows pin them. */
+const CHECKOUT = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0";
+const SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0";
+
+/**
+ * The workflow that rebuilds BOARD.md in the team room: on a schedule and on demand, never on a
+ * push, so its own commit cannot start it again. It runs this exact version of Rooms, from an empty
+ * prefix as the attribution action does, and commits BOARD.md only when it changed.
+ */
+export function boardWorkflow({ version, hours = 1 }) {
+  if (!/^\d+\.\d+\.\d+$/.test(String(version))) throw new Error(`a workflow pins an exact version, not "${version}"`);
+  const every = Number(hours);
+  if (!Number.isInteger(every) || every < 1 || every > 24) throw new Error("--hours is a whole number from 1 to 24");
+  const cron = every === 1 ? "17 * * * *" : `17 */${every} * * *`;
+  return `# Rebuilds BOARD.md from the members' status files: every ${every === 1 ? "hour" : `${every} hours`}, and on demand from the
+# Actions tab. Written by \`rooms team workflow\` with iops-rooms ${version} pinned; run that again to
+# move the pin. BOARD.md shows only to people who can read this repository.
+name: rooms board
+
+on:
+  schedule:
+    - cron: "${cron}"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rooms-board
+  cancel-in-progress: false
+
+jobs:
+  board:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ${CHECKOUT}
+      - uses: ${SETUP_NODE}
+        with:
+          node-version: "22"
+      - name: BOARD.md, from every member's last sync
+        env:
+          ROOMS_VERSION: "${version}"
+          ROOMS_NO_GH: "1"
+        run: |
+          if ! npm view "iops-rooms@$ROOMS_VERSION" version >/dev/null 2>&1; then
+            echo "::error::iops-rooms@$ROOMS_VERSION is not on npm; run rooms team workflow with a published version"
+            exit 1
+          fi
+          prefix=$(mktemp -d)
+          npm exec --yes --prefix "$prefix" -- "iops-rooms@$ROOMS_VERSION" team board --markdown --out BOARD.md
+          if git ls-files --error-unmatch BOARD.md >/dev/null 2>&1 && git diff --quiet -- BOARD.md; then
+            echo "BOARD.md has not changed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add BOARD.md
+          git commit -q -m "BOARD.md: rebuilt from the members' statuses" -- BOARD.md
+          git push -q || { git pull --rebase -q && git push -q; }
+`;
+}
