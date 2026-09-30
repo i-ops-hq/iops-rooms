@@ -69,6 +69,8 @@ The board and the room:
   rooms team sync [--no-branch] [--dry-run]  share this project's status with the team
   rooms team board [--team <owner/repo>]   everyone's status, in its own window
   rooms team live [--every 5m] [--no-share] the team board, kept current while it is open
+  rooms team board --markdown [--out BOARD.md]  the board as Markdown, for GitHub to show
+  rooms team workflow [--hours 1]          add the Action that rebuilds BOARD.md in the team room
   rooms shortcut [--to <folder>] [--yes]   a file to double-click that opens this board
   rooms shortcut remove [--to <folder>]
   rooms hooks install [--force]
@@ -108,11 +110,11 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
  */
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
-  "code", "provider", "host", "client-id", "window-size", "agent", "to", "team", "every",
+  "code", "provider", "host", "client-id", "window-size", "agent", "to", "team", "every", "hours",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
-  "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run", "no-share",
+  "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run", "no-share", "markdown",
 ]);
 
 /**
@@ -347,6 +349,66 @@ async function team(rest, argv) {
         "(bind 127.0.0.1 only — Ctrl+C to stop)\n",
     );
     await new Promise(() => {});
+    return;
+  }
+
+  if (sub === "board" && argv.markdown) {
+    // Inside a clone of the team room (the rooms board workflow's checkout), that clone as it is;
+    // anywhere else, the registered team, brought up to date first.
+    const here = await repositoryTop(process.cwd());
+    let room = here ? await t.readTeamRoom(here) : null;
+    let path = here;
+    if (!room) {
+      const reg = await t.readRegistry();
+      const linked = await t.teamForProject(process.cwd());
+      const ids = Object.keys(reg.teams);
+      const id = argv.team ? String(argv.team) : linked.id || (ids.length === 1 ? ids[0] : null);
+      if (!id || !reg.teams[id]) throw new Error("Run this in a clone of the team room, or name one: rooms team board --markdown --team <owner/repo>");
+      path = reg.teams[id].path;
+      await t.pullTeamRoom(path);
+      room = { name: reg.teams[id].name };
+    }
+    const { statuses, skipped } = await t.readStatuses(path);
+    const { renderTeamMarkdown } = await import("./team-board.js");
+    const md = renderTeamMarkdown({ name: room.name, statuses, skipped });
+    if (argv.out) {
+      await writeFile(resolve(String(argv.out)), md, "utf8");
+      process.stdout.write(`wrote ${resolve(String(argv.out))}: ${statuses.length} status${statuses.length === 1 ? "" : "es"}\n`);
+    } else {
+      process.stdout.write(md);
+    }
+    return;
+  }
+
+  if (sub === "workflow") {
+    // The Action that keeps BOARD.md current, for people who read the team room on GitHub and run
+    // nothing themselves. Shown with what it costs, asked about, committed locally; the member pushes.
+    const top = await repositoryTop(process.cwd());
+    const room = top ? await t.readTeamRoom(top) : null;
+    if (!room) throw new Error("Run this in a clone of the team room: the workflow goes into that repository.");
+    const hours = argv.hours === undefined ? 1 : Number(argv.hours);
+    const content = t.boardWorkflow({ version: VERSION, hours });
+    const rel = ".github/workflows/rooms-board.yml";
+    const runs = Math.round((30 * 24) / hours);
+    process.stdout.write(
+      `Workflow  ${join(top, rel)}\n` +
+        `  rebuilds BOARD.md every ${hours === 1 ? "hour" : `${hours} hours`} and on demand, with iops-rooms ${VERSION}, and commits it only when it changed\n` +
+        `  costs    about ${runs} runs a month; each is billed as at least a minute of your private repository's\n` +
+        "           Actions minutes (2,000 a month on GitHub Free, 3,000 on Team)\n" +
+        "  then one commit in this clone. Rooms does not push it; you do.\n\n" +
+        content,
+    );
+    if (!(await confirmOrStop(argv, "Write it?"))) return;
+    await mkdir(join(top, ".github", "workflows"), { recursive: true });
+    await writeFile(join(top, rel), content, "utf8");
+    const add = await t.gitIn(top, ["add", "--", rel]);
+    const commit = add.ok ? await t.gitIn(top, ["commit", "-q", "-m", `rooms board workflow, iops-rooms ${VERSION}`, "--", rel]) : add;
+    if (!commit.ok) throw new Error(`The workflow is written, but git could not commit it: ${commit.err || commit.out}`);
+    process.stdout.write(
+      "committed. Push it with git push. GitHub refuses a push that adds a workflow unless your login\n" +
+        "may change workflows; if it says so: gh auth refresh -s workflow, then push again. Run it once from\n" +
+        "the repository's Actions tab to make BOARD.md now.\n",
+    );
     return;
   }
 

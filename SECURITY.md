@@ -77,6 +77,14 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   you already said yes to sharing with this team, push your status for this project when it
   changed, after asking GitHub again whether the team room is private. It stops when you stop it,
   and a check already running finishes first
+- With `rooms team board --markdown`: read the status files of the team room it runs in, or of the
+  registered team, and print them as Markdown, or write them to the file `--out` names. Every value
+  from a status is escaped, so a teammate's branch name cannot become an image, a tag or a column
+- With `rooms team workflow`, which shows the file and what it costs and asks first: write
+  `.github/workflows/rooms-board.yml` into the team room's clone and make one local commit. It never
+  pushes; you do. The workflow runs on a schedule and on demand only, never on a push; has only
+  `contents: write`; uses Actions pinned to a commit; runs one exact version of iops-rooms from an
+  empty npm prefix with `ROOMS_NO_GH=1`; and commits `BOARD.md` alone, only when it changed
 - With `rooms shortcut`, which shows what it will write and asks first: write one launcher, an
   AppleScript application on macOS (built with `osacompile`), a `.cmd` on Windows or a `.desktop`
   entry on Linux, to the Desktop, the Linux applications menu, or the folder named with `--to`. It
@@ -128,7 +136,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.6.1 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.6.2 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

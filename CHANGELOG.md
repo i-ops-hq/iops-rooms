@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.2
+
+### BOARD.md, for the people who only read GitHub
+
+A stakeholder who can read the team room on GitHub, and runs nothing, now has a page there.
+`rooms team workflow`, run once in the team room's clone, adds a GitHub Action that rebuilds
+`BOARD.md` from the members' status files every hour (`--hours`, up to a day) and on demand. GitHub
+shows it only to people who can read the repository; nothing is published anywhere else.
+
+The workflow runs on a schedule and on demand, never on a push, so its own commit cannot start it
+again. It may only write the repository, uses Actions pinned to a commit, and runs one exact version
+of iops-rooms from an empty npm prefix, the way the attribution action does. `BOARD.md` carries no
+time of its own, only each member's, so an hour with nothing new commits nothing. The command shows
+the file and what it costs, about 720 runs a month at hourly, each billed as at least a minute of a
+private repository's Actions minutes, and asks before writing it. It commits locally and does not
+push: pushing a workflow needs a login that may change workflows, and it says how to get one.
+
+`rooms team board --markdown` builds the page, from the clone it runs in or from the registered
+team. A teammate's status is escaped for Markdown as well as HTML: a branch named
+`![x](https://…)` would otherwise load an image for everyone who opens `BOARD.md`, and a `|` would
+open a column of its own. GitHub's own renderer was asked to draw such a row, and drew text.
+
 ## 0.6.1
 
 ### The team board, kept current while it is open
