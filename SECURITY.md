@@ -52,6 +52,13 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   name holding HTML reaches the page as markup
 - Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes, the agent activity log included
 - Optional: read local `git` for branch stamps; optional read-only `gh` for `scm-status` (never uploads the room)
+- Ask GitHub whether the checked-out branch has a pull request, for `rooms week`, the board and the
+  live board: one `gh pr view <branch>` through your own `gh`, which sends the repository and the
+  branch name to the GitHub your remote already points at. Only for a branch that remote already
+  has (it tracks an upstream, or origin has a branch of that name), so a local branch's name is
+  never sent. At most once a minute per branch, never on the default branch, and never when `gh`
+  is missing or `ROOMS_NO_GH=1` is set. What is not committed is counted from local `git` and shown
+  as counts; which files is never kept
 - Optional: export/import a `.room/` folder for git-friendly handoff (still offline)
 
 ## What `share-diff` will read (P0)
@@ -89,7 +96,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.16 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.5.17 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
