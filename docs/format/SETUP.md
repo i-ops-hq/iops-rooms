@@ -1,16 +1,21 @@
 # Setup format 1
 
-A setup is one person's Claude Code setup, as files a teammate can read, review and adopt. It lives
-in a team room (see the README), in a folder of its own:
+A setup is how one person has Claude Code, Codex, or both set up, as files a teammate can read,
+review and adopt. It lives in a team room (see the README), in a folder of its own:
 
 ```
 setups/<role>/<name>/
 ├── setup.json                          the manifest, described below
 ├── README.md                           generated from setup.json; the next export replaces it
-└── files/claude-code/
-    ├── project/CLAUDE.md               files that go into the adopter's project
-    ├── project/.claude/agents/…
-    └── user/agents/…                   files that go into the adopter's Claude Code folder
+├── files/claude-code/
+│   ├── project/CLAUDE.md               files that go into the adopter's project
+│   ├── project/.claude/agents/…
+│   └── user/agents/…                   files that go into the adopter's Claude Code folder
+└── files/codex/
+    ├── project/AGENTS.md
+    ├── project/.agents/skills/…
+    ├── user/prompts/…                  files that go into the adopter's Codex folder
+    └── home/.agents/skills/…           Codex's skills for every project, in the adopter's home
 ```
 
 `<role>` and `<name>` are lowercase letters, digits and dashes, 40 at most. `rooms setup export`
@@ -65,34 +70,38 @@ anything: a setup may have been edited in the team room since it was exported.
 | `summary` | optional, 300 characters at most |
 | `cost` | optional: what the owner says the setup costs, in US dollars a month, and for what. Shown as declared, never measured |
 | `exportedWith` | the Rooms that wrote it |
-| `tools` | `claude-code` only, in format 1. A reader refuses a setup holding a tool it cannot read |
+| `tools` | `claude-code`, `codex`, or both. A reader refuses a setup holding a tool it cannot read, by name, so a 0.7.0 reader asks for an update when a setup holds Codex |
 | `runs`, `requires` | derived from the rest, never written by hand. A reader derives both again and refuses a setup whose lists differ |
 | `notExported` | what the owner's export left out of the files they chose, and why. Never a value |
 
 ### Files
 
 Each entry is `{ kind, path, installTo, sha256 }`, with `executable: true` for a file that runs as a
-program. `installTo` is a scope and a path: `project:` is relative to the adopter's project, and
-`user:` to their Claude Code folder (`~/.claude`, or `CLAUDE_CONFIG_DIR` when set). `path` is always
-`files/claude-code/<scope>/<path in installTo>`, so the two cannot disagree. `sha256` is of the
-file's text with CRLF line ends read as LF, so checkouts on any system agree.
+program. `installTo` is a scope and a path: `project:` is relative to the adopter's project; `user:`
+to the tool's own folder (`~/.claude` or `CLAUDE_CONFIG_DIR`; `~/.codex` or `CODEX_HOME`); and, for
+Codex only, `home:` to the adopter's home. `path` is always
+`files/<tool>/<scope>/<path in installTo>`, so the two cannot disagree. `sha256` is of the file's
+text with CRLF line ends read as LF, so checkouts on any system agree.
 
 A file may go only to these places, and only as its kind:
 
-| kind | `project:` | `user:` |
-|---|---|---|
-| `instructions` | `CLAUDE.md`, `.claude/CLAUDE.md` | `CLAUDE.md` |
-| `rule` | `.claude/rules/**/*.md` | `rules/**/*.md` |
-| `agent` | `.claude/agents/**/*.md` | `agents/**/*.md` |
-| `command` | `.claude/commands/**/*.md` | `commands/**/*.md` |
-| `skill` | `.claude/skills/<skill>/**` | `skills/<skill>/**` |
-| `script` | `.claude/hooks/**` | `hooks/**` |
+| tool | kind | `project:` | `user:` | `home:` |
+|---|---|---|---|---|
+| `claude-code` | `instructions` | `CLAUDE.md`, `.claude/CLAUDE.md` | `CLAUDE.md` | |
+| | `rule` | `.claude/rules/**/*.md` | `rules/**/*.md` | |
+| | `agent` | `.claude/agents/**/*.md` | `agents/**/*.md` | |
+| | `command` | `.claude/commands/**/*.md` | `commands/**/*.md` | |
+| | `skill` | `.claude/skills/<skill>/**` | `skills/<skill>/**` | |
+| | `script` | `.claude/hooks/**` | `hooks/**` | |
+| `codex` | `instructions` | `AGENTS.md` | `AGENTS.md`, `AGENTS.override.md` | |
+| | `skill` | `.agents/skills/<skill>/**` | | `.agents/skills/<skill>/**` |
+| | `prompt` | | `prompts/*.md` | |
 
 Every name on the way must be one every system can hold: not `.` or `..`, not `.git`, no `\ : * ? "
 < > |` or control character, not ending in a dot or a space, not a name Windows reserves (`CON`,
 `NUL`, `COM1`…), 120 characters at most.
 
-### Settings
+### Claude Code settings
 
 `project.settings` merge into the adopter's `.claude/settings.local.json`, never the shared
 `.claude/settings.json`; `user.settings` into their `~/.claude/settings.json`, only with `--user`.
@@ -109,7 +118,7 @@ They may hold only:
   none of them; each person sets their own.
 - `model`: a model name.
 
-### MCP servers
+### Claude Code's MCP servers
 
 `project.mcpServers` merge into the adopter's `.mcp.json`; a server they already have by the same
 name is kept as theirs. `user.mcpServers` are never written, because `~/.claude.json` also holds the
@@ -120,6 +129,37 @@ A local server is `{ type?: "stdio", command, args?, env? }`. A remote one is `{
 credential. Every `env` value is `{ "fromEnv": "<NAME>" }` and every header `{ "fromEnv": "<NAME>",
 "prefix"?: "Bearer " | "Basic " | "Token " }`; adopting writes `${NAME}`, which Claude Code fills from
 the adopter's environment.
+
+### Codex
+
+`codex.project` holds only `mcpServers`: a project's other Codex settings stay in that project. They
+merge into the adopter's `.codex/config.toml`, which Codex reads only in a project the person trusts.
+`codex.user`, adopted only with `--user` into Codex's own `config.toml`, may hold `settings` and
+`mcpServers`. Its settings may be only:
+
+- `model`, and `model_reasoning_effort`;
+- `approval_policy`: `on-request`, `never`, `untrusted` or `on-failure`. Never the granular table;
+- `sandbox_mode`: `read-only` or `workspace-write`. Never `danger-full-access`;
+- `notify`: a command in exec form, `[program, ...args]`, checked like any other.
+
+A local server is `{ command, args?, env?, env_vars?, cwd?, enabled?, startup_timeout_sec?,
+tool_timeout_sec?, enabled_tools?, disabled_tools? }`; a remote one is `{ url, bearer_token_env_var?,
+env_http_headers?, … }`, with the same last five. Codex does not read `${VAR}` in its config, so an
+`env` value is `{ "fromEnv": "<NAME>" }` for the variable of that same name, and adopting writes it
+as `env_vars`, which Codex passes through from the adopter's environment. `env_http_headers` maps a
+header to the variable that holds it; a header written out in the exporter's config
+(`http_headers`) becomes one, named after the server and the header. Never `http_headers_helper`,
+which runs a command, or `tools.<tool>.approval_mode`, which can approve a tool for everyone.
+
+Adopting adds to the config's text and rewrites nothing else in it: a key the setup sets is replaced
+on its own lines or added after the last top-level key, a server is added at the end, and a server
+the adopter already has by that name is kept as theirs. A config Rooms cannot read, by TOML 1.0's
+rules, is not written to.
+
+Never exported from Codex: `auth.json`, sessions, history and memories, `[projects]`, whose names are
+folders, the values of `[shell_environment_policy]`, rules files (an `allow` runs outside the
+sandbox), plugins, profiles, permission profiles, and a skill whose `agents/openai.yaml` declares
+dependencies.
 
 ### Paths and placeholders
 
@@ -139,6 +179,7 @@ quoted into someone else's command if the path holds a character a shell would s
 | `mcp` | `name`, and `command` and `pinned?`, or `url` | an MCP server |
 | `loads` | `file`, `command`, `pinned?` | a shell command an agent, command or skill runs as it loads (`` !`…` `` or a ```` ```! ```` block) |
 | `script` | `file` | a hook script, or a skill file that runs as a program |
+| `notify` | `command`, `pinned?` | what Codex runs after each turn |
 
 Every entry also has `tool` and `scope`. `pinned` names the exact packages a command fetches. Any
 package a command runs through `npx`, `bunx`, `pnpx`, `pnpm dlx`, `uvx`, `uv tool run`, `go run` or

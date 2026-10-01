@@ -14,7 +14,8 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { exec, git, scratch, teamOfTwo } from "./team-helpers.js";
-import { runGit } from "../src/setup/room.js";
+import { readSetupAt, runGit } from "../src/setup/room.js";
+import { checkSetup } from "../src/setup/manifest.js";
 
 const posix = process.platform !== "win32";
 
@@ -302,5 +303,32 @@ test("a git command that stops before reading its input answers with its exit co
     const blob = await runGit(dir, ["hash-object", "--stdin"], { input: "hello\n" });
     assert.equal(blob.out.trim(), "ce013625030ba8dba906f756967f9e9ca394464a", "input still reaches a command that reads it");
     assert.equal((await runGit(dir, ["rev-parse", "--git-dir"])).out.trim(), ".git", "and a command given none gets none");
+  });
+});
+
+test("a manifest naming a kind or a tool off a prototype is refused when read from git, never a crash", async () => {
+  await scratch(async (dir) => {
+    await exec("git", ["init", "-q", "-b", "main", dir]);
+    await git(dir, "config", "user.name", "mallory");
+    await git(dir, "config", "user.email", "m@example.com");
+    const manifest = {
+      format: "iops-rooms/setup", formatVersion: 1, name: "odd", role: "web", owner: "mallory", exportedWith: "x",
+      tools: {
+        "claude-code": { files: [{ kind: "constructor", path: "files/claude-code/project/CLAUDE.md", installTo: "project:CLAUDE.md", sha256: "0".repeat(64) }] },
+        __proto__: { files: [] },
+        constructor: { files: [{ kind: "toString", path: "files/constructor/project/x", installTo: "project:x", sha256: "0".repeat(64) }] },
+      },
+      runs: [], requires: [], notExported: [],
+    };
+    await mkdir(join(dir, "setups", "web", "odd"), { recursive: true });
+    await writeFile(join(dir, "setups", "web", "odd", "setup.json"), JSON.stringify(manifest), "utf8");
+    await git(dir, "add", "-A");
+    await git(dir, "commit", "-q", "-m", "odd");
+    const read = await readSetupAt(dir, "HEAD", "web", "odd");
+    assert.equal(read.found, true);
+    assert.equal(read.files.size, 0, "nothing is read from a path a kind off a prototype would allow");
+    const problems = checkSetup(read.manifest, read.files, { role: "web", name: "odd" });
+    assert.ok(problems.includes("it lists a file this version does not install"), problems.join("\n"));
+    assert.ok(problems.some((p) => /it has constructor, which this version of Rooms cannot read/.test(p)), problems.join("\n"));
   });
 });
