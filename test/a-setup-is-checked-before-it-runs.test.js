@@ -78,7 +78,7 @@ const cases = {
   "a key a setup may not carry": [(m) => { cc(m).project.settings.statusLine = { type: "command", command: "x" }; }, /statusLine, which a setup may not carry/],
   "a hook that is not a command": [(m) => { cc(m).project.settings.hooks.Stop[0].hooks[0].type = "prompt"; }, /a setup carries command hooks only/],
   "a file climbing out through ..": [(m) => Object.assign(fileAt(m, "project:.claude/agents/reviewer.md"), { installTo: "project:.claude/agents/../../../escape.md", path: filePathFor("project:.claude/agents/../../../escape.md") }), /not a place a setup may write one/],
-  "a tool this version cannot read": [(m) => { m.tools.cursor = { files: [] }; }, /it has cursor, which this version of Rooms cannot read; update Rooms/],
+  "a tool this version cannot read": [(m) => { m.tools.windsurf = { files: [] }; }, /it has windsurf, which this version of Rooms cannot read; update Rooms/],
   "a kind read off a prototype": [(m) => Object.assign(fileAt(m, "project:CLAUDE.md"), { kind: "constructor" }), /it lists a file this version does not install/],
   "an owner that is not a login": [(m) => { m.owner = "alice smith"; }, /owner is not a GitHub login/],
   "a setup filed under another name": [(m) => { m.name = "other"; }, /it says it is backend\/other, but it is filed as backend\/go-claude/],
@@ -202,3 +202,73 @@ test("refused, Codex: a skill whose agents/openai.yaml declares dependencies, ev
   files.set(f.path, yaml);
   assert.ok(checkSetup(manifest, files, { role: "web", name: "codex-flow" }).some((p) => /declares dependencies, which this version does not adopt/.test(p)));
 });
+
+// ---- the Cursor part ---------------------------------------------------------------------------
+
+function cursorBaseline() {
+  const items = [
+    { selected: true, tool: "cursor", scope: "project", kind: "rule", installTo: "project:.cursor/rules/style.mdc", label: "r", content: "---\nalwaysApply: true\n---\nUse tabs.\n", left: [] },
+    { selected: true, tool: "cursor", scope: "project", kind: "rule", installTo: "project:.cursorrules", label: "c", content: "Be brief.\n", left: [] },
+    { selected: true, tool: "cursor", scope: "project", kind: "script", installTo: "project:.cursor/hooks/format.sh", label: "f", content: "#!/bin/sh\nexit 0\n", executable: true, left: [] },
+    { selected: true, tool: "cursor", scope: "user", kind: "agent", installTo: "user:agents/me.md", label: "a", content: "---\nname: me\n---\nx\n", left: [] },
+    {
+      selected: true, tool: "cursor", scope: "project", kind: "config", label: ".cursor/mcp.json", left: [],
+      value: { mcpServers: { issues: { command: "npx", args: ["-y", "@example/issues-mcp@1.4.2", "--team", "${TEAM_ID}", "--cache", "${HOME}/.cache"], env: { ISSUES_API_TOKEN: { fromEnv: "ISSUES_API_TOKEN" } } }, docs: { url: "https://docs.example.com/mcp", headers: { Authorization: { fromEnv: "DOCS_TOKEN", prefix: "Bearer " } } } } },
+    },
+    { selected: true, tool: "cursor", scope: "project", kind: "config", label: ".cursor/hooks.json", left: [], value: { hooks: { afterFileEdit: [{ command: "./.cursor/hooks/format.sh" }] } } },
+    { selected: true, tool: "cursor", scope: "project", kind: "config", label: ".cursor/cli.json", left: [], value: { permissions: { allow: ["Shell(git)"], deny: ["Shell(rm)"] } } },
+    { selected: true, tool: "cursor", scope: "user", kind: "config", label: "~/.cursor/mcp.json", left: [], value: { mcpServers: { assurance: { command: "uvx", args: ["assurance@0.1.11", "mcp"] } } } },
+  ];
+  const { manifest, files } = buildManifest({ role: "web", name: "cursor-flow", owner: "alice", version: "0.7.2", items });
+  return { manifest: JSON.parse(JSON.stringify(manifest)), files };
+}
+
+test("a Cursor setup as export built it passes", () => {
+  const { manifest, files } = cursorBaseline();
+  assert.deepEqual(checkSetup(manifest, files, { role: "web", name: "cursor-flow" }), []);
+  assert.deepEqual(Object.keys(manifest.tools.cursor.project), ["mcpServers", "hooks", "permissions"]);
+  assert.deepEqual(manifest.runs.map((r) => `${r.scope} ${r.surface} ${r.event || r.name || r.file}`), [
+    "project hook afterFileEdit",
+    "project mcp docs",
+    "project mcp issues",
+    "user mcp assurance",
+    "project script project:.cursor/hooks/format.sh",
+  ]);
+  assert.deepEqual(manifest.requires.filter((q) => q.env), [
+    { env: "DOCS_TOKEN", for: "cursor mcp docs" },
+    { env: "ISSUES_API_TOKEN", for: "cursor mcp issues" },
+    { env: "TEAM_ID", for: "cursor mcp issues" },
+  ], "a variable an argument names is required; ${HOME}, a placeholder, is not");
+});
+
+const cu = (m) => m.tools.cursor;
+const cursorCases = {
+  "a Shell rule for any command": [(m) => cu(m).project.permissions.allow.push("Shell(*)"), /Shell\(\*\) lets the agent run any command without asking/],
+  "a Shell rule through bash": [(m) => cu(m).project.permissions.allow.push("Shell(bash)"), /Shell\(bash\) runs anything through bash/],
+  "a rule naming a path on someone's machine": [(m) => cu(m).project.permissions.allow.push("Read(/opt/acme/**)"), /names a path on someone's machine/],
+  "the approval mode": [(m) => { cu(m).user.approvalMode = "unrestricted"; }, /cursor\.user\.approvalMode is not a part this version reads/],
+  "a sandbox setting": [(m) => { cu(m).project.sandbox = { mode: "disabled" }; }, /cursor\.project\.sandbox is not a part this version reads/],
+  "a value in a server's env": [(m) => { cu(m).project.mcpServers.issues.env.ISSUES_API_TOKEN = "the-value"; }, /env holds a value/],
+  "a value in a header": [(m) => { cu(m).project.mcpServers.docs.headers.Authorization = "Bearer the-value"; }, /headers hold a value/],
+  "an env file": [(m) => { cu(m).project.mcpServers.issues.envFile = "${workspaceFolder}/.env"; }, /issues has a key this version does not read/],
+  "an unpinned server": [(m) => { cu(m).user.mcpServers.assurance.args = ["assurance", "mcp"]; }, /names no exact version/],
+  "an unpinned hook": [(m) => { cu(m).project.hooks.afterFileEdit[0].command = "npx formatter"; }, /npx formatter names no exact version/],
+  "a hook naming a path on someone's machine": [(m) => { cu(m).project.hooks.afterFileEdit[0].command = "/opt/acme/format"; }, /names a path on someone's machine/],
+  "a hook key this version does not write": [(m) => { cu(m).project.hooks.afterFileEdit[0].loginShell = true; }, /afterFileEdit has a hook this version does not read/],
+  "a rule file into .git": [(m) => Object.assign(cu(m).files.find((f) => f.installTo === "project:.cursorrules"), { installTo: "project:.git/hooks/pre-commit", path: "files/cursor/project/.git/hooks/pre-commit" }), /not a place a setup may write one/],
+  "a rule file outside .cursor/rules": [(m) => Object.assign(cu(m).files.find((f) => f.installTo === "project:.cursorrules"), { installTo: "project:.cursor/notes.mdc", path: "files/cursor/project/.cursor/notes.mdc" }), /not a place a setup may write one/],
+  "a user rule, which Cursor keeps no file for": [(m) => Object.assign(cu(m).files.find((f) => f.kind === "agent"), { kind: "rule", installTo: "user:rules/x.mdc", path: "files/cursor/user/rules/x.mdc" }), /not a place a setup may write one/],
+  "instructions, which Cursor's part does not carry": [(m) => Object.assign(cu(m).files.find((f) => f.installTo === "project:.cursorrules"), { kind: "instructions" }), /it lists a cursor file this version does not install/],
+  "a hook added without its line in runs": [(m) => { cu(m).project.hooks.stop = [{ command: "git status" }]; }, /list of what it runs does not match/],
+  "Cursor's ${env:…}, which its CLI passes on as written": [(m) => cu(m).project.mcpServers.issues.args.push("--key=${env:ISSUES_API_TOKEN}"), /issues names a \$\{…\} that Cursor's CLI does not fill in/],
+  "Cursor's ${workspaceFolder}, which its CLI passes on as written": [(m) => cu(m).project.mcpServers.issues.args.push("${workspaceFolder}/x.js"), /issues names a \$\{…\} that Cursor's CLI does not fill in/],
+  "a folder in a server's address": [(m) => { cu(m).project.mcpServers.docs.url = "https://docs.example.com/${PROJECT}/mcp"; }, /docs: an address with a \$\{…\} a setup does not carry/],
+};
+for (const [name, [change, expected]] of Object.entries(cursorCases)) {
+  test(`refused, Cursor: ${name}`, () => {
+    const { manifest, files } = cursorBaseline();
+    change(manifest, files);
+    const problems = checkSetup(manifest, files, { role: "web", name: "cursor-flow" });
+    assert.ok(problems.some((p) => expected.test(p)), `${name}: ${JSON.stringify(problems)}`);
+  });
+}

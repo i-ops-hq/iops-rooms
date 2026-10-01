@@ -17,7 +17,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, readdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { gitIn } from "../team.js";
-import { CODEX, installPlace, normalizeText, TOOL, TOOLS } from "./manifest.js";
+import { CODEX, CURSOR, installPlace, normalizeText, TOOL, TOOLS } from "./manifest.js";
+import { CURSOR_DECIDING_EVENTS, describeCursorRule } from "./cursor.js";
 import { mergeCodexToml } from "./toml.js";
 import { describeRule } from "./permissions.js";
 import { frontmatter, toolList } from "./prose.js";
@@ -168,6 +169,9 @@ function codexSays(key, value) {
   return "";
 }
 
+/** Claude Code's hook events whose hook may answer "allow" for the agent. */
+const CLAUDE_DECIDING_EVENTS = new Set(["PreToolUse", "PermissionRequest"]);
+
 // ---- merging into what is there -----------------------------------------------------------------
 
 const sameHook = (a, b) => JSON.stringify([a.type, a.command, a.args || null]) === JSON.stringify([b.type, b.command, b.args || null]);
@@ -215,6 +219,42 @@ export function mergeSettings(existing, incoming) {
   return { after, changes };
 }
 
+/** Cursor's hooks.json with the setup's hooks added: one already there with the same command is not added again. */
+export function mergeCursorHooks(existing, hooks) {
+  const after = structuredClone(isObj(existing) ? existing : {});
+  if (after.version === undefined) after.version = 1;
+  const have = isObj(after.hooks) ? after.hooks : {};
+  const changes = [];
+  for (const [event, list] of Object.entries(hooks)) {
+    const cur = Array.isArray(have[event]) ? have[event] : [];
+    for (const h of list) {
+      if (cur.some((x) => x && x.command === h.command)) continue;
+      cur.push(h);
+      changes.push({ kind: "hook", event, command: h.command });
+    }
+    if (cur.length) have[event] = cur;
+  }
+  after.hooks = have;
+  return { after, changes };
+}
+
+/** Cursor's cli.json or cli-config.json with the setup's permission rules added, and nothing else changed. */
+export function mergeCursorPermissions(existing, perms) {
+  const after = structuredClone(isObj(existing) ? existing : {});
+  const p = isObj(after.permissions) ? after.permissions : {};
+  const changes = [];
+  for (const list of ["allow", "deny"]) {
+    if (!Array.isArray(p[list])) p[list] = [];
+    for (const rule of perms[list] || []) {
+      if (p[list].includes(rule)) continue;
+      p[list].push(rule);
+      changes.push({ kind: "rule", list, rule, tool: CURSOR });
+    }
+  }
+  after.permissions = p;
+  return { after, changes };
+}
+
 /** `.mcp.json` with the setup's servers added. A server you already have by that name is kept as yours. */
 export function mergeServers(existing, servers) {
   const after = structuredClone(isObj(existing) ? existing : {});
@@ -237,7 +277,7 @@ export function mergeServers(existing, servers) {
  * Everything adopting `setup` would do here, without doing any of it. `setup` is a checked setup:
  * `{ manifest, files, commit, revision, team }`. `skip` takes names as the plan shows them.
  */
-export async function planAdoption({ setup, project, config, codexConfig = null, home, user = false, skip = [] }) {
+export async function planAdoption({ setup, project, config, codexConfig = null, cursorConfig = null, cursorCli = null, home, user = false, skip = [] }) {
   const { manifest, files } = setup;
   const cc = manifest.tools[TOOL] || {};
   const cx = manifest.tools[CODEX] || {};
@@ -252,6 +292,8 @@ export async function planAdoption({ setup, project, config, codexConfig = null,
     project,
     config,
     codexConfig,
+    cursorConfig,
+    cursorCli: cursorCli?.dir ?? null,
     user,
     writes: [],
     skipped: [],
@@ -262,10 +304,11 @@ export async function planAdoption({ setup, project, config, codexConfig = null,
   };
   const where = { home, project };
   const skipping = (label) => skip.some((p) => label === p || (p.endsWith("/") && label.startsWith(p)));
-  const rootsFor = { [TOOL]: { project, user: config }, [CODEX]: { project, user: codexConfig, home } };
-  const labelFor = (tool, scope, rel) => (scope === "project" ? rel : scope === "home" ? `~/${rel}` : tool === TOOL ? `~/.claude/${rel}` : `~/.codex/${rel}`);
+  const rootsFor = { [TOOL]: { project, user: config }, [CODEX]: { project, user: codexConfig, home }, [CURSOR]: { project, user: cursorConfig } };
+  const userDir = { [TOOL]: "~/.claude/", [CODEX]: "~/.codex/", [CURSOR]: "~/.cursor/" };
+  const labelFor = (tool, scope, rel) => (scope === "project" ? rel : scope === "home" ? `~/${rel}` : `${userDir[tool]}${rel}`);
 
-  const mergeInto = async ({ label, target, scope, shared = false, merge }) => {
+  const mergeInto = async ({ label, target, scope, shared = false, tool = TOOL, merge }) => {
     const cur = await current(target);
     if (cur.link || cur.notFile) return plan.refused.push(`${label} is ${cur.link ? "a link" : "not a file"} here; Rooms does not write through it`);
     let existing = {};
@@ -278,7 +321,7 @@ export async function planAdoption({ setup, project, config, codexConfig = null,
       if (!isObj(existing)) return plan.refused.push(`${label} here is not a JSON object; fix it first`);
     }
     const { after, changes, kept = [] } = merge(existing);
-    const w = { label, target, scope, shared, changes, kept, created: !cur.exists };
+    const w = { label, target, scope, shared, tool, changes, kept, created: !cur.exists };
     if (!changes.length) return plan.writes.push({ ...w, action: "same" });
     return plan.writes.push({ ...w, action: "merge", before: cur.bytes, after: Buffer.from(`${JSON.stringify(after, null, 2)}\n`, "utf8") });
   };
@@ -410,6 +453,58 @@ export async function planAdoption({ setup, project, config, codexConfig = null,
     }
   }
 
+  // Cursor: servers, hooks and permission rules merged into the JSON files Cursor reads: the
+  // project's under .cursor/, shared with the project, and with --user the person's under ~/.cursor/.
+  const cu = manifest.tools[CURSOR] || {};
+  for (const scope of ["project", "user"]) {
+    const part = cu[scope];
+    if (!part) continue;
+    const base = scope === "project" ? join(project, ".cursor") : cursorConfig;
+    const prefix = scope === "project" ? ".cursor/" : "~/.cursor/";
+    const at = scope === "user" ? { home, project: null } : where;
+    const gate = (label) => {
+      if (scope === "user" && !user) return plan.skipped.push({ label, why: "yours, for every project: add --user to adopt it too" }) && false;
+      if (skipping(label)) return plan.skipped.push({ label, why: "you said --skip" }) && false;
+      if (!base) return plan.refused.push(`${label} has nowhere to go here`) && false;
+      return true;
+    };
+    // Cursor's CLI fills only `${NAME}`, so its servers are written as Claude Code's are: this
+    // machine's paths, and `${NAME}` for each variable, which the editor fills too.
+    if (Object.keys(part.mcpServers || {}).length && gate(`${prefix}mcp.json`)) {
+      const label = `${prefix}mcp.json`;
+      const servers = {};
+      for (const [n, sv] of Object.entries(part.mcpServers)) {
+        const r = placedServer(sv, at);
+        if (r.problems.length) plan.refused.push(...r.problems.map((p) => `${label} ${n}: ${p}`));
+        servers[n] = r.value;
+      }
+      await mergeInto({ label, target: join(base, "mcp.json"), scope, tool: CURSOR, shared: scope === "project", merge: (existing) => mergeServers(existing, servers) });
+    }
+    if (Object.keys(part.hooks || {}).length && gate(`${prefix}hooks.json`)) {
+      const label = `${prefix}hooks.json`;
+      const hooks = {};
+      for (const [event, list] of Object.entries(part.hooks)) {
+        hooks[event] = list.map((h) => {
+          const p = placed(h.command, at, { shell: true });
+          if (!p.ok) plan.refused.push(`${label} ${event}: ${p.why}`);
+          return { ...h, command: p.value ?? h.command };
+        });
+      }
+      await mergeInto({ label, target: join(base, "hooks.json"), scope, tool: CURSOR, shared: scope === "project", merge: (existing) => mergeCursorHooks(existing, hooks) });
+    }
+    // The CLI's own config may live elsewhere: CURSOR_CONFIG_DIR or XDG_CONFIG_HOME move it.
+    const rules = part.permissions || {};
+    const label = scope === "project" ? ".cursor/cli.json" : cursorCli?.label || "~/.cursor/cli-config.json";
+    if ((rules.allow?.length || rules.deny?.length) && gate(label)) {
+      const target = scope === "project" ? join(base, "cli.json") : join(cursorCli?.dir || base, "cli-config.json");
+      if (scope === "user" && !(await current(target)).exists) {
+        plan.skipped.push({ label, why: "Cursor's CLI writes this file the first time it runs: run cursor-agent once, then adopt again" });
+      } else {
+        await mergeInto({ label, target, scope, tool: CURSOR, shared: scope === "project", merge: (existing) => mergeCursorPermissions(existing, rules) });
+      }
+    }
+  }
+
   // A personal settings file this adoption creates stays out of git, as Claude Code keeps its own.
   const local = plan.writes.find((w) => w.label === ".claude/settings.local.json" && w.created && w.action !== "same");
   if (local && !(await gitIn(project, ["check-ignore", "-q", "--", ".claude/settings.local.json"])).ok) {
@@ -430,7 +525,17 @@ export async function planAdoption({ setup, project, config, codexConfig = null,
   const settingsIn = (scope) => placedLabels.has(scope === "project" ? ".claude/settings.local.json" : "~/.claude/settings.json");
   const mcp = plan.writes.find((w) => w.label === ".mcp.json");
   const codexIn = { project: plan.writes.find((w) => w.tool === CODEX && w.label === ".codex/config.toml"), user: plan.writes.find((w) => w.tool === CODEX && w.label === "~/.codex/config.toml") };
+  const cursorIn = (scope, file) => plan.writes.find((w) => w.tool === CURSOR && w.label === `${scope === "project" ? ".cursor/" : "~/.cursor/"}${file}`);
   for (const r of manifest.runs) {
+    if (r.tool === CURSOR) {
+      const at = r.scope === "user" ? { home, project: null } : where;
+      const hooks = cursorIn(r.scope, "hooks.json");
+      const mcpIn = cursorIn(r.scope, "mcp.json");
+      if (r.surface === "hook" && hooks) plan.runs.push({ ...r, shown: placed(r.command, at, { shell: true }).value || r.command, ...(CURSOR_DECIDING_EVENTS.has(r.event) ? { decides: true } : {}) });
+      else if (r.surface === "mcp" && mcpIn && !mcpIn.kept.includes(r.name)) plan.runs.push({ ...r, shown: r.url || placed(r.command, at, { shell: false }).value || r.command });
+      else if (r.surface === "script" && placedFiles.has(`${CURSOR}|${r.file}`)) plan.runs.push({ ...r, shown: r.file.replace(/^project:/, "").replace(/^user:/, "~/.cursor/") });
+      continue;
+    }
     if (r.tool === CODEX) {
       const into = codexIn[r.scope];
       if (r.surface === "notify" && into) plan.runs.push({ ...r, shown: placed(r.command, { home, project: null }, { shell: false }).value || r.command });
@@ -440,7 +545,7 @@ export async function planAdoption({ setup, project, config, codexConfig = null,
     }
     if (r.surface === "hook" && settingsIn(r.scope)) {
       const shown = placed(r.command, r.scope === "user" ? { home, project: null } : where, { shell: true });
-      plan.runs.push({ ...r, shown: shown.value ?? r.command });
+      plan.runs.push({ ...r, shown: shown.value ?? r.command, ...(CLAUDE_DECIDING_EVENTS.has(r.event) ? { decides: true } : {}) });
     } else if (r.surface === "mcp" && r.scope === "project" && mcp && !mcp.kept.includes(r.name)) {
       plan.runs.push({ ...r, shown: r.url || placed(r.command, where, { shell: false }).value || r.command });
     } else if ((r.surface === "loads" || r.surface === "script") && placedFiles.has(`${TOOL}|${r.file}`)) {
@@ -452,7 +557,7 @@ export async function planAdoption({ setup, project, config, codexConfig = null,
   // and skills pre-approve while they run.
   for (const w of plan.writes) {
     for (const c of w.changes || []) {
-      if (c.kind === "rule") plan.grants.push({ where: w.label, list: c.list, rule: c.rule, says: describeRule(c.list, c.rule) });
+      if (c.kind === "rule") plan.grants.push({ where: w.label, list: c.list, rule: c.rule, says: c.tool === CURSOR ? describeCursorRule(c.list, c.rule) : describeRule(c.list, c.rule) });
       if (c.kind === "mode") plan.grants.push({ where: w.label, mode: c.now, was: c.was });
       if (c.kind === "setting" && (c.key === "approval_policy" || c.key === "sandbox_mode")) plan.grants.push({ where: w.label, setting: c.key, value: c.now, was: c.was, says: codexSays(c.key, c.now) });
     }
@@ -476,6 +581,8 @@ export function planDigest(plan) {
     project: plan.project,
     config: plan.config,
     codexConfig: plan.codexConfig,
+    cursorConfig: plan.cursorConfig,
+    cursorCli: plan.cursorCli,
     writes: plan.writes.filter((w) => w.action !== "same").map((w) => [w.target, w.action, sha256(w.after)]),
     userServers: plan.userServers.map((s) => [s.name, s.json]),
     runs: plan.runs.map((r) => [r.surface, r.shown]),

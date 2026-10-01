@@ -62,6 +62,7 @@ async function plantAlice(alice) {
     permissions: { allow: ["Bash(go test *)"], deny: ["Read(./.env)"] },
     hooks: {
       Stop: [{ hooks: [{ type: "command", command: "uvx --offline assurance@0.1.11 audit --hook --nudge" }] }],
+      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "npx -y bash-guard@2.0.1" }] }],
       // As written in the file, through whatever link the temp folder sits behind.
       PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: `${a}/scripts/fmt.sh` }] }],
     },
@@ -153,6 +154,8 @@ test("bob adopts by a plan he approves, never by --yes, and rollback puts back e
     assert.match(asked.err, /Not a terminal, so nothing was changed\. To apply exactly this plan: rooms setup adopt backend\/go-claude --approve [0-9a-f]{16}\n/);
     assert.match(asked.out, /write {4}CLAUDE\.md {28}replaces yours: \+2 −2 lines/);
     assert.match(asked.out, /These will run on this machine, as you:/);
+    assert.match(asked.out, /hook PreToolUse \(Bash\) +npx -y bash-guard@2\.0\.1 +pinned bash-guard@2\.0\.1\n +this hook can answer "allow" for the agent, so what it allows runs without asking you\n/);
+    assert.doesNotMatch(asked.out, /audit --hook --nudge[^\n]*\n +this hook can answer/, "a Stop hook decides nothing");
     const yes = await bob.rooms(bob.web, "setup", "adopt", "backend/go-claude", "--yes");
     assert.equal(yes.code, 2);
     assert.match(yes.err, /--yes is not enough/);
