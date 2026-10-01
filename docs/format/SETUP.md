@@ -1,7 +1,7 @@
 # Setup format 1
 
-A setup is how one person has Claude Code, Codex, or both set up, as files a teammate can read,
-review and adopt. It lives in a team room (see the README), in a folder of its own:
+A setup is how one person has Claude Code, Codex, Cursor, or any of them set up, as files a teammate
+can read, review and adopt. It lives in a team room (see the README), in a folder of its own:
 
 ```
 setups/<role>/<name>/
@@ -11,11 +11,15 @@ setups/<role>/<name>/
 │   ├── project/CLAUDE.md               files that go into the adopter's project
 │   ├── project/.claude/agents/…
 │   └── user/agents/…                   files that go into the adopter's Claude Code folder
-└── files/codex/
-    ├── project/AGENTS.md
-    ├── project/.agents/skills/…
-    ├── user/prompts/…                  files that go into the adopter's Codex folder
-    └── home/.agents/skills/…           Codex's skills for every project, in the adopter's home
+├── files/codex/
+│   ├── project/AGENTS.md
+│   ├── project/.agents/skills/…
+│   ├── user/prompts/…                  files that go into the adopter's Codex folder
+│   └── home/.agents/skills/…           Codex's skills for every project, in the adopter's home
+└── files/cursor/
+    ├── project/.cursor/rules/…
+    ├── project/.cursorrules
+    └── user/agents/…                   files that go into the adopter's ~/.cursor
 ```
 
 `<role>` and `<name>` are lowercase letters, digits and dashes, 40 at most. `rooms setup export`
@@ -70,7 +74,7 @@ anything: a setup may have been edited in the team room since it was exported.
 | `summary` | optional, 300 characters at most |
 | `cost` | optional: what the owner says the setup costs, in US dollars a month, and for what. Shown as declared, never measured |
 | `exportedWith` | the Rooms that wrote it |
-| `tools` | `claude-code`, `codex`, or both. A reader refuses a setup holding a tool it cannot read, by name, so a 0.7.0 reader asks for an update when a setup holds Codex |
+| `tools` | `claude-code`, `codex`, `cursor`, or any of them. A reader refuses a setup holding a tool it cannot read, by name, so a 0.7.1 reader asks for an update when a setup holds Cursor |
 | `runs`, `requires` | derived from the rest, never written by hand. A reader derives both again and refuses a setup whose lists differ |
 | `notExported` | what the owner's export left out of the files they chose, and why. Never a value |
 
@@ -78,8 +82,8 @@ anything: a setup may have been edited in the team room since it was exported.
 
 Each entry is `{ kind, path, installTo, sha256 }`, with `executable: true` for a file that runs as a
 program. `installTo` is a scope and a path: `project:` is relative to the adopter's project; `user:`
-to the tool's own folder (`~/.claude` or `CLAUDE_CONFIG_DIR`; `~/.codex` or `CODEX_HOME`); and, for
-Codex only, `home:` to the adopter's home. `path` is always
+to the tool's own folder (`~/.claude` or `CLAUDE_CONFIG_DIR`; `~/.codex` or `CODEX_HOME`; `~/.cursor`);
+and, for Codex only, `home:` to the adopter's home. `path` is always
 `files/<tool>/<scope>/<path in installTo>`, so the two cannot disagree. `sha256` is of the file's
 text with CRLF line ends read as LF, so checkouts on any system agree.
 
@@ -96,6 +100,11 @@ A file may go only to these places, and only as its kind:
 | `codex` | `instructions` | `AGENTS.md` | `AGENTS.md`, `AGENTS.override.md` | |
 | | `skill` | `.agents/skills/<skill>/**` | | `.agents/skills/<skill>/**` |
 | | `prompt` | | `prompts/*.md` | |
+| `cursor` | `rule` | `.cursorrules`, `.cursor/rules/**/*.mdc` | | |
+| | `agent` | `.cursor/agents/**/*.md` | `agents/**/*.md` | |
+| | `command` | `.cursor/commands/**/*.md` | `commands/**/*.md` | |
+| | `skill` | `.cursor/skills/<skill>/**` | `skills/<skill>/**` | |
+| | `script` | `.cursor/hooks/**` | `hooks/**` | |
 
 Every name on the way must be one every system can hold: not `.` or `..`, not `.git`, no `\ : * ? "
 < > |` or control character, not ending in a dot or a space, not a name Windows reserves (`CON`,
@@ -161,6 +170,43 @@ folders, the values of `[shell_environment_policy]`, rules files (an `allow` run
 sandbox), plugins, profiles, permission profiles, and a skill whose `agents/openai.yaml` declares
 dependencies.
 
+### Cursor
+
+`cursor.project` and `cursor.user` may each hold `mcpServers`, `hooks` and `permissions`. A project's
+merge into the adopter's `.cursor/mcp.json`, `.cursor/hooks.json` and `.cursor/cli.json`, which the
+project shares; with `--user`, the person's merge into `~/.cursor/mcp.json`, `~/.cursor/hooks.json` and
+the permissions of the CLI's `cli-config.json`. That file is in `~/.cursor` unless `CURSOR_CONFIG_DIR`,
+or else `XDG_CONFIG_HOME`, moves it, as the CLI finds it, and Rooms looks for it the same way. The CLI
+writes it the first time it runs, so adopting adds rules to it only once it is there. What the adopter already has stays: a
+server by the same name, a hook with the same command, a rule already listed.
+
+- `mcpServers`: a local server is `{ command, args?, env? }`, a remote one `{ url, headers? }`, with
+  `env` and headers named as for Claude Code (`{ "fromEnv": "<NAME>" }`). Adopting writes `${NAME}`
+  and the adopter's own paths. Cursor's editor also fills `${env:NAME}`, `${userHome}` and
+  `${workspaceFolder}`, as its documentation says, but its CLI (2026.04.17) passes those on as they
+  are written, a header included; both fill `${NAME}`. So export reads Cursor's forms as the setup's
+  own: `${env:NAME}` and `${NAME}` as the name of a variable, `${workspaceFolder}` as `${PROJECT}`,
+  `${userHome}` as `${HOME}`. A server naming any other `${…}`, or for every project naming the
+  project that is open, stays out, as does `envFile`.
+- `hooks`: per event, a list of `{ command, timeout?, matcher?, failClosed? }`, as Cursor's
+  `hooks.json` (version 1) holds them, each command checked as any other. A hook on `preToolUse`,
+  `subagentStart`, `beforeShellExecution`, `beforeMCPExecution`, `beforeReadFile` or
+  `beforeTabFileRead` can answer "allow" for the agent, and the plan says so, as it does for Claude
+  Code's `PreToolUse` and `PermissionRequest`.
+- `permissions`: `allow` and `deny` lists of `Shell(…)`, `Read(…)`, `Write(…)`, `WebFetch(…)` and
+  `Mcp(…)` rules. Cursor reads `Shell(git)` as git with any arguments, so no `allow` rule may name a
+  shell, `sudo`, `xargs`, or, alone, an interpreter or launcher such as `node` or `npx`: those, like
+  `Shell(*)`, let any command run. No rule naming a path on someone's machine.
+
+Never exported from Cursor: the approval mode and sandbox, which stay each person's own; User Rules,
+which live inside Cursor's settings, not a file; `skills-cursor`, which comes with Cursor; plugins;
+`.cursor/environment.json` and `.cursor/worktrees.json`, which run setup steps; and the rest of
+`cli-config.json`. `AGENTS.md` and `.agents/skills/`, which Cursor reads too, go with Codex.
+
+Cursor's agent also runs the hooks in Claude Code's settings files (`~/.claude/settings.json`,
+`.claude/settings.json`, `.claude/settings.local.json`) and reads Claude Code's commands, as the CLI's
+own code shows, so a Claude Code setup's hooks can run under Cursor as well.
+
 ### Paths and placeholders
 
 The exporter's project becomes `${PROJECT}` and their home `${HOME}`, in hook commands and server
@@ -171,7 +217,8 @@ quoted into someone else's command if the path holds a character a shell would s
 
 ### What runs
 
-`runs` lists everything the setup would run on an adopter's machine, in a fixed order:
+`runs` lists everything the setup would run on an adopter's machine, in a fixed order, Claude Code's
+first, then Codex's, then Cursor's:
 
 | `surface` | fields | what it is |
 |---|---|---|

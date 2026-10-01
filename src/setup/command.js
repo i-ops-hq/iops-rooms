@@ -18,6 +18,7 @@ import { shWord } from "../shortcut.js";
 import { checkPrivate, pullTeamRoom, readRegistry, teamForProject } from "../team.js";
 import { CHECKED_AGAINST, claudeDirs, readClaudeCode, selectItems } from "./claude-code.js";
 import { CODEX_CHECKED_AGAINST, codexDirs, readCodex } from "./codex.js";
+import { CURSOR_CHECKED_AGAINST, cursorCliDir, cursorDir, describeCursorRule, readCursor } from "./cursor.js";
 import { buildManifest, checkSetup, filePathFor, parseCost, renderReadme, SLUG } from "./manifest.js";
 import { branchFor, commitSetup, dirFor, lastChange, listSetups, readSetupAt, resolveCommit, whoAdded } from "./room.js";
 import { applyAdoption, changedSince, planAdoption, readAdoptions, rollBack } from "./adopt.js";
@@ -26,7 +27,7 @@ import { frontmatter, toolList } from "./prose.js";
 
 const USAGE = [
   "usage: rooms setup export --role <role> --name <name> [--summary <text>] [--cost \"100 what it pays for\"]",
-  "                          [--tool claude-code|codex] [--user] [--only <a,b>] [--skip <a,b>] [--team <owner/repo>] [--dry-run] [--yes]",
+  "                          [--tool claude-code,codex,cursor] [--user] [--only <a,b>] [--skip <a,b>] [--team <owner/repo>] [--dry-run] [--yes]",
   "       rooms setup show [<role/name>] [--ref <commit or branch>] [--team <owner/repo>]",
   "       rooms setup adopt <role/name> [--user] [--skip <a,b>] [--ref <commit or branch>] [--approve <digest>]",
   "       rooms setup rollback [<id>] [--force] [--yes]",
@@ -62,14 +63,15 @@ function parseTarget(target) {
 
 /** Where a setup's file goes, as a person reads it: `.claude/agents/r.md`, `~/.codex/prompts/x.md`. */
 const placeLabel = (installTo, tool) =>
-  String(installTo).replace(/^project:/, "").replace(/^home:/, "~/").replace(/^user:/, tool === "codex" ? "~/.codex/" : "~/.claude/");
+  String(installTo).replace(/^project:/, "").replace(/^home:/, "~/").replace(/^user:/, { codex: "~/.codex/", cursor: "~/.cursor/" }[tool] || "~/.claude/");
 
 function runLine(r) {
-  const codex = r.tool === "codex" ? "codex " : "";
-  const where = r.surface === "hook" ? `hook ${r.event}${r.matcher ? ` (${r.matcher})` : ""}` : r.surface === "mcp" ? `${codex}mcp ${r.name}` : r.surface === "loads" ? "as it loads" : r.surface === "notify" ? "codex notify" : `${codex}script`;
+  const codex = r.tool === "codex" || r.tool === "cursor" ? `${r.tool} ` : "";
+  const where = r.surface === "hook" ? `${codex}hook ${r.event}${r.matcher ? ` (${r.matcher})` : ""}` : r.surface === "mcp" ? `${codex}mcp ${r.name}` : r.surface === "loads" ? "as it loads" : r.surface === "notify" ? "codex notify" : `${codex}script`;
   const what = r.shown ?? r.command ?? r.url ?? placeLabel(r.file, r.tool);
   const file = r.surface === "loads" ? `  (${placeLabel(r.file, r.tool)})` : "";
-  return `  ${where.padEnd(22)} ${what}${r.pinned ? `   pinned ${r.pinned.join(", ")}` : ""}${file}`;
+  const decides = r.decides ? `\n  ${"".padEnd(22)} this hook can answer "allow" for the agent, so what it allows runs without asking you` : "";
+  return `  ${where.padEnd(22)} ${what}${r.pinned ? `   pinned ${r.pinned.join(", ")}` : ""}${file}${decides}`;
 }
 
 function requireLine(q) {
@@ -118,11 +120,12 @@ async function exportSetup(argv, h) {
   const top = await repositoryTop(process.cwd());
   const project = top ? await realpath(top) : null;
   const bundledSkill = await readFile(join(PKG_ROOT, "skills", "rooms", "SKILL.md"), "utf8").catch(() => null);
-  const tools = argv.tool ? list(argv.tool) : ["claude-code", "codex"];
-  for (const t of tools) if (t !== "claude-code" && t !== "codex") throw new Error(`--tool is claude-code or codex, not ${t}`);
+  const tools = argv.tool ? list(argv.tool) : ["claude-code", "codex", "cursor"];
+  for (const t of tools) if (!["claude-code", "codex", "cursor"].includes(t)) throw new Error(`--tool is claude-code, codex or cursor, not ${t}`);
   const reads = [];
   if (tools.includes("claude-code")) reads.push(await readClaudeCode({ project, bundledSkill }));
   if (tools.includes("codex")) reads.push(await readCodex({ project }));
+  if (tools.includes("cursor")) reads.push(await readCursor({ project, bundledSkill }));
   const read = { items: reads.flatMap((r) => r.items), left: reads.flatMap((r) => r.left) };
   const items = selectItems(read.items, { user: Boolean(argv.user), only: list(argv.only), skip: list(argv.skip) });
 
@@ -154,8 +157,9 @@ async function exportSetup(argv, h) {
 
   out(`Setup  ${role}/${name}, as ${login}, into ${room.name} (${id}; ${priv.how})`);
   if (!pulled.ok) out(`       the team room could not be brought up to date (${pulled.why}); building on what this machine has`);
-  const names = tools.map((t) => (t === "claude-code" ? `Claude Code (checked against ${CHECKED_AGAINST})` : `Codex (checked against ${CODEX_CHECKED_AGAINST})`));
-  out(`Read from the files ${names.join(" and ")} keeps for ${project ? "this project and " : ""}for you.`);
+  const against = { "claude-code": `Claude Code (checked against ${CHECKED_AGAINST})`, codex: `Codex (checked against ${CODEX_CHECKED_AGAINST})`, cursor: `Cursor (checked against ${CURSOR_CHECKED_AGAINST})` };
+  const names = tools.map((t) => against[t]);
+  out(`Read from the files ${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0]} keep${names.length === 1 ? "s" : ""} for ${project ? "this project and " : ""}for you.`);
   out("Nothing is written until you confirm, and nothing leaves this machine: you push.\n");
   for (const i of items) {
     const where = i.scope === "project" ? "project" : "yours";
@@ -241,7 +245,7 @@ async function show(target, argv) {
   const against = Object.values(m.tools).map((t) => t.checkedAgainst).filter(Boolean).join(" and ");
   out(`  made with ${m.exportedWith}, read against ${against || "an unnamed version"}`);
   for (const [tool, part] of Object.entries(m.tools)) {
-    out(`\n${tool === "codex" ? "Codex" : "Claude Code"} files`);
+    out(`\n${{ codex: "Codex", cursor: "Cursor" }[tool] || "Claude Code"} files`);
     for (const f of part.files || []) {
       const text = s.files.get(f.path);
       const fm = frontmatter(text).keys;
@@ -265,6 +269,12 @@ async function show(target, argv) {
     if (st.permissions?.defaultMode) out(`  mode   ${st.permissions.defaultMode}`);
     if (st.model) out(`  model  ${st.model}`);
     if (st.env) out(`  env    ${Object.keys(st.env).join(", ")} (names only: each person sets their own)`);
+  }
+  for (const scope of ["project", "user"]) {
+    const rules = m.tools.cursor?.[scope]?.permissions;
+    if (!rules) continue;
+    out(`\nCursor permission rules for ${scope === "project" ? "the project (into .cursor/cli.json)" : `every project (into ${cursorCliDir(homedir()).label}, with --user)`}`);
+    for (const list of ["allow", "deny"]) for (const rule of rules[list] || []) out(`  ${list.padEnd(6)} ${rule.padEnd(36)} ${describeCursorRule(list, rule)}`);
   }
   const cxs = m.tools.codex?.user?.settings;
   if (cxs) {
@@ -315,11 +325,15 @@ async function adopt(target, argv, h) {
   const revision = (await lastChange(room.path, commit, dirFor(role, name)))?.commit || commit;
   const { config } = claudeDirs();
   const codexConfig = codexDirs().config;
+  const cursorConfig = cursorDir(homedir());
+  const cursorCli = cursorCliDir(homedir());
   const plan = await planAdoption({
     setup: { manifest: s.manifest, files: s.files, commit, revision, team: id },
     project,
     config,
     codexConfig,
+    cursorConfig,
+    cursorCli,
     home: homedir(),
     user: Boolean(argv.user),
     skip: list(argv.skip),

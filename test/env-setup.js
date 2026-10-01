@@ -23,6 +23,11 @@ if (!process.env.ROOMS_HOME) {
 process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "iops-rooms-claude-"));
 // Codex's folder, for the same reason: `rooms setup export --user` reads it and `adopt --user` writes it.
 process.env.CODEX_HOME = mkdtempSync(join(tmpdir(), "iops-rooms-codex-"));
+// Where Cursor's CLI keeps cli-config.json, which export --user reads and adopt --user adds rules to.
+// Set every time, as the CLI reads it before XDG_CONFIG_HOME: a developer with either set would
+// otherwise have their own file read and written. The rest of ~/.cursor follows HOME, which
+// team-helpers moves for each person.
+process.env.CURSOR_CONFIG_DIR = mkdtempSync(join(tmpdir(), "iops-rooms-cursor-"));
 // No test wants a browser window, and a headless CI box has nothing to open one with.
 process.env.ROOMS_NO_OPEN = process.env.ROOMS_NO_OPEN || "1";
 // No test asks GitHub anything: a pull request's state would depend on the network and on whoever

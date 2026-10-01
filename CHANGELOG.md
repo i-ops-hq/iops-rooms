@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.7.2
+
+### Cursor setups
+
+`rooms setup` now carries Cursor as well. Export reads, from a project, `.cursorrules`, the rules in
+`.cursor/rules/`, the skills, subagents, commands and hook scripts under `.cursor/`, and only the MCP
+servers, hooks and permission rules of `.cursor/mcp.json`, `.cursor/hooks.json` and `.cursor/cli.json`;
+and, with `--user`, the same from `~/.cursor`, where the CLI's `cli-config.json` gives its permission
+rules and nothing else. `--tool cursor` takes Cursor only.
+
+Never the approval mode or sandbox, User Rules, which live inside Cursor's settings rather than in a
+file, Cursor's own `skills-cursor`, plugins, an `envFile`, `.cursor/environment.json` or
+`.cursor/worktrees.json`. Cursor reads `Shell(git)` as git with any arguments, so a `Shell` rule for a
+shell, `sudo`, or, alone, an interpreter or launcher (`Shell(node)`, `Shell(npx)`) is left out, as
+`Shell(*)` is.
+
+Cursor's documentation says its MCP config fills in `${env:NAME}`, `${userHome}` and
+`${workspaceFolder}`. Its editor does; its CLI, 2026.04.17, passed all three on as written, a header
+included, and fills in only `${NAME}`. So export reads Cursor's forms as the setup's own names and
+placeholders, and adopt writes `${NAME}` for each variable and the adopter's own paths, which both fill
+in. The real CLI was given what adopt wrote: it started the server with the adopter's home and token,
+and sent the adopter's header.
+
+Adopting merges servers, hooks and rules into `.cursor/mcp.json`, `.cursor/hooks.json` and
+`.cursor/cli.json`, keeping what the person has, and, with `--user`, into those in `~/.cursor`. The
+CLI's `cli-config.json` is found where the CLI keeps it, which `CURSOR_CONFIG_DIR` or `XDG_CONFIG_HOME`
+can move, and is added to only once the CLI has made it. The plan marks a hook that can answer
+"allow" for the agent: Cursor's `beforeShellExecution` and five other events, and now Claude Code's
+`PreToolUse` and `PermissionRequest` too.
+
+Cursor's agent also runs the hooks in Claude Code's settings files and reads Claude Code's commands,
+as its CLI's code shows, so a Claude Code setup's hooks can run under Cursor as well. SECURITY.md says
+so.
+
 ## 0.7.1
 
 ### Codex setups

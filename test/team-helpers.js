@@ -58,14 +58,16 @@ export async function person(dir, login) {
     await git(to, "config", "user.name", login);
     await git(to, "config", "user.email", `${login}@example.com`);
   }
-  // Each person's own Claude Code and Codex folders and home, so one person's setup never reads or
-  // writes another's, and neither ever reaches the ~/.claude, ~/.codex or ~/.agents of whoever runs the
-  // suite: Codex keeps a person's skills in $HOME/.agents, which only HOME moves.
+  // Each person's own Claude Code, Codex and Cursor folders and home, so one person's setup never reads
+  // or writes another's, and neither ever reaches the ~/.claude, ~/.codex, ~/.agents or ~/.cursor of
+  // whoever runs the suite: Codex keeps a person's skills in $HOME/.agents, and Cursor its files in
+  // $HOME/.cursor, which only HOME moves. Cursor's CLI config follows CURSOR_CONFIG_DIR, then
+  // XDG_CONFIG_HOME; blank, as here, they are not set, so it is in each person's ~/.cursor too.
   const claude = join(dir, login, "claude");
   const codex = join(dir, login, "codex");
   const userhome = join(dir, login, "userhome");
   await mkdir(userhome, { recursive: true });
-  const env = { CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, HOME: userhome, USERPROFILE: userhome };
+  const env = { CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, CURSOR_CONFIG_DIR: "", XDG_CONFIG_HOME: "", HOME: userhome, USERPROFILE: userhome };
   return { login, home, team, web, claude, codex, userhome, rooms: (cwd, ...argv) => run(cwd, argv, home, env) };
 }
 

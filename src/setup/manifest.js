@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import { CHECKED_AGAINST, ENV_NAME, HOOK_KEYS, MODEL, SERVER_NAME, urlRefusal } from "./claude-code.js";
 import { CODEX_CHECKED_AGAINST, CODEX_HTTP_KEYS, CODEX_SETTINGS, CODEX_STDIO_KEYS, approvalRefusal, sandboxRefusal } from "./codex.js";
+import { CURSOR_CHECKED_AGAINST, CURSOR_HOOK_KEYS, CURSOR_UNFILLED, cursorWideRule } from "./cursor.js";
 import { checkRun, checkShellLine } from "./pins.js";
 import { portableText } from "./paths.js";
 import { actingRefusal, injections } from "./prose.js";
@@ -22,10 +23,16 @@ export const SETUP_FORMAT = "iops-rooms/setup";
 export const SETUP_FORMAT_VERSION = 1;
 export const TOOL = "claude-code";
 export const CODEX = "codex";
+export const CURSOR = "cursor";
 /** The tools a setup may hold, in the order they are listed. */
-export const TOOLS = [TOOL, CODEX];
-const CHECKED = { [TOOL]: CHECKED_AGAINST, [CODEX]: CODEX_CHECKED_AGAINST };
-const KINDS = { [TOOL]: new Set(["instructions", "rule", "agent", "command", "skill", "script"]), [CODEX]: new Set(["instructions", "skill", "prompt"]) };
+export const TOOLS = [TOOL, CODEX, CURSOR];
+export const TOOL_NAMES = { [TOOL]: "Claude Code", [CODEX]: "Codex", [CURSOR]: "Cursor" };
+const CHECKED = { [TOOL]: CHECKED_AGAINST, [CODEX]: CODEX_CHECKED_AGAINST, [CURSOR]: CURSOR_CHECKED_AGAINST };
+const KINDS = {
+  [TOOL]: new Set(["instructions", "rule", "agent", "command", "skill", "script"]),
+  [CODEX]: new Set(["instructions", "skill", "prompt"]),
+  [CURSOR]: new Set(["rule", "agent", "command", "skill", "script"]),
+};
 /** A Codex skill's agents/openai.yaml may declare the MCP servers it depends on: not adopted yet. */
 const DEPENDS = /^\s*["']?dependencies["']?\s*:/m;
 export const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -70,6 +77,21 @@ const PLACES = {
     project: { instructions: /^AGENTS\.md$/, skill: /^\.agents\/skills\/[^/]+\/.+$/ },
     user: { instructions: /^AGENTS(?:\.override)?\.md$/, prompt: /^prompts\/[^/]+\.md$/ },
     home: { skill: /^\.agents\/skills\/[^/]+\/.+$/ },
+  },
+  [CURSOR]: {
+    project: {
+      rule: /^(?:\.cursorrules|\.cursor\/rules\/.+\.mdc)$/,
+      agent: /^\.cursor\/agents\/.+\.md$/,
+      command: /^\.cursor\/commands\/.+\.md$/,
+      skill: /^\.cursor\/skills\/[^/]+\/.+$/,
+      script: /^\.cursor\/hooks\/.+$/,
+    },
+    user: {
+      agent: /^agents\/.+\.md$/,
+      command: /^commands\/.+\.md$/,
+      skill: /^skills\/[^/]+\/.+$/,
+      script: /^hooks\/.+$/,
+    },
   },
 };
 
@@ -177,6 +199,32 @@ export function deriveRuns(manifest, files) {
     const text = files.get(f.path);
     if (text != null && isScript(f, text)) runs.push({ tool: CODEX, scope: scopeOf(f.installTo), surface: "script", file: f.installTo });
   }
+  // Cursor: its hooks, its servers, and the scripts its hooks and skills ship.
+  const cu = manifest.tools?.[CURSOR] || {};
+  for (const scope of ["project", "user"]) {
+    const part = cu[scope] || {};
+    const hooks = part.hooks || {};
+    for (const event of Object.keys(hooks).sort()) {
+      for (const hook of hooks[event]) {
+        const pinned = checkShellLine(hook.command).pinned || [];
+        runs.push({ tool: CURSOR, scope, surface: "hook", event, ...(hook.matcher ? { matcher: hook.matcher } : {}), command: hook.command, ...(pinned.length ? { pinned } : {}) });
+      }
+    }
+    const servers = part.mcpServers || {};
+    for (const name of Object.keys(servers).sort()) {
+      const s = servers[name];
+      if (s.url) {
+        runs.push({ tool: CURSOR, scope, surface: "mcp", name, url: s.url });
+        continue;
+      }
+      const check = checkRun(s.command, s.args || []);
+      runs.push({ tool: CURSOR, scope, surface: "mcp", name, command: [s.command, ...(s.args || [])].join(" "), ...(check.pinned ? { pinned: [check.pinned] } : {}) });
+    }
+  }
+  for (const f of [...(cu.files || [])].sort((a, b) => (a.installTo < b.installTo ? -1 : a.installTo > b.installTo ? 1 : 0))) {
+    const text = files.get(f.path);
+    if (text != null && isScript(f, text)) runs.push({ tool: CURSOR, scope: scopeOf(f.installTo), surface: "script", file: f.installTo });
+  }
   return runs;
 }
 
@@ -231,6 +279,22 @@ export function deriveRequires(manifest, files) {
       if (typeof s.command === "string" && /^[A-Za-z][\w.+-]*$/.test(s.command)) add(programs, s.command, what);
     }
   }
+  const cu = manifest.tools?.[CURSOR] || {};
+  for (const scope of ["project", "user"]) {
+    const part = cu[scope] || {};
+    for (const [event, hooks] of Object.entries(part.hooks || {})) {
+      for (const h of hooks) for (const p of checkShellLine(h.command).needs || []) add(programs, p, `cursor hook ${event}`);
+    }
+    for (const [name, s] of Object.entries(part.mcpServers || {})) {
+      const what = `cursor mcp ${name}`;
+      for (const v of Object.values(s.env || {})) add(env, v.fromEnv, what);
+      for (const v of Object.values(s.headers || {})) add(env, v.fromEnv, what);
+      for (const text of [s.command, ...(s.args || []), s.url].filter((t) => typeof t === "string")) {
+        for (const m of text.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}/g)) if (!PLACEHOLDER_VARS.has(m[1])) add(env, m[1], what);
+      }
+      if (typeof s.command === "string" && /^[A-Za-z][\w.+-]*$/.test(s.command)) add(programs, s.command, what);
+    }
+  }
   const sorted = (map) => [...map].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return [
     ...sorted(env).map(([k, s]) => ({ env: k, for: [...s].sort().join(", ") })),
@@ -270,10 +334,7 @@ export function buildManifest({ role, name, owner, summary, cost, version, items
       t[item.scope] ||= {};
       if (item.kind === "settings") t[item.scope].settings = item.value;
       else if (item.kind === "mcp") t[item.scope].mcpServers = item.value;
-      else {
-        if (item.value.settings) t[item.scope].settings = item.value.settings;
-        if (item.value.mcpServers) t[item.scope].mcpServers = item.value.mcpServers;
-      }
+      else Object.assign(t[item.scope], item.value);
       continue;
     }
     const path = filePathFor(item.installTo, tool);
@@ -282,7 +343,9 @@ export function buildManifest({ role, name, owner, summary, cost, version, items
   }
   for (const t of Object.values(tools)) {
     t.files.sort((a, b) => (a.installTo < b.installTo ? -1 : a.installTo > b.installTo ? 1 : 0));
-    for (const scope of ["project", "user"]) if (t[scope]) t[scope] = { ...(t[scope].settings ? { settings: t[scope].settings } : {}), ...(t[scope].mcpServers ? { mcpServers: t[scope].mcpServers } : {}) };
+    for (const scope of ["project", "user"]) {
+      if (t[scope]) t[scope] = Object.fromEntries(["settings", "mcpServers", "hooks", "permissions"].filter((k) => t[scope][k]).map((k) => [k, t[scope][k]]));
+    }
   }
   const manifest = {
     format: SETUP_FORMAT,
@@ -435,11 +498,6 @@ function checkServers(servers, scope, no) {
   return undefined;
 }
 
-/**
- * Everything wrong with a setup, as sentences; empty when it may be shown and adopted. `files` maps
- * each listed path to its text, read from git at the setup's commit. Every rule export applies is
- * applied again here, since the setup may have been edited in the team room since.
- */
 const words = (v, max = 100) => Array.isArray(v) && v.length <= max && v.every((x) => typeof x === "string" && x.length <= 500);
 
 /** One tool's files: each a kind that tool has, in a place it may go, filed where that place says, and its bytes as hashed. */
@@ -606,6 +664,108 @@ function checkCodex(cx, files, no) {
   return total;
 }
 
+function checkCursorServers(servers, scope, no) {
+  const label = `cursor ${scope} MCP servers`;
+  if (!isObj(servers) || Object.keys(servers).length > 50) return no(`${label} are not a set of at most 50 servers`);
+  for (const [name, s] of Object.entries(servers)) {
+    if (!SERVER_NAME.test(name) || !isObj(s)) {
+      no(`${label}: a server this version does not read`);
+      continue;
+    }
+    const at = `${label}: ${name}`;
+    if (typeof s.command === "string") {
+      if (Object.keys(s).some((k) => !["command", "args", "env"].includes(k))) no(`${at} has a key this version does not read`);
+      if (s.args !== undefined && !words(s.args)) {
+        no(`${at}'s args are not a list of words`);
+        continue;
+      }
+      checkStrings([s.command, ...(s.args || [])], at, no);
+      if ([s.command, ...(s.args || [])].some((a) => CURSOR_UNFILLED.test(a))) no(`${at} names a \${…} that Cursor's CLI does not fill in`);
+      if (scope === "user" && [s.command, ...(s.args || [])].some((a) => a.includes("${PROJECT}"))) no(`${at} is for every project but names one project`);
+      const check = checkRun(s.command, s.args || []);
+      if (!check.ok) no(`${at}: ${check.why}`);
+      if (s.env !== undefined && (!isObj(s.env) || Object.entries(s.env).some(([k, v]) => !ENV_NAME.test(k) || !isObj(v) || Object.keys(v).join() !== "fromEnv" || !ENV_NAME.test(v.fromEnv || "")))) {
+        no(`${at}'s env holds a value, where a setup may only name a variable`);
+      }
+    } else if (typeof s.url === "string") {
+      if (Object.keys(s).some((k) => !["url", "headers"].includes(k))) no(`${at} has a key this version does not read`);
+      const why = urlRefusal(s.url) || (CURSOR_UNFILLED.test(s.url) || /\$\{(?:PROJECT|HOME)\}/.test(s.url) ? "an address with a ${…} a setup does not carry" : "");
+      if (why) no(`${at}: ${why}`);
+      const good = (v) => isObj(v) && ENV_NAME.test(v.fromEnv || "") && Object.keys(v).every((k) => k === "fromEnv" || k === "prefix") && (v.prefix === undefined || ["Bearer ", "Basic ", "Token "].includes(v.prefix));
+      if (s.headers !== undefined && (!isObj(s.headers) || Object.entries(s.headers).some(([h, v]) => !/^[A-Za-z0-9-]{1,100}$/.test(h) || !good(v)))) {
+        no(`${at}'s headers hold a value, where a setup may only name a variable`);
+      }
+    } else {
+      no(`${at} has no command or address`);
+    }
+  }
+  return undefined;
+}
+
+function checkCursorHooks(hooks, scope, no) {
+  const label = `cursor ${scope} hooks`;
+  if (!isObj(hooks)) return no(`${label} are not an object`);
+  for (const [event, list] of Object.entries(hooks)) {
+    if (!/^[A-Za-z]{1,40}$/.test(event) || !Array.isArray(list) || list.length > 50) {
+      no(`${label}: ${event.slice(0, 40)} is not a list of hooks`);
+      continue;
+    }
+    for (const h of list) {
+      if (!isObj(h) || typeof h.command !== "string" || !h.command.trim() || h.command.length > 4000 || Object.keys(h).some((k) => !CURSOR_HOOK_KEYS.includes(k))) {
+        no(`${label}: ${event} has a hook this version does not read`);
+        continue;
+      }
+      if (h.timeout !== undefined && !(typeof h.timeout === "number" && h.timeout > 0 && h.timeout < 86_400)) no(`${label}: ${event} has a hook whose timeout is not a number of seconds`);
+      if (h.matcher !== undefined && !(typeof h.matcher === "string" && h.matcher.length <= 500)) no(`${label}: ${event} has a hook whose matcher is not text`);
+      if (h.failClosed !== undefined && typeof h.failClosed !== "boolean") no(`${label}: ${event} has a hook whose failClosed is not true or false`);
+      checkStrings([h.command, ...(typeof h.matcher === "string" ? [h.matcher] : [])], `${label}: ${event} has a hook that`, no);
+      if (scope === "user" && h.command.includes("${PROJECT}")) no(`${label}: ${event} has a hook for every project that names one project`);
+      const check = checkShellLine(h.command);
+      if (!check.ok) no(`${label}: ${event} has a hook: ${check.why}`);
+    }
+  }
+  return undefined;
+}
+
+function checkCursorPermissions(perms, scope, no) {
+  const label = `cursor ${scope} permissions`;
+  if (!isObj(perms) || Object.keys(perms).some((k) => k !== "allow" && k !== "deny")) return no(`${label} are not allow and deny lists`);
+  for (const list of ["allow", "deny"]) {
+    if (perms[list] === undefined) continue;
+    if (!Array.isArray(perms[list]) || perms[list].length > 500 || perms[list].some((r) => typeof r !== "string" || !r || r.length > 500)) {
+      no(`${label}: ${list} is not a list of rules`);
+      continue;
+    }
+    for (const rule of perms[list]) {
+      const wide = list === "allow" ? cursorWideRule(rule) : "";
+      if (wide) no(`${label}: ${wide}, which a setup cannot give anyone`);
+      checkStrings([rule], `${label}: a ${list} rule`, no);
+    }
+  }
+  return undefined;
+}
+
+function checkCursor(cu, files, no) {
+  if (!isObj(cu)) {
+    no("it holds nothing for Cursor");
+    return 0;
+  }
+  for (const k of Object.keys(cu)) if (!["checkedAgainst", "files", "project", "user"].includes(k)) no(`it has cursor.${k.slice(0, 40)}, which this version does not read`);
+  const total = checkFiles(CURSOR, cu.files ?? [], files, no);
+  for (const scope of ["project", "user"]) {
+    if (cu[scope] === undefined) continue;
+    if (!isObj(cu[scope])) {
+      no(`cursor.${scope} is not an object`);
+      continue;
+    }
+    for (const k of Object.keys(cu[scope])) if (!["mcpServers", "hooks", "permissions"].includes(k)) no(`cursor.${scope}.${k.slice(0, 40)} is not a part this version reads`);
+    if (cu[scope].mcpServers !== undefined) checkCursorServers(cu[scope].mcpServers, scope, no);
+    if (cu[scope].hooks !== undefined) checkCursorHooks(cu[scope].hooks, scope, no);
+    if (cu[scope].permissions !== undefined) checkCursorPermissions(cu[scope].permissions, scope, no);
+  }
+  return total;
+}
+
 /**
  * Everything wrong with a setup, as sentences; empty when it may be shown and adopted. `files` maps
  * each listed path to its text, read from git at the setup's commit. Every rule export applies is
@@ -632,6 +792,7 @@ export function checkSetup(manifest, files, { role, name } = {}) {
   let total = 0;
   if (own(manifest.tools, TOOL) !== undefined) total += checkClaude(manifest.tools[TOOL], files, no);
   if (own(manifest.tools, CODEX) !== undefined) total += checkCodex(manifest.tools[CODEX], files, no);
+  if (own(manifest.tools, CURSOR) !== undefined) total += checkCursor(manifest.tools[CURSOR], files, no);
   if (total > 5_000_000) no("its files come to more than 5 MB");
 
   const notExported = manifest.notExported ?? [];
@@ -655,7 +816,7 @@ export function renderReadme(manifest) {
   lines.push(`Owner: ${mdText(manifest.owner)} · exported with ${mdText(manifest.exportedWith)}${cost}`, "", "## What it holds", "");
   let held = 0;
   for (const [tool, part] of Object.entries(manifest.tools)) {
-    const name = tool === TOOL ? "Claude Code" : "Codex";
+    const name = TOOL_NAMES[tool] || tool;
     for (const f of part.files || []) {
       lines.push(`- ${name}: ${mdText(f.installTo)} · ${f.kind}${f.executable ? " · runs as a program" : ""}`);
       held += 1;
@@ -669,6 +830,15 @@ export function renderReadme(manifest) {
         lines.push(`- ${name} ${scope} MCP servers: ${mdText(Object.keys(part[scope].mcpServers).join(", "))}`);
         held += 1;
       }
+      if (part[scope]?.hooks) {
+        lines.push(`- ${name} ${scope} hooks: ${mdText(Object.keys(part[scope].hooks).join(", "))}`);
+        held += 1;
+      }
+      if (part[scope]?.permissions) {
+        const rules = [...(part[scope].permissions.allow || []).map((r) => `allow ${r}`), ...(part[scope].permissions.deny || []).map((r) => `deny ${r}`)];
+        lines.push(`- ${name} ${scope} permission rules: ${mdText(rules.join(", "))}`);
+        held += 1;
+      }
     }
   }
   if (!held) lines.push("- nothing");
@@ -676,8 +846,8 @@ export function renderReadme(manifest) {
   if (!manifest.runs.length) lines.push("- nothing");
   for (const r of manifest.runs) {
     const what = r.command || r.url || "";
-    const tool = r.tool === TOOL ? "" : "Codex ";
-    const where = r.surface === "hook" ? `hook ${r.event}` : r.surface === "mcp" ? `${tool}MCP server ${r.name}` : r.surface === "loads" ? `as ${r.file} loads` : r.surface === "notify" ? `${tool}notify, after each turn` : `${tool}script ${r.file}`;
+    const tool = r.tool === TOOL ? "" : `${TOOL_NAMES[r.tool] || r.tool} `;
+    const where = r.surface === "hook" ? `${tool}hook ${r.event}` : r.surface === "mcp" ? `${tool}MCP server ${r.name}` : r.surface === "loads" ? `as ${r.file} loads` : r.surface === "notify" ? `${tool}notify, after each turn` : `${tool}script ${r.file}`;
     lines.push(`- ${mdText(where)}${what ? `: ${mdText(what)}` : ""}`);
   }
   lines.push("", "## What it needs", "");

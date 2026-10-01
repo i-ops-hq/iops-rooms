@@ -84,7 +84,7 @@ The board and the room:
   rooms auth logout
   rooms help
 
-Setups (Claude Code and Codex), shared through the team room:
+Setups (Claude Code, Codex and Cursor), shared through the team room:
   rooms setup export --role <role> --name <name>   commit this project's setup to a branch there; you push
   rooms setup show [<role/name>]           what a setup holds, runs and needs, and who added it
   rooms setup adopt <role/name> [--user]   a plan first; applied only after you approve it

@@ -7,13 +7,14 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 - Open sockets / `fetch` for **room traffic** or telemetry (no phone-home), or send anything to I-Ops. The network is reached only through your own `git` and `gh`, for what "What it does" lists (your verified identity, a branch's pull request, the team room), and through the OAuth **device flow** of `rooms auth github` / `rooms auth gitlab` when `gh` is not there, which mints a **local** verified identity and does **not** upload `.room/` events
 - Bind a listen socket to anything other than `127.0.0.1` (optional `rooms live` is localhost-only)
 - Read `process.env` wholesale or hunt for `.env`, SSH keys, or cloud credentials. `rooms setup export`
-  reads two more variables, `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, to find Claude Code's and Codex's
-  folders, and never opens a file whose name says it holds secrets
+  reads four more variables, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `CURSOR_CONFIG_DIR` and
+  `XDG_CONFIG_HOME`, to find Claude Code's and Codex's folders and Cursor's CLI config, and never opens a
+  file whose name says it holds secrets
 - Write outside `.room/` in the project it resolved without a command that says so. The exceptions are listed under "What it does", and a test fails if `rooms open` in a new repository writes anything else
 - **Read** a file outside that project for `share-diff --path`, or a file whose name looks like a secret, without you saying so explicitly — see below
 - Run shell commands or `eval` user/agent text. Adopting a setup writes a teammate's hooks and MCP
-  servers into Claude Code's settings, after a person approves the plan that lists them; Claude Code
-  runs them later, and Rooms runs none of them
+  servers into Claude Code's, Codex's or Cursor's settings, after a person approves the plan that
+  lists them; those agents run them later, and Rooms runs none of them
 - Install other packages at runtime
 - Load scripts, fonts, or pixels from the public internet in `board.html`
 - `file://` board stays fully offline; `rooms live` may EventSource the same localhost origin only
@@ -130,6 +131,14 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   never `danger-full-access`, rules files, per-tool approvals or `http_headers_helper`. It never opens
   `auth.json`, sessions, history or memories. A server's environment values become names Codex passes
   through, and its headers the names of variables holding them
+- Of Cursor, the same export reads `.cursorrules`, the files under `.cursor/rules/`, `skills/`,
+  `agents/`, `commands/` and `hooks/`, and only the servers, hooks and permission rules of
+  `.cursor/mcp.json`, `.cursor/hooks.json` and `.cursor/cli.json`; and, only with `--user`, the same
+  from `~/.cursor`, with the permission rules of the CLI's `cli-config.json`, found as the CLI finds
+  it, and no other part of it. Never the
+  approval mode or sandbox, an `envFile`, `.cursor/environment.json` or `.cursor/worktrees.json`,
+  plugins, or a `Shell` rule that lets any command run. A server's environment values and headers
+  become the names of variables, as for Claude Code
 - With `rooms setup show`: read a setup from the team room at a git commit, never from the working
   tree, and check it with every rule export applies before showing it
 - With `rooms setup adopt`, only after a person approves the plan it prints, at a terminal or with
@@ -143,7 +152,11 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   `AGENTS.md`, files under `.agents/skills/`, and `.codex/config.toml` (servers added to its text);
   with `--user`, `AGENTS.md`, `AGENTS.override.md` and `prompts/*.md` in Codex's folder, its
   `config.toml` (keys and servers added to its text, everything else in it left as it was), and files
-  under `~/.agents/skills/`. Never `auth.json`. It refuses a setup that
+  under `~/.agents/skills/`. Never `auth.json`. Of Cursor: in the project, `.cursorrules`, files under
+  `.cursor/rules/`, `skills/`, `agents/`, `commands/` and `hooks/`, and `.cursor/mcp.json`,
+  `hooks.json` and `cli.json` (merged, keeping what the person has); with `--user`, the same kinds of
+  file in `~/.cursor`, its `mcp.json` and `hooks.json`, and the permission rules of `cli-config.json`,
+  only once Cursor's CLI has made that file. It refuses a setup that
   fails any check, `bypassPermissions` or `auto` mode, a rule that lets any command run, an unpinned
   launcher, a file aimed anywhere else, a link where a file would go, and a file that changed since the
   plan was made. Every file it changes is copied first to `~/.iops-rooms/backups/<id>/` (folder 0700,
@@ -189,7 +202,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.7.1 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.7.2 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
@@ -229,7 +242,12 @@ rules above and to these, which remain:
 - A permission rule can look narrow and not be. Adopting shows every rule as what it allows, and
   refuses the rules and modes that plainly stop Claude asking. Codex's `approval_policy = "never"` is
   allowed, since its sandbox still holds: Codex then runs, without asking, whatever the sandbox
-  permits, and the plan says so.
+  permits, and the plan says so. Cursor reads `Shell(git)` as git with any arguments; a rule for a
+  shell, an interpreter or a launcher is refused, and a rule for any other program allows all of
+  that program. A hook that can answer "allow" for the agent is marked so in the plan.
+- Cursor's agent also runs the hooks in Claude Code's settings files and reads Claude Code's commands,
+  as its CLI's code shows. A Claude Code setup's hooks can run under Cursor too, as the commands the
+  plan showed.
 - Anyone who can write to the team room can change a setup in it. Rooms does not change repository
   settings: turn on branch protection and review for `setups/`. Nothing is adopted on `git pull`; a
   new revision waits in `rooms setup status`.

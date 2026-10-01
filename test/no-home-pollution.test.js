@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { roomsHomeDir } from "../src/identity.js";
 import { claudeDirs } from "../src/setup/claude-code.js";
 import { codexDirs } from "../src/setup/codex.js";
+import { cursorCliDir } from "../src/setup/cursor.js";
 
 const realHome = join(homedir(), ".iops-rooms");
 
@@ -45,4 +46,10 @@ test("and Claude Code's folder, which rooms setup reads and adopt --user writes,
 test("and Codex's folder too, which rooms setup reads and adopt --user writes", () => {
   assert.ok(process.env.CODEX_HOME, "test/env-setup.js must set CODEX_HOME");
   assert.notEqual(codexDirs().config, join(homedir(), ".codex"), "an adopt --user would write into the developer's ~/.codex");
+});
+
+test("and the folder of Cursor's CLI config, which rooms setup reads and adopt --user adds rules to", () => {
+  assert.ok(process.env.CURSOR_CONFIG_DIR, "test/env-setup.js must set CURSOR_CONFIG_DIR");
+  assert.notEqual(cursorCliDir().dir, join(homedir(), ".cursor"), "an adopt --user would write into the developer's cli-config.json");
+  assert.equal(cursorCliDir().dir, process.env.CURSOR_CONFIG_DIR);
 });
