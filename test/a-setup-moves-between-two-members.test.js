@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { exec, git, scratch, teamOfTwo } from "./team-helpers.js";
+import { runGit } from "../src/setup/room.js";
 
 const posix = process.platform !== "win32";
 
@@ -287,5 +288,19 @@ test("the person's own files go only with --user, and come back out with the rol
     const again = await bob.rooms(bob.web, "setup", "rollback", "--yes");
     assert.equal(again.code, 0, again.err || again.out);
     assert.deepEqual(await snapshot(bob.web, bob.claude), before);
+  });
+});
+
+test("a git command that stops before reading its input answers with its exit code, never a crash", async () => {
+  await scratch(async (dir) => {
+    await exec("git", ["init", "-q", dir]);
+    // A megabyte that rev-parse never reads: the write outlives git, and the pipe breaks. On CI the
+    // same broken pipe, from a fast rev-parse given nothing at all, crashed export on Linux.
+    const r = await runGit(dir, ["rev-parse", "--git-dir"], { input: "x".repeat(1 << 20) });
+    assert.equal(r.ok, true, r.err);
+    assert.equal(r.out.trim(), ".git");
+    const blob = await runGit(dir, ["hash-object", "--stdin"], { input: "hello\n" });
+    assert.equal(blob.out.trim(), "ce013625030ba8dba906f756967f9e9ca394464a", "input still reaches a command that reads it");
+    assert.equal((await runGit(dir, ["rev-parse", "--git-dir"])).out.trim(), ".git", "and a command given none gets none");
   });
 });

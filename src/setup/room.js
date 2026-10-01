@@ -21,19 +21,35 @@ import { filePathFor, installPlace, TOOL } from "./manifest.js";
 export const branchFor = (role, name) => `setup/${role}/${name}`;
 export const dirFor = (role, name) => `setups/${role}/${name}`;
 
-/** git, with stdin and extra environment, and its output kept whole: a blob is returned byte for byte. */
-function git(cwd, args, { input = "", env = {}, timeout = 30000 } = {}) {
+/**
+ * git, with extra environment and its output kept whole: a blob is returned byte for byte. Only a
+ * command given `input` gets a pipe to read it from. On Linux, writing to that pipe after git has
+ * exited fails even when there is nothing to write, and a fast `git rev-parse` under load can exit
+ * before the write: that crashed export on CI. A command that stops before reading all its input
+ * has answered with its exit code, so the broken pipe is not a second error.
+ */
+export function runGit(cwd, args, { input = null, env = {}, timeout = 30000 } = {}) {
   return new Promise((resolve) => {
-    const child = spawn("git", args, { cwd, timeout, env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0", ...env } });
+    const child = spawn("git", args, {
+      cwd,
+      timeout,
+      stdio: [input === null ? "ignore" : "pipe", "pipe", "pipe"],
+      env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0", ...env },
+    });
     const out = [];
     const err = [];
     child.stdout.on("data", (d) => out.push(d));
     child.stderr.on("data", (d) => err.push(d));
     child.on("error", (e) => resolve({ ok: false, out: "", err: e.message }));
     child.on("close", (code) => resolve({ ok: code === 0, out: Buffer.concat(out).toString("utf8"), err: Buffer.concat(err).toString("utf8").trim() }));
-    child.stdin.end(input);
+    if (input !== null) {
+      child.stdin.on("error", () => {});
+      child.stdin.end(input);
+    }
   });
 }
+
+const git = runGit;
 
 /**
  * Commit `files` (relative path → { content, executable }) as the whole of `setups/<role>/<name>/`,

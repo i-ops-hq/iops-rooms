@@ -121,6 +121,8 @@ test("a runner is found wherever it stands in a hook's command, quoted, chained 
 
 test("what names no machine is left as it is: variables, relative and ~ paths, URLs, /dev/null", () => {
   const where = { home: "/Users/alice", project: "/Users/alice/code/web" };
+  const scratch = { home: "/tmp/rooms-ci/home", project: "/tmp/rooms-ci/home/web" };
+  assert.deepEqual(portableText("/tmp/rooms-ci/home/web/scripts/a.sh >/tmp/log", scratch), { ok: true, value: "${PROJECT}/scripts/a.sh >/tmp/log" }, "a project in /tmp is still the project");
   const win = { home: "C:\\Users\\RUNNER~1", project: "C:\\Users\\RUNNER~1\\code\\web" };
   assert.deepEqual(portableText("node C:\\Users\\RUNNER~1\\code\\web/scripts/x.js", win), { ok: true, value: "node ${PROJECT}/scripts/x.js" }, "a short name, both separators");
   for (const text of ['"$CLAUDE_PROJECT_DIR"/.claude/hooks/check.sh', "curl -s https://hooks.example.com/notify", "node ./scripts/x.js ~/notes 2>/dev/null >/tmp/rooms.log", "${HOME}/bin/tool"]) {

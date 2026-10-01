@@ -265,8 +265,8 @@ rooms setup status                                   # what you adopted here, an
 
 Export reads only what it lists: the project's Claude Code files, and yours from `~/.claude` with
 `--user`. It replaces every environment value and header with a placeholder, refuses a file holding
-something that looks like a secret or a path in your home, and refuses launchers without an exact
-version. It commits to the branch `setup/<role>/<name>` in your clone of the team room and pushes
+something that looks like a secret or a path in your home or to the project's own folder, and refuses
+launchers without an exact version. It commits to the branch `setup/<role>/<name>` in your clone of the team room and pushes
 nothing: you push it and open a pull request. `--summary` says what it is for, and `--cost "20 Claude
 Pro"` what it costs a month, which is shown as declared, never measured.
 

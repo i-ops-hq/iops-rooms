@@ -114,8 +114,8 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   reads sessions (`~/.claude/projects/`), `.claude/settings.local.json`, `CLAUDE.local.md`, a
   credential helper, a file whose name says it holds secrets, or anything through a link. Every
   environment value and header becomes a placeholder naming the variable; the value never leaves. A
-  file is refused whole if a line looks like a secret, names a folder in the home, or acts in a way a
-  setup may not (hooks or servers in its frontmatter, a permission that stops Claude asking, an
+  file is refused whole if a line looks like a secret, names a folder in the home or the project's own
+  folder, or acts in a way a setup may not (hooks or servers in its frontmatter, a permission that stops Claude asking, an
   unpinned command it runs as it loads); so is any launcher without an exact version and any absolute
   path other than the home and the project, which become `${HOME}` and `${PROJECT}`. It commits the
   setup to the branch `setup/<role>/<name>` in the team room's clone through git's object store,

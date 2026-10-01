@@ -141,6 +141,9 @@ async function readFileItem(root, rel, { scope, kind, where }) {
   if (secret) return refuse(item, `${label} line ${secret.line} looks like ${secret.kind}`, "holds something that looks like a secret");
   const home = lineNaming(content, where.home) || (where.home ? lineNaming(content, realForm(where.home)) : 0);
   if (home) return refuse(item, `${label} line ${home} names a folder in your home: write it as ~/… and export again`, "names a folder on the exporting machine");
+  // The project's own folder too, wherever it is: /workspace/web or /tmp/ci/web is not in the home.
+  const here = where.project ? lineNaming(content, where.project) || lineNaming(content, realForm(where.project)) : 0;
+  if (here) return refuse(item, `${label} line ${here} names this project's folder: write the path relative to the project and export again`, "names a folder on the exporting machine");
   const acts = kind === "agent" || kind === "command" || (kind === "skill" && rel.endsWith("/SKILL.md"));
   if (acts) {
     const no = actingRefusal(content, where);
@@ -195,7 +198,11 @@ function scrubHook(hook, where) {
   if (bad) return { why: "names a path on the exporting machine", detail: bad.why };
   // Words shown to the person are not rewritten, so one naming a path here keeps the hook out.
   const shown = [hook.statusMessage, hook.if].filter((s) => typeof s === "string");
-  if (shown.some((s) => !portableText(s, {}).ok)) return { why: "names a path on the exporting machine", detail: "its statusMessage or if names a path" };
+  const named = (s) => {
+    const p = portableText(s, where);
+    return !p.ok || p.value !== s;
+  };
+  if (shown.some(named)) return { why: "names a path on the exporting machine", detail: "its statusMessage or if names a path" };
   const [command, ...args] = portable.map((p) => p.value);
   const check = hook.args ? checkRun(command, args) : checkShellLine(command);
   if (!check.ok) return { why: "runs something a setup cannot carry", detail: check.why };

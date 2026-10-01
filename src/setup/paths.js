@@ -44,8 +44,6 @@ export function portablePath(path, { home, project }) {
   const p = String(path);
   const P = rulesFor(p);
   if (!P.isAbsolute(p)) return { ok: true, value: p.split(sep).join("/") };
-  // The same on every machine and naming no one: /dev/null, a scratch file in /tmp.
-  if (/^\/(dev|tmp)(\/|$)/.test(p)) return { ok: true, value: p };
   // Compared as written, then resolved, so a link on the way does not make the project look foreign.
   const forms = [...new Set([p, realForm(p)])];
   for (const [base, name] of [[project, "PROJECT"], [home, "HOME"]]) {
@@ -56,6 +54,9 @@ export function portablePath(path, { home, project }) {
       }
     }
   }
+  // The same on every machine and naming no one: /dev/null, a scratch file in /tmp. Checked after
+  // the project, which may itself be in /tmp, as it is on Linux CI.
+  if (/^\/(dev|tmp)(\/|$)/.test(p)) return { ok: true, value: p };
   return { ok: false, why: `${p} is a path on this machine outside your home and the project` };
 }
 

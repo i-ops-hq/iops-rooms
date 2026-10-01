@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readClaudeCode, scrubMcpServers, selectItems } from "../src/setup/claude-code.js";
+import { readClaudeCode, scrubMcpServers, scrubSettings, selectItems } from "../src/setup/claude-code.js";
 
 async function put(path, text) {
   await mkdir(join(path, ".."), { recursive: true });
@@ -174,4 +174,25 @@ test("the skill rooms mcp install copied, from any version, stays out; one the p
     const edited = await readClaudeCode({ project, home, env, bundledSkill: bundled });
     assert.ok(edited.items.some((i) => i.label === ".claude/skills/rooms/SKILL.md" && !i.refused));
   });
+});
+
+test("a file naming the project's folder is refused when the project is outside the home too", async () => {
+  await planted(async ({ dir, home, env }) => {
+    const project = join(dir, "workspace", "web");
+    await put(join(project, "CLAUDE.md"), `Scripts are in ${project}/scripts.\n`);
+    await put(join(project, ".claude/settings.json"), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "echo ok", statusMessage: `checking ${project}` }] }] } }));
+    const read = await readClaudeCode({ project, home, env });
+    const byLabel = Object.fromEntries(read.items.map((i) => [i.label, i]));
+    assert.match(byLabel["CLAUDE.md"].refused, /line 1 names this project's folder/);
+    assert.deepEqual(byLabel[".claude/settings.json"].value, {}, "a hook whose shown words name the project stays out");
+  });
+});
+
+test("a project in /tmp, as on Linux CI, is still the project: its path in a hook's shown words keeps the hook out", () => {
+  const where = { home: "/home/runner", project: "/tmp/ci/web" };
+  const r = scrubSettings({
+    hooks: { Stop: [{ hooks: [{ type: "command", command: "echo ok", statusMessage: "checking /tmp/ci/web" }, { type: "command", command: "/tmp/ci/web/check.sh 2>/tmp/err.log", statusMessage: "checking" }] }] },
+  }, { label: ".claude/settings.json", where });
+  assert.deepEqual(r.value.hooks.Stop[0].hooks, [{ type: "command", command: "${PROJECT}/check.sh 2>/tmp/err.log", statusMessage: "checking" }]);
+  assert.deepEqual(r.left.map((l) => l.what), [".claude/settings.json hooks.Stop[0].hooks[0]"]);
 });

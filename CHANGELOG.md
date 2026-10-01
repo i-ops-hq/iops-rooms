@@ -14,7 +14,7 @@ and it leaves the clone's checkout as it was, so `rooms team sync` cannot carry 
 What a setup may carry is narrow on purpose. Every environment value and header becomes a
 placeholder naming the variable; the value stays on the machine. Of `~/.claude.json`, which also holds
 the account, only its MCP servers are read. A file is refused whole if a line looks like a secret,
-names a folder in the home, or acts in a way a setup may not: hooks or servers in its frontmatter, a
+names a folder in the home or the project's own folder, or acts in a way a setup may not: hooks or servers in its frontmatter, a
 permission mode or pre-approved rule that stops Claude asking, or a command it runs as it loads
 without an exact version. Every launcher, wherever it stands in a command, must name one exact
 version. Paths in the home and the project become `${HOME}` and `${PROJECT}`; any other is refused.
