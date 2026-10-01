@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { roomsHomeDir } from "../src/identity.js";
+import { claudeDirs } from "../src/setup/claude-code.js";
 
 const realHome = join(homedir(), ".iops-rooms");
 
@@ -30,4 +31,12 @@ test("and a spawned CLI inherits it, which is where the leak actually happened",
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, process.env.ROOMS_HOME);
   assert.notEqual(r.stdout, realHome);
+});
+
+test("and Claude Code's folder, which rooms setup reads and adopt --user writes, is a scratch one", () => {
+  const { config, globalConfig } = claudeDirs();
+  assert.ok(process.env.CLAUDE_CONFIG_DIR, "test/env-setup.js must set CLAUDE_CONFIG_DIR");
+  assert.notEqual(config, join(homedir(), ".claude"), "an adopt --user would write into the developer's ~/.claude");
+  assert.notEqual(globalConfig, join(homedir(), ".claude.json"), "an export would read the developer's account file");
+  assert.ok(config.startsWith(process.env.CLAUDE_CONFIG_DIR));
 });

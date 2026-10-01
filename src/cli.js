@@ -84,6 +84,13 @@ The board and the room:
   rooms auth logout
   rooms help
 
+Setups (Claude Code), shared through the team room:
+  rooms setup export --role <role> --name <name>   commit this project's setup to a branch there; you push
+  rooms setup show [<role/name>]           what a setup holds, runs and needs, and who added it
+  rooms setup adopt <role/name> [--user]   a plan first; applied only after you approve it
+  rooms setup rollback [--force]           every file back as it was before adopting
+  rooms setup status                       what you adopted here, and whether the team room has newer
+
 Run any of these from anywhere inside the project — a repository is one project, so
 a command typed in packages/web/src is about the whole repo, and the room lives at
 its root.
@@ -111,6 +118,7 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
   "code", "provider", "host", "client-id", "window-size", "agent", "to", "team", "every", "hours",
+  "role", "summary", "cost", "only", "skip", "ref", "approve",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
@@ -1267,6 +1275,12 @@ async function main() {
 
   if (cmd === "team") {
     await team(rest, argv);
+    return;
+  }
+
+  if (cmd === "setup") {
+    const { setupCommand } = await import("./setup/command.js");
+    await setupCommand(rest, argv, { version: VERSION, confirmOrStop });
     return;
   }
 

@@ -16,6 +16,11 @@ import { join } from "node:path";
 if (!process.env.ROOMS_HOME) {
   process.env.ROOMS_HOME = mkdtempSync(join(tmpdir(), "iops-rooms-suite-"));
 }
+// Claude Code's own folder, which `rooms setup` reads from and, with --user, writes to. Set every time,
+// even when the developer has their own CLAUDE_CONFIG_DIR: a test that adopts a setup with --user must
+// land in a scratch folder, never in the ~/.claude of whoever runs the suite. It also holds the
+// .claude.json the reader would otherwise find in the real home.
+process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "iops-rooms-claude-"));
 // No test wants a browser window, and a headless CI box has nothing to open one with.
 process.env.ROOMS_NO_OPEN = process.env.ROOMS_NO_OPEN || "1";
 // No test asks GitHub anything: a pull request's state would depend on the network and on whoever

@@ -106,9 +106,21 @@ test("cli whoami and status in a room", async () => {
   }
 });
 
+test("attribution never reads through the setup code, which reads file contents", async () => {
+  // TEAM_SETUPS.md §9.3: attribution reads names, never contents. Setups read contents, by the
+  // member's choice, in src/setup/, and the attribution half must not reach into it.
+  for (const f of ["report.js", "git-history.js", "agent-config.js"]) {
+    const src = await readFile(join(root, "src", f), "utf8");
+    assert.doesNotMatch(src, /from ["']\.\/setup\//, `${f} imports from src/setup/`);
+    assert.doesNotMatch(src, /import\(["']\.\/setup\//, `${f} imports from src/setup/`);
+  }
+});
+
 test("source does not open the network", async () => {
   const { readdir } = await import("node:fs/promises");
-  const files = await readdir(join(root, "src"));
+  // Every file under src, folders included: a new folder must not be a place the check cannot see.
+  const files = (await readdir(join(root, "src"), { recursive: true })).filter((f) => f.endsWith(".js"));
+  assert.ok(files.some((f) => /[\\/]/.test(f)), "files in src's folders are checked too");
   for (const f of files) {
     const src = await readFile(join(root, "src", f), "utf8");
     // identity.js: optional rooms auth github device flow only (injectable fetchImpl; no room upload)
