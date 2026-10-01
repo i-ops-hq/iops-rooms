@@ -23,14 +23,14 @@ export async function scratch(fn) {
   }
 }
 
-export function run(cwd, argv, home) {
+export function run(cwd, argv, home, env = {}) {
   return new Promise((resolve) => {
     // Killed after thirty seconds: a command that should have refused, and started a server that
     // runs until stopped instead, must fail the test rather than outlive it.
     const child = spawn(process.execPath, [cli, ...argv], {
       cwd,
       timeout: 30000,
-      env: { ...process.env, ROOMS_NO_OPEN: "1", ROOMS_NO_GH: "1", ROOMS_HOME: home },
+      env: { ...process.env, ROOMS_NO_OPEN: "1", ROOMS_NO_GH: "1", ROOMS_HOME: home, ...env },
     });
     let out = "";
     let err = "";
@@ -58,7 +58,9 @@ export async function person(dir, login) {
     await git(to, "config", "user.name", login);
     await git(to, "config", "user.email", `${login}@example.com`);
   }
-  return { login, home, team, web, rooms: (cwd, ...argv) => run(cwd, argv, home) };
+  // Each person's own Claude Code folder, so one person's setup never reads or writes another's.
+  const claude = join(dir, login, "claude");
+  return { login, home, team, web, claude, rooms: (cwd, ...argv) => run(cwd, argv, home, { CLAUDE_CONFIG_DIR: claude }) };
 }
 
 /** alice makes the team room and the project's first commit, and both people have joined. */

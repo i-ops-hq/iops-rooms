@@ -6,10 +6,14 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 
 - Open sockets / `fetch` for **room traffic** or telemetry (no phone-home), or send anything to I-Ops. The network is reached only through your own `git` and `gh`, for what "What it does" lists (your verified identity, a branch's pull request, the team room), and through the OAuth **device flow** of `rooms auth github` / `rooms auth gitlab` when `gh` is not there, which mints a **local** verified identity and does **not** upload `.room/` events
 - Bind a listen socket to anything other than `127.0.0.1` (optional `rooms live` is localhost-only)
-- Read `process.env` wholesale or hunt for `.env`, SSH keys, or cloud credentials
+- Read `process.env` wholesale or hunt for `.env`, SSH keys, or cloud credentials. `rooms setup export`
+  reads one more variable, `CLAUDE_CONFIG_DIR`, to find Claude Code's folder, and never opens a file
+  whose name says it holds secrets
 - Write outside `.room/` in the project it resolved without a command that says so. The exceptions are listed under "What it does", and a test fails if `rooms open` in a new repository writes anything else
 - **Read** a file outside that project for `share-diff --path`, or a file whose name looks like a secret, without you saying so explicitly — see below
-- Run shell commands or `eval` user/agent text
+- Run shell commands or `eval` user/agent text. Adopting a setup writes a teammate's hooks and MCP
+  servers into Claude Code's settings, after a person approves the plan that lists them; Claude Code
+  runs them later, and Rooms runs none of them
 - Install other packages at runtime
 - Load scripts, fonts, or pixels from the public internet in `board.html`
 - `file://` board stays fully offline; `rooms live` may EventSource the same localhost origin only
@@ -42,7 +46,8 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   speaks to the agent
 - Write outside `.room/` only when a command says so: `rooms mcp install` (the MCP configs and the
   skill copies), `rooms hooks install` (`.git/hooks/`), `rooms index --open`
-  (`~/.iops-rooms/index.html`), and a path you name (`badge --out`, `export`, `export-room`)
+  (`~/.iops-rooms/index.html`), `rooms setup adopt` and `rooms setup rollback` (the files listed
+  below, after an approval), and a path you name (`badge --out`, `export`, `export-room`)
 - Stamp each event with a stable `deviceId` + display name. `ROOMS_ACTOR` claims to be a person, cannot be checked, and is marked **unverified**. `ROOMS_DEVICE_ID` only labels the machine — required in VMs, where a cloned template shares one `device.json` and an ephemeral one has none — so it does not block signing; the event records `deviceAsserted`
 - Optional: after `rooms auth github` / `rooms auth gitlab`, stamp posts with GitHub/GitLab claim + local ed25519 signature (public key on the event; private key stays in `~/.iops-rooms/device.key`)
 - Speak MCP over **stdio only**
@@ -99,6 +104,41 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   never sent. At most once a minute per branch, never on the default branch, and never when `gh`
   is missing or `ROOMS_NO_GH=1` is set. What is not committed is counted from local `git` and shown
   as counts; which files is never kept
+- With `rooms setup export`, which shows everything it would commit and asks first (or takes
+  `--yes`): read, from the project, `CLAUDE.md`, `.claude/CLAUDE.md`, the files under
+  `.claude/rules/`, `agents/`, `commands/`, `skills/` and `hooks/`, and `.claude/settings.json` and
+  `.mcp.json`; and, only with `--user`, the same from Claude Code's folder (`~/.claude`, or
+  `CLAUDE_CONFIG_DIR`), plus `mcpServers` from `.claude.json` and no other part of that file, which
+  also holds the account. Of a settings file it takes only permission rules, a permission mode that
+  keeps Claude asking, command hooks, the names of environment variables and the model. It never
+  reads sessions (`~/.claude/projects/`), `.claude/settings.local.json`, `CLAUDE.local.md`, a
+  credential helper, a file whose name says it holds secrets, or anything through a link. Every
+  environment value and header becomes a placeholder naming the variable; the value never leaves. A
+  file is refused whole if a line looks like a secret, names a folder in the home, or acts in a way a
+  setup may not (hooks or servers in its frontmatter, a permission that stops Claude asking, an
+  unpinned command it runs as it loads); so is any launcher without an exact version and any absolute
+  path other than the home and the project, which become `${HOME}` and `${PROJECT}`. It commits the
+  setup to the branch `setup/<role>/<name>` in the team room's clone through git's object store,
+  leaving that clone's checkout, index and working tree as they were, and never pushes. A team room
+  GitHub says is public is refused, as for `rooms team sync`
+- With `rooms setup show`: read a setup from the team room at a git commit, never from the working
+  tree, and check it with every rule export applies before showing it
+- With `rooms setup adopt`, only after a person approves the plan it prints, at a terminal or with
+  `--approve` and that plan's digest (`--yes` alone never adopts): write, in the project, only
+  `CLAUDE.md`, `.claude/CLAUDE.md`, files under `.claude/rules/`, `agents/`, `commands/`, `skills/` and
+  `hooks/`, `.claude/settings.local.json` (merged, never the shared `settings.json`), `.mcp.json`
+  (merged, keeping any server the person already has by that name), and one line in
+  `.git/info/exclude` when it creates `settings.local.json`; with `--user`, the same kinds of file in
+  Claude Code's folder and its `settings.json` (merged). Never `.claude.json`: servers for every
+  project are printed as `claude mcp add-json` lines for the person to run. It refuses a setup that
+  fails any check, `bypassPermissions` or `auto` mode, a rule that lets any command run, an unpinned
+  launcher, a file aimed anywhere else, a link where a file would go, and a file that changed since the
+  plan was made. Every file it changes is copied first to `~/.iops-rooms/backups/<id>/` (folder 0700,
+  files 0600)
+- With `rooms setup rollback`, which asks first: put every file an adoption changed back byte for
+  byte from that backup, with its mode, and remove the files and folders it created. If any changed
+  since, it stops and names them, unless `--force`, which keeps the changed versions in the backup's
+  `at-rollback/` first. `rooms setup status` reads the backups and the team room, and writes nothing
 - Optional: export/import a `.room/` folder for git-friendly handoff (still offline)
 
 ## What `share-diff` will read (P0)
@@ -136,7 +176,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.6.2 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.7.0 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
@@ -161,6 +201,26 @@ Corrupt JSONL lines are **soft-skipped** when reading events — one bad line mu
 - Export/import is still **trust-the-peer**: we validate file *shape* (regular files, allowlist), not cryptographic signatures.
 - Soft-skip means a silently corrupt line is dropped; check `[rooms] skipped N corrupt JSONL line(s)` on stderr if events look missing.
 - Device identity under `~/.iops-rooms/device.json` is still a local writable file (by design).
+
+## Setups: what the checks do not cover
+
+`rooms setup` moves prompts, settings, hooks and MCP servers between people, so it is held to the
+rules above and to these, which remain:
+
+- The secret scan knows the formats it lists (docs/format/SETUP.md). A secret in another format gets
+  through it. Environment values and headers are replaced by structure, whatever their format.
+- An exact version stops a launcher changing under the same text; it does not make the version
+  safe. Every hook, server and script a setup would run is shown before adopting, with the commit
+  that added it and its author as git records them, which git does not verify. Somebody still has to
+  read them.
+- A permission rule can look narrow and not be. Adopting shows every rule as what it allows, and
+  refuses the rules and modes that plainly stop Claude asking.
+- Anyone who can write to the team room can change a setup in it. Rooms does not change repository
+  settings: turn on branch protection and review for `setups/`. Nothing is adopted on `git pull`; a
+  new revision waits in `rooms setup status`.
+- An agent that can run commands can run `rooms setup adopt`, read the plan's digest, and approve it.
+  None of the setup commands is an MCP tool; where an agent has a shell, its own permission prompts
+  are the gate.
 
 ## Verified GitHub / GitLab identity (P2 spike)
 

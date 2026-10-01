@@ -6,19 +6,56 @@
  * the adopter's own.
  */
 
-import { isAbsolute, relative, sep } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import nodePath, { basename, dirname, join, sep, win32 } from "node:path";
 
-const inside = (base, path) => {
-  const rel = relative(base, path);
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+/** A drive-letter path is read by Windows' rules on every system, so it is never taken for a relative one. */
+const rulesFor = (p) => (/^[A-Za-z]:[\\/]/.test(p) ? win32 : nodePath);
+
+const inside = (base, p) => {
+  const P = rulesFor(p);
+  if (P !== rulesFor(base)) return false;
+  const rel = P.relative(base, p);
+  return rel === "" || (!rel.startsWith("..") && !P.isAbsolute(rel));
 };
+
+/**
+ * The path with the links in its existing part resolved, as the system sees it: on macOS `/var/x` is
+ * `/private/var/x`, and a project reached through a link is still the project.
+ */
+export function realForm(path) {
+  let head = String(path);
+  const tail = [];
+  while (!existsSync(head)) {
+    const up = dirname(head);
+    if (up === head) return String(path);
+    tail.unshift(basename(head));
+    head = up;
+  }
+  try {
+    return join(realpathSync.native(head), ...tail);
+  } catch {
+    return String(path);
+  }
+}
 
 /** `{ ok, value }` with the path made portable, or `{ ok: false, why }`. */
 export function portablePath(path, { home, project }) {
   const p = String(path);
-  if (!isAbsolute(p)) return { ok: true, value: p.split(sep).join("/") };
-  if (project && inside(project, p)) return { ok: true, value: `\${PROJECT}/${relative(project, p).split(sep).join("/")}`.replace(/\/$/, "") };
-  if (home && inside(home, p)) return { ok: true, value: `\${HOME}/${relative(home, p).split(sep).join("/")}`.replace(/\/$/, "") };
+  const P = rulesFor(p);
+  if (!P.isAbsolute(p)) return { ok: true, value: p.split(sep).join("/") };
+  // The same on every machine and naming no one: /dev/null, a scratch file in /tmp.
+  if (/^\/(dev|tmp)(\/|$)/.test(p)) return { ok: true, value: p };
+  // Compared as written, then resolved, so a link on the way does not make the project look foreign.
+  const forms = [...new Set([p, realForm(p)])];
+  for (const [base, name] of [[project, "PROJECT"], [home, "HOME"]]) {
+    if (!base) continue;
+    for (const b of new Set([base, realForm(base)])) {
+      for (const f of forms) {
+        if (inside(b, f)) return { ok: true, value: `\${${name}}/${rulesFor(f).relative(b, f).split(/[\\/]/).join("/")}`.replace(/\/$/, "") };
+      }
+    }
+  }
   return { ok: false, why: `${p} is a path on this machine outside your home and the project` };
 }
 
@@ -30,7 +67,9 @@ export function localPath(value, { home, project }) {
 /** Every absolute path inside a line of text (a hook command), made portable, or the first refusal. */
 export function portableText(text, where) {
   let refused = "";
-  const out = String(text).replace(/(?<![\w$}])(\/(?:[\w.@+-]+\/)*[\w.@+-]+|[A-Za-z]:\\(?:[\w.@+ -]+\\)*[\w.@+-]+)/g, (m) => {
+  // Not a path of its own: the rest of `"$DIR"/x`, `./x`, `~/x`, `${HOME}/x`, or a URL's `//host/x`.
+  // A Windows path may hold a short name (RUNNER~1) and mix both separators.
+  const out = String(text).replace(/(?<![\w$}/:.~-])(?<![\w}]["'])(\/(?:[\w.@+~-]+\/)*[\w.@+~-]+|[A-Za-z]:[\\/](?:[\w.@+~ -]+[\\/])*[\w.@+~-]+)/g, (m) => {
     const r = portablePath(m, where);
     if (!r.ok) refused ||= r.why;
     return r.ok ? r.value : m;

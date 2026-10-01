@@ -248,6 +248,38 @@ refuses a public one unless you pass `--public`; where it cannot ask, you confir
 GitHub Pages serves a site to the whole internet on every plan except Enterprise Cloud. Anyone who
 can write to the team room can write any file in it, so a status is as trustworthy as that access.
 
+### Setups: share a Claude Code setup, and adopt a teammate's
+
+A setup is how someone has Claude Code set up for a kind of work: their `CLAUDE.md`, agents,
+commands, skills, hooks, permission rules and MCP servers. The team room holds them, one folder per
+setup, reviewed like any other change.
+
+```bash
+rooms setup export --role backend --name go-claude   # in your project; shows it all, then commits to a branch
+rooms setup show                                     # every setup in the team room
+rooms setup show backend/go-claude                   # what it holds, runs and needs, and who added each part
+rooms setup adopt backend/go-claude                  # a plan first; nothing changes until you approve it
+rooms setup rollback                                 # every file back as it was
+rooms setup status                                   # what you adopted here, and whether there is newer
+```
+
+Export reads only what it lists: the project's Claude Code files, and yours from `~/.claude` with
+`--user`. It replaces every environment value and header with a placeholder, refuses a file holding
+something that looks like a secret or a path in your home, and refuses launchers without an exact
+version. It commits to the branch `setup/<role>/<name>` in your clone of the team room and pushes
+nothing: you push it and open a pull request. `--summary` says what it is for, and `--cost "20 Claude
+Pro"` what it costs a month, which is shown as declared, never measured.
+
+Adopting shows a plan: every file it would write or replace, every settings change, everything that
+would run on your machine and who added it, and what Claude could then do without asking. You approve
+it at a terminal, or with `--approve` and the digest the plan printed; `--yes` is never enough. Settings
+merge into your `.claude/settings.local.json`, not the project's shared file, and your own Claude Code
+folder is changed only with `--user`. A setup cannot turn on `bypassPermissions`, allow any command
+without asking, or run an unpinned package. Every file it changes is backed up first, and `rooms setup
+rollback` puts each back byte for byte, or stops if you changed one since (`--force` puts it back
+anyway and keeps your version). The format is in [docs/format/SETUP.md](docs/format/SETUP.md). Claude
+Code only, for now; Codex and Cursor come next.
+
 ### For teammates who never open a terminal
 
 Someone who does runs this once, on that teammate's machine, in the project:
@@ -482,7 +514,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.6.2 mcp install
+npx -y iops-rooms@0.7.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -495,7 +527,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.6.2", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.0", "mcp"] } } }
 ```
 
 ## Commands
@@ -512,6 +544,8 @@ Manual wiring, if you prefer:
 | `rooms hooks install` | opt-in local git hooks that post commits and checkouts |
 | `rooms scm-status` | repo, branches and open PRs via `gh` — read-only, degrades if `gh` is missing |
 | `rooms export` / `export-room` / `sync-merge` | markdown, or move a room between your own machines |
+| `rooms team …` | the team room: `init`, `join`, `sync`, `board`, `live`, `workflow` |
+| `rooms setup …` | Claude Code setups through the team room: `export`, `show`, `adopt`, `rollback`, `status` |
 
 `ROOMS_NO_OPEN=1` skips launching a browser, for headless boxes and VMs.
 

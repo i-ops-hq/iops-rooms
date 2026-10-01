@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.7.0
+
+### Setups: share a Claude Code setup through the team room, and adopt one with a plan and a rollback
+
+A setup is how someone has Claude Code set up for a kind of work: their `CLAUDE.md`, rules, agents,
+commands, skills, hook scripts, permission rules, hooks and MCP servers. `rooms setup export`, run in a
+project, reads those from an allowlist of files and keys, the project's by default and the person's
+own from `~/.claude` with `--user`, and commits them to the branch `setup/<role>/<name>` in their clone
+of the team room. It shows every file and every part it leaves out, and asks first. It never pushes,
+and it leaves the clone's checkout as it was, so `rooms team sync` cannot carry a setup by accident.
+
+What a setup may carry is narrow on purpose. Every environment value and header becomes a
+placeholder naming the variable; the value stays on the machine. Of `~/.claude.json`, which also holds
+the account, only its MCP servers are read. A file is refused whole if a line looks like a secret,
+names a folder in the home, or acts in a way a setup may not: hooks or servers in its frontmatter, a
+permission mode or pre-approved rule that stops Claude asking, or a command it runs as it loads
+without an exact version. Every launcher, wherever it stands in a command, must name one exact
+version. Paths in the home and the project become `${HOME}` and `${PROJECT}`; any other is refused.
+Nothing is read through a link.
+
+`rooms setup show` lists a team room's setups, or shows one: its files, each subagent's model and
+tools, every rule as what it allows, what it runs, with the commit that added each part and its
+author, what it needs, and a cost its owner declared, if any, which is shown as declared.
+
+`rooms setup adopt` builds a plan from the setup as it is at a commit: every file it would write or
+replace, every settings change, everything that would run on this machine, and what Claude could
+then do without asking, with a digest of exactly that plan. Nothing is written until a person approves
+it at a terminal, or passes `--approve` with that digest; `--yes` is never enough, since adopting
+runs a teammate's code as you. Settings merge into the project's personal
+`.claude/settings.local.json`, never the shared one, and the person's own Claude Code folder is
+written only with `--user`. A setup is checked again before it is shown or adopted, with every rule
+export applies, so one edited in the team room since, by hand or in GitHub's editor, is refused for
+what changed: a file that no longer matches its hash, a hook missing from the list of what it runs, a
+file aimed outside the places a setup may write, a value where only a variable's name may be.
+
+Every file an adoption changes is copied to `~/.iops-rooms/backups/` first. `rooms setup rollback`
+puts each back byte for byte, with its mode, and removes what the adoption created, folders
+included; if a file changed since, it stops and names it, and `--force` puts it back anyway after
+keeping the changed version. `rooms setup status` says whether anything changed since, and whether the
+team room has a newer revision. The format is documented in `docs/format/SETUP.md`. Codex and Cursor
+follow.
+
+Also: the guardrail that keeps the network out of `src/` now reads every file under it, folders
+included, and a new one keeps the attribution half of Rooms from importing the setup code, which reads
+file contents.
+
 ## 0.6.2
 
 ### BOARD.md, for the people who only read GitHub

@@ -156,6 +156,9 @@ export function claudeHookCommand({ nodeBin = process.execPath, cliPath }) {
 
 const isOurs = (hook) => typeof hook?.command === "string" && /\bagent-hook claude-code\b/.test(hook.command);
 
+/** Whether a Claude Code hook entry is one Rooms installed. A setup leaves these out: each machine installs its own. */
+export const isRoomsHook = isOurs;
+
 // Asked of the hooks themselves. Comparing the file with itself minus our entries also counted the
 // tidying `withoutClaudeHooks` does, so an empty "hooks": {} read as Rooms hooks present; searching
 // the text for the command also matched a permission rule that names it.
