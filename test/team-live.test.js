@@ -140,15 +140,28 @@ test("closing waits for a check already running, so nothing is pushed after it",
     const { alice } = await teamOfTwo(dir);
     const room = { name: "acme", path: alice.team };
     const live = await startTeamLive({ id: "local/team", room, projectDir: alice.web, login: "alice", share: true, everyMs: 60_000 });
-    await writeFile(join(alice.web, "late.txt"), "late\n", "utf8");
-    const running = live.checkNow();
-    assert.ok(await until(() => live.checking(), 5000), "the check never started");
-    await live.close();
-    const after = await commits(dir);
-    await running;
-    await new Promise((r) => setTimeout(r, 1000));
-    assert.equal(await commits(dir), after, "a push landed after close returned");
-    assert.equal(after, 3, "the first check's share and the one that was running both finished first");
+    let closing = null;
+    try {
+      await writeFile(join(alice.web, "late.txt"), "late\n", "utf8");
+      const running = live.checkNow();
+      // The check checkNow queues starts on the next microtask and then waits on git, so one await
+      // later it is running, however fast the machine. Polling for it every 50 ms, as this test did,
+      // missed a check that started and finished between two looks on a fast Linux runner, and the
+      // next one was a minute away.
+      await Promise.resolve();
+      assert.equal(live.checking(), true, "the check is running when the board closes");
+      closing = live.close();
+      await closing;
+      const after = await commits(dir);
+      await running;
+      await new Promise((r) => setTimeout(r, 1000));
+      assert.equal(await commits(dir), after, "a push landed after close returned");
+      assert.equal(after, 3, "the first check's share and the one that was running both finished first");
+    } finally {
+      // Closed whatever happened above: a board left open keeps the test file running, and the
+      // coverage job, which then had no time limit, waited six hours for it.
+      await (closing || live.close());
+    }
   });
 });
 

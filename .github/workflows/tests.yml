@@ -95,6 +95,9 @@ jobs:
           # The --test-coverage-* thresholds landed in Node 22; the matrix above still runs 20.
           node-version: "22"
 
+      # The same limit per test file as `npm test`: without it, a test that failed and left a server
+      # open held this job until GitHub cancelled it six hours later (2026-10-01).
+      #
       # Measured over src/ only. Including test files pushes the aggregate up by three points and
       # measures the tests testing themselves, which is not the thing worth defending.
       #
@@ -104,7 +107,7 @@ jobs:
       # after the branch graph was rebuilt around commit order and its geometry pinned by tests.
       - name: Coverage must not fall below the floor
         run: |
-          node --import ./test/env-setup.js --test --experimental-test-coverage \
+          node --import ./test/env-setup.js --test --test-timeout=90000 --experimental-test-coverage \
             --test-coverage-exclude='test/**' \
             --test-coverage-lines=90 \
             --test-coverage-branches=75 \
