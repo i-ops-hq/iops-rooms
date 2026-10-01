@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.7.1
+
+### Codex setups
+
+`rooms setup` now carries Codex as well as Claude Code. Export reads, from a project, `AGENTS.md`, the
+skills in `.agents/skills/`, and the MCP servers in `.codex/config.toml`; and, with `--user`, the
+`AGENTS.md`, `AGENTS.override.md` and `prompts/` in `~/.codex` (or `CODEX_HOME`), the skills in
+`~/.agents/skills/`, and from `~/.codex/config.toml` the model, reasoning effort, approval policy,
+sandbox mode, `notify` and MCP servers. `--tool codex` or `--tool claude-code` takes one tool only.
+
+Codex keeps its config in TOML, so Rooms reads TOML itself, still with no dependency, and strictly: what
+TOML 1.0 does not allow stops the reading with the line and the reason. Of the config it keeps only the
+keys above. Never `[projects]`, whose names are folders on the machine; never the values of
+`[shell_environment_policy]`; never `sandbox_mode = "danger-full-access"`, a rules folder (an `allow`
+there runs commands outside the sandbox), per-tool approvals, or `http_headers_helper`, which runs a
+command. Codex does not read `${VAR}` in its config, so a server's environment values become names
+Codex passes through (`env_vars`), and a header written out becomes the name of a variable holding it.
+A skill whose `agents/openai.yaml` declares dependencies is left out.
+
+Adopting writes Codex's files to their places, adds a project's servers to its `.codex/config.toml`,
+which Codex reads only in a project the person trusts, and, with `--user`, adds the settings and
+servers to `~/.codex/config.toml`. It adds to the file's text and rewrites nothing else: comments,
+order and blank lines stay, a key the setup sets is replaced on its own lines, and a server the person
+already has by that name is kept as theirs. The plan shows an approval policy or sandbox mode as what
+it lets Codex do. Codex CLI 0.159.0 itself was given what adopt wrote, and listed every server as set.
+
+Also: a setup whose manifest names a file kind such as `constructor` crashed `rooms setup show` and
+`adopt` in 0.7.0 (`PLACES[scope][kind].test is not a function`). Such names are now refused, with the
+reason. The tests give every test person their own home, Claude Code folder and Codex folder, so no test
+can read or write `~/.claude`, `~/.codex` or `~/.agents`.
+
 ## 0.7.0
 
 ### Setups: share a Claude Code setup through the team room, and adopt one with a plan and a rollback

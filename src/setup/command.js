@@ -16,7 +16,8 @@ import { authStatus, roomsHomeDir } from "../identity.js";
 import { PKG_ROOT } from "../mcp-install.js";
 import { shWord } from "../shortcut.js";
 import { checkPrivate, pullTeamRoom, readRegistry, teamForProject } from "../team.js";
-import { claudeDirs, readClaudeCode, selectItems } from "./claude-code.js";
+import { CHECKED_AGAINST, claudeDirs, readClaudeCode, selectItems } from "./claude-code.js";
+import { CODEX_CHECKED_AGAINST, codexDirs, readCodex } from "./codex.js";
 import { buildManifest, checkSetup, filePathFor, parseCost, renderReadme, SLUG } from "./manifest.js";
 import { branchFor, commitSetup, dirFor, lastChange, listSetups, readSetupAt, resolveCommit, whoAdded } from "./room.js";
 import { applyAdoption, changedSince, planAdoption, readAdoptions, rollBack } from "./adopt.js";
@@ -25,7 +26,7 @@ import { frontmatter, toolList } from "./prose.js";
 
 const USAGE = [
   "usage: rooms setup export --role <role> --name <name> [--summary <text>] [--cost \"100 what it pays for\"]",
-  "                          [--user] [--only <a,b>] [--skip <a,b>] [--team <owner/repo>] [--dry-run] [--yes]",
+  "                          [--tool claude-code|codex] [--user] [--only <a,b>] [--skip <a,b>] [--team <owner/repo>] [--dry-run] [--yes]",
   "       rooms setup show [<role/name>] [--ref <commit or branch>] [--team <owner/repo>]",
   "       rooms setup adopt <role/name> [--user] [--skip <a,b>] [--ref <commit or branch>] [--approve <digest>]",
   "       rooms setup rollback [<id>] [--force] [--yes]",
@@ -35,6 +36,7 @@ const USAGE = [
 const out = (s) => process.stdout.write(`${s}\n`);
 const list = (v) => (v === undefined || v === true ? [] : String(v).split(",").map((s) => s.trim()).filter(Boolean));
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
+const shown = (v) => (Array.isArray(v) ? v.join(" ") : String(v));
 const day = (iso) => String(iso || "").slice(0, 16).replace("T", " ");
 const backupsDir = () => join(roomsHomeDir(), "backups");
 
@@ -58,10 +60,15 @@ function parseTarget(target) {
   return { role: m[1], name: m[2] };
 }
 
+/** Where a setup's file goes, as a person reads it: `.claude/agents/r.md`, `~/.codex/prompts/x.md`. */
+const placeLabel = (installTo, tool) =>
+  String(installTo).replace(/^project:/, "").replace(/^home:/, "~/").replace(/^user:/, tool === "codex" ? "~/.codex/" : "~/.claude/");
+
 function runLine(r) {
-  const where = r.surface === "hook" ? `hook ${r.event}${r.matcher ? ` (${r.matcher})` : ""}` : r.surface === "mcp" ? `mcp ${r.name}` : r.surface === "loads" ? "as it loads" : "script";
-  const what = r.shown ?? r.command ?? r.url ?? r.file.replace(/^project:/, "").replace(/^user:/, "~/.claude/");
-  const file = r.surface === "loads" ? `  (${r.file.replace(/^project:/, "").replace(/^user:/, "~/.claude/")})` : "";
+  const codex = r.tool === "codex" ? "codex " : "";
+  const where = r.surface === "hook" ? `hook ${r.event}${r.matcher ? ` (${r.matcher})` : ""}` : r.surface === "mcp" ? `${codex}mcp ${r.name}` : r.surface === "loads" ? "as it loads" : r.surface === "notify" ? "codex notify" : `${codex}script`;
+  const what = r.shown ?? r.command ?? r.url ?? placeLabel(r.file, r.tool);
+  const file = r.surface === "loads" ? `  (${placeLabel(r.file, r.tool)})` : "";
   return `  ${where.padEnd(22)} ${what}${r.pinned ? `   pinned ${r.pinned.join(", ")}` : ""}${file}`;
 }
 
@@ -72,13 +79,14 @@ function requireLine(q) {
 /** Who added each thing a setup runs, and in which commit, as git records it. */
 async function provenance(clone, commit, dir, runs) {
   for (const r of runs) {
-    if (r.surface === "hook" || r.surface === "mcp") {
+    if (r.surface === "hook" || r.surface === "mcp" || r.surface === "notify") {
+      // Found through setup.json's own list of what it runs, which spells out each command whole.
       r.added = await whoAdded(clone, commit, `${dir}/setup.json`, JSON.stringify(r.command ?? r.url).slice(1, -1));
     } else if (r.surface === "loads") {
-      r.added = await whoAdded(clone, commit, `${dir}/${filePathFor(r.file)}`, r.command);
+      r.added = await whoAdded(clone, commit, `${dir}/${filePathFor(r.file, r.tool)}`, r.command);
     } else {
-      r.added = await whoAdded(clone, commit, `${dir}/${filePathFor(r.file)}`);
-      const last = await lastChange(clone, commit, `${dir}/${filePathFor(r.file)}`);
+      r.added = await whoAdded(clone, commit, `${dir}/${filePathFor(r.file, r.tool)}`);
+      const last = await lastChange(clone, commit, `${dir}/${filePathFor(r.file, r.tool)}`);
       if (last && r.added && last.commit !== r.added.commit) r.changed = last;
     }
   }
@@ -110,7 +118,12 @@ async function exportSetup(argv, h) {
   const top = await repositoryTop(process.cwd());
   const project = top ? await realpath(top) : null;
   const bundledSkill = await readFile(join(PKG_ROOT, "skills", "rooms", "SKILL.md"), "utf8").catch(() => null);
-  const read = await readClaudeCode({ project, bundledSkill });
+  const tools = argv.tool ? list(argv.tool) : ["claude-code", "codex"];
+  for (const t of tools) if (t !== "claude-code" && t !== "codex") throw new Error(`--tool is claude-code or codex, not ${t}`);
+  const reads = [];
+  if (tools.includes("claude-code")) reads.push(await readClaudeCode({ project, bundledSkill }));
+  if (tools.includes("codex")) reads.push(await readCodex({ project }));
+  const read = { items: reads.flatMap((r) => r.items), left: reads.flatMap((r) => r.left) };
   const items = selectItems(read.items, { user: Boolean(argv.user), only: list(argv.only), skip: list(argv.skip) });
 
   const branch = branchFor(role, name);
@@ -141,7 +154,8 @@ async function exportSetup(argv, h) {
 
   out(`Setup  ${role}/${name}, as ${login}, into ${room.name} (${id}; ${priv.how})`);
   if (!pulled.ok) out(`       the team room could not be brought up to date (${pulled.why}); building on what this machine has`);
-  out(`Read from Claude Code's files for ${project ? "this project and " : ""}for you, checked against ${manifest.tools["claude-code"].checkedAgainst}.`);
+  const names = tools.map((t) => (t === "claude-code" ? `Claude Code (checked against ${CHECKED_AGAINST})` : `Codex (checked against ${CODEX_CHECKED_AGAINST})`));
+  out(`Read from the files ${names.join(" and ")} keeps for ${project ? "this project and " : ""}for you.`);
   out("Nothing is written until you confirm, and nothing leaves this machine: you push.\n");
   for (const i of items) {
     const where = i.scope === "project" ? "project" : "yours";
@@ -150,7 +164,7 @@ async function exportSetup(argv, h) {
       continue;
     }
     const size = i.content !== undefined ? kb(i.bytes) : "";
-    const hint = !i.selected && !i.empty && i.scope === "user" && !argv.user && !list(argv.only).length ? "--user to include" : "";
+    const hint = !i.selected && !i.empty && i.scope !== "project" && !argv.user && !list(argv.only).length ? "--user to include" : "";
     out(`  [${i.selected ? "x" : " "}] ${i.label.padEnd(44)} ${where.padEnd(8)} ${size.padEnd(8)} ${[i.info, hint].filter(Boolean).join(" · ")}`.trimEnd());
     if (i.selected) for (const n of i.notes) out(`        ${n}`);
   }
@@ -164,7 +178,7 @@ async function exportSetup(argv, h) {
     for (const r of manifest.runs) out(runLine(r));
   }
   if (manifest.requires.length) out(`\nIt needs\n  ${manifest.requires.map(requireLine).join("\n  ")}`);
-  const count = manifest.tools["claude-code"].files.length;
+  const count = Object.values(manifest.tools).reduce((n, t) => n + t.files.length, 0);
   if (!items.some((i) => i.selected)) throw new Error("Nothing is selected, so there is nothing to export.");
   out(`\nCommit  setups/${role}/${name}/ on branch ${branch}`);
   out(`        in ${room.path}: setup.json, README.md and ${count} file${count === 1 ? "" : "s"}. Rooms does not push it; you do.`);
@@ -176,7 +190,7 @@ async function exportSetup(argv, h) {
   const all = new Map([
     ["setup.json", { content: `${JSON.stringify(manifest, null, 2)}\n` }],
     ["README.md", { content: renderReadme(manifest) }],
-    ...manifest.tools["claude-code"].files.map((f) => [f.path, { content: files.get(f.path), executable: Boolean(f.executable) }]),
+    ...Object.values(manifest.tools).flatMap((t) => t.files.map((f) => [f.path, { content: files.get(f.path), executable: Boolean(f.executable) }])),
   ]);
   const done = await commitSetup({ clone: room.path, role, name, files: all, message: `setup: ${role}/${name}, from ${login}` });
   if (!done.ok) throw new Error(`Nothing was exported: ${done.why}`);
@@ -221,34 +235,44 @@ async function show(target, argv) {
     return;
   }
   const m = s.manifest;
-  const cc = m.tools["claude-code"];
   out(`${role}/${name}  by ${m.owner}, in ${room.name} at ${commit.slice(0, 7)}${stale}`);
   if (m.summary) out(`  ${m.summary}`);
   if (m.cost) out(`  cost  $${m.cost.usdPerMonth} a month${m.cost.what ? `, ${m.cost.what}` : ""} (declared by ${m.owner}; not measured)`);
-  out(`  made with ${m.exportedWith}, read against ${cc.checkedAgainst || "an unnamed version"}`);
-  out("\nFiles");
-  for (const f of cc.files) {
-    const text = s.files.get(f.path);
-    const fm = frontmatter(text).keys;
-    const bits = [];
-    if (f.kind === "agent") {
-      bits.push(fm.model?.text ? `model ${fm.model.text}` : "model as the session's");
-      bits.push(fm.tools ? `tools ${toolList(fm.tools).join(", ")}` : "all tools");
+  const against = Object.values(m.tools).map((t) => t.checkedAgainst).filter(Boolean).join(" and ");
+  out(`  made with ${m.exportedWith}, read against ${against || "an unnamed version"}`);
+  for (const [tool, part] of Object.entries(m.tools)) {
+    out(`\n${tool === "codex" ? "Codex" : "Claude Code"} files`);
+    for (const f of part.files || []) {
+      const text = s.files.get(f.path);
+      const fm = frontmatter(text).keys;
+      const bits = [];
+      if (f.kind === "agent") {
+        bits.push(fm.model?.text ? `model ${fm.model.text}` : "model as the session's");
+        bits.push(fm.tools ? `tools ${toolList(fm.tools).join(", ")}` : "all tools");
+      }
+      if (fm["allowed-tools"]) bits.push(`runs without asking while it runs: ${toolList(fm["allowed-tools"]).join(" ")}`);
+      if (f.executable) bits.push("runs as a program");
+      out(`  ${placeLabel(f.installTo, tool).padEnd(44)} ${f.kind.padEnd(13)} ${kb(Buffer.byteLength(text))}${bits.length ? `  ${bits.join(" · ")}` : ""}`);
     }
-    if (fm["allowed-tools"]) bits.push(`runs without asking while it runs: ${toolList(fm["allowed-tools"]).join(" ")}`);
-    if (f.executable) bits.push("runs as a program");
-    const label = f.installTo.replace(/^project:/, "").replace(/^user:/, "~/.claude/");
-    out(`  ${label.padEnd(44)} ${f.kind.padEnd(13)} ${kb(Buffer.byteLength(text))}${bits.length ? `  ${bits.join(" · ")}` : ""}`);
+    if (!(part.files || []).length) out("  none");
   }
-  if (!cc.files.length) out("  none");
+  const cc = m.tools["claude-code"] || {};
   for (const scope of ["project", "user"]) {
     const st = cc[scope]?.settings;
     if (!st) continue;
-    out(`\nSettings for ${scope === "project" ? "the project (into .claude/settings.local.json)" : "every project (into ~/.claude/settings.json, with --user)"}`);
+    out(`\nClaude Code settings for ${scope === "project" ? "the project (into .claude/settings.local.json)" : "every project (into ~/.claude/settings.json, with --user)"}`);
     for (const list of ["allow", "ask", "deny"]) for (const rule of st.permissions?.[list] || []) out(`  ${list.padEnd(6)} ${rule.padEnd(36)} ${describeRule(list, rule)}`);
     if (st.permissions?.defaultMode) out(`  mode   ${st.permissions.defaultMode}`);
     if (st.model) out(`  model  ${st.model}`);
     if (st.env) out(`  env    ${Object.keys(st.env).join(", ")} (names only: each person sets their own)`);
+  }
+  const cxs = m.tools.codex?.user?.settings;
+  if (cxs) {
+    out("\nCodex settings for every project (into ~/.codex/config.toml, with --user)");
+    for (const [k, v] of Object.entries(cxs)) {
+      const says = k === "approval_policy" ? { never: "never asks; what needs more than the sandbox fails", "on-request": "asks when a command needs more than the sandbox", untrusted: "asks before a command it does not know to be safe", "on-failure": "asks when a command fails in the sandbox" }[v] : k === "sandbox_mode" ? (v === "workspace-write" ? "commands may write in the project, and nowhere else" : "commands may read, and write nothing") : "";
+      out(`  ${k.padEnd(22)} ${Array.isArray(v) ? v.join(" ") : v}${says ? `   ${says}` : ""}`);
+    }
   }
   const runs = m.runs.map((r) => ({ ...r }));
   await provenance(room.path, commit, dirFor(role, name), runs);
@@ -290,10 +314,12 @@ async function adopt(target, argv, h) {
   }
   const revision = (await lastChange(room.path, commit, dirFor(role, name)))?.commit || commit;
   const { config } = claudeDirs();
+  const codexConfig = codexDirs().config;
   const plan = await planAdoption({
     setup: { manifest: s.manifest, files: s.files, commit, revision, team: id },
     project,
     config,
+    codexConfig,
     home: homedir(),
     user: Boolean(argv.user),
     skip: list(argv.skip),
@@ -307,11 +333,12 @@ async function adopt(target, argv, h) {
       continue;
     }
     const what =
-      w.action === "new" ? "new file" :
+      w.action === "new" && !(w.changes || []).length ? "new file" :
       w.action === "replace" ? `replaces yours: +${w.change.added} −${w.change.removed} lines${w.tracked ? "; git tracks it, so it shows in git status" : ""}` :
-      (w.changes || []).map((c) => (c.kind === "rule" ? `+ ${c.list} ${c.rule}` : c.kind === "hook" ? `+ hooks.${c.event}` : c.kind === "server" ? `+ ${c.name}` : c.kind === "model" ? `model ${c.now} (was ${c.was ?? "unset"})` : c.kind === "mode" ? `mode ${c.now} (was ${c.was ?? "unset"})` : "+ .claude/settings.local.json, so git leaves it out")).join(" · ");
-    out(`  ${(w.action === "merge" ? "merge" : "write").padEnd(8)} ${w.label.padEnd(36)} ${what}`);
+      (w.changes || []).map((c) => (c.kind === "rule" ? `+ ${c.list} ${c.rule}` : c.kind === "hook" ? `+ hooks.${c.event}` : c.kind === "server" ? `+ ${c.name}` : c.kind === "model" ? `model ${c.now} (was ${c.was ?? "unset"})` : c.kind === "mode" ? `mode ${c.now} (was ${c.was ?? "unset"})` : c.kind === "setting" ? `${c.key} ${shown(c.now)} (was ${c.was === null || c.was === undefined ? "unset" : shown(c.was)})` : "+ .claude/settings.local.json, so git leaves it out")).join(" · ");
+    out(`  ${(w.action === "merge" ? "merge" : "write").padEnd(8)} ${w.label.padEnd(36)} ${w.action === "new" && (w.changes || []).length ? `new file: ${what}` : what}`);
     if (w.shared) out(`           ${"".padEnd(36)} shared with the project: commit it only if everyone should have it`);
+    if (w.note) out(`           ${"".padEnd(36)} ${w.note}`);
     for (const k of w.kept || []) out(`           ${"".padEnd(36)} kept yours: ${k} (you already have a server by that name)`);
   }
   for (const k of plan.skipped) out(`  skip     ${k.label.padEnd(36)} ${k.why}`);
@@ -321,7 +348,11 @@ async function adopt(target, argv, h) {
   }
   if (plan.grants.length) {
     out("\nWhat Claude may then do without asking:");
-    for (const g of plan.grants) out(g.mode ? `  mode ${g.mode} (was ${g.was ?? "unset"})   in ${g.where}` : `  ${g.list.padEnd(14)} ${g.rule.padEnd(30)} ${g.says}   (${g.where})`);
+    for (const g of plan.grants) {
+      if (g.mode) out(`  mode ${g.mode} (was ${g.was ?? "unset"})   in ${g.where}`);
+      else if (g.setting) out(`  ${g.setting} ${g.value} (was ${g.was ?? "unset"})   ${g.says}   (${g.where})`);
+      else out(`  ${g.list.padEnd(14)} ${g.rule.padEnd(30)} ${g.says}   (${g.where})`);
+    }
   }
   if (s.manifest.requires.length) out(`\nThe setup needs\n  ${s.manifest.requires.map(requireLine).join("\n  ")}`);
   if (plan.userServers.length) {

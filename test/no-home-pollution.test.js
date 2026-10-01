@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { roomsHomeDir } from "../src/identity.js";
 import { claudeDirs } from "../src/setup/claude-code.js";
+import { codexDirs } from "../src/setup/codex.js";
 
 const realHome = join(homedir(), ".iops-rooms");
 
@@ -39,4 +40,9 @@ test("and Claude Code's folder, which rooms setup reads and adopt --user writes,
   assert.notEqual(config, join(homedir(), ".claude"), "an adopt --user would write into the developer's ~/.claude");
   assert.notEqual(globalConfig, join(homedir(), ".claude.json"), "an export would read the developer's account file");
   assert.ok(config.startsWith(process.env.CLAUDE_CONFIG_DIR));
+});
+
+test("and Codex's folder too, which rooms setup reads and adopt --user writes", () => {
+  assert.ok(process.env.CODEX_HOME, "test/env-setup.js must set CODEX_HOME");
+  assert.notEqual(codexDirs().config, join(homedir(), ".codex"), "an adopt --user would write into the developer's ~/.codex");
 });

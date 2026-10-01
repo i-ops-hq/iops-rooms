@@ -78,7 +78,8 @@ const cases = {
   "a key a setup may not carry": [(m) => { cc(m).project.settings.statusLine = { type: "command", command: "x" }; }, /statusLine, which a setup may not carry/],
   "a hook that is not a command": [(m) => { cc(m).project.settings.hooks.Stop[0].hooks[0].type = "prompt"; }, /a setup carries command hooks only/],
   "a file climbing out through ..": [(m) => Object.assign(fileAt(m, "project:.claude/agents/reviewer.md"), { installTo: "project:.claude/agents/../../../escape.md", path: filePathFor("project:.claude/agents/../../../escape.md") }), /not a place a setup may write one/],
-  "a tool this version cannot read": [(m) => { m.tools.codex = { files: [] }; }, /it has codex, which this version of Rooms cannot read; update Rooms/],
+  "a tool this version cannot read": [(m) => { m.tools.cursor = { files: [] }; }, /it has cursor, which this version of Rooms cannot read; update Rooms/],
+  "a kind read off a prototype": [(m) => Object.assign(fileAt(m, "project:CLAUDE.md"), { kind: "constructor" }), /it lists a file this version does not install/],
   "an owner that is not a login": [(m) => { m.owner = "alice smith"; }, /owner is not a GitHub login/],
   "a setup filed under another name": [(m) => { m.name = "other"; }, /it says it is backend\/other, but it is filed as backend\/go-claude/],
 };
@@ -136,4 +137,68 @@ test("the places a setup may write are a short list, and every name in them is o
     ["project:.claude/skills/x/.git/config", "skill"], ["project:.claude/agents/../../../outside.md", "agent"], ["user:agents/../../.ssh/config.md", "agent"],
   ];
   for (const [installTo, kind] of refused) assert.equal(installPlace(installTo, kind), null, installTo);
+});
+
+// ---- the Codex part ----------------------------------------------------------------------------
+
+function codexBaseline() {
+  const items = [
+    { selected: true, tool: "codex", scope: "project", kind: "instructions", installTo: "project:AGENTS.md", label: "AGENTS.md", content: "# Web\n", left: [] },
+    { selected: true, tool: "codex", scope: "project", kind: "skill", installTo: "project:.agents/skills/release/SKILL.md", label: "s", content: "---\nname: release\ndescription: x\n---\nx\n", left: [] },
+    { selected: true, tool: "codex", scope: "user", kind: "prompt", installTo: "user:prompts/review.md", label: "p", content: "Review.\n", left: [] },
+    { selected: true, tool: "codex", scope: "home", kind: "skill", installTo: "home:.agents/skills/notes/SKILL.md", label: "n", content: "---\nname: notes\ndescription: x\n---\nx\n", left: [] },
+    {
+      selected: true, tool: "codex", scope: "project", kind: "config", label: ".codex/config.toml", left: [],
+      value: { mcpServers: { issues: { command: "npx", args: ["-y", "@example/issues-mcp@1.4.2"], env: { ISSUES_API_TOKEN: { fromEnv: "ISSUES_API_TOKEN" } } }, docs: { url: "https://docs.example.com/mcp", env_http_headers: { Authorization: "DOCS_AUTH" } } } },
+    },
+    {
+      selected: true, tool: "codex", scope: "user", kind: "config", label: "~/.codex/config.toml", left: [],
+      value: { settings: { model: "gpt-6.1-sol", approval_policy: "on-request", sandbox_mode: "workspace-write", notify: ["say", "done"] }, mcpServers: { search: { command: "uvx", args: ["search-mcp@2.0.0"] } } },
+    },
+  ];
+  const { manifest, files } = buildManifest({ role: "web", name: "codex-flow", owner: "alice", version: "0.7.1", items });
+  return { manifest: JSON.parse(JSON.stringify(manifest)), files };
+}
+
+test("a Codex setup as export built it passes", () => {
+  const { manifest, files } = codexBaseline();
+  assert.deepEqual(checkSetup(manifest, files, { role: "web", name: "codex-flow" }), []);
+  assert.deepEqual(Object.keys(manifest.tools), ["codex"]);
+});
+
+const cx = (m) => m.tools.codex;
+const codexCases = {
+  "danger-full-access": [(m) => { cx(m).user.settings.sandbox_mode = "danger-full-access"; }, /sandbox_mode danger-full-access lets commands reach anything on the machine/],
+  "a granular approval policy": [(m) => { cx(m).user.settings.approval_policy = { granular: { rules: true } }; }, /a granular approval policy/],
+  "settings in a project's part": [(m) => { cx(m).project.settings = { model: "x" }; }, /codex\.project\.settings is not a part this version reads/],
+  "a key Codex settings may not carry": [(m) => { cx(m).user.settings.service_tier = "fast"; }, /codex settings have service_tier, which a setup may not carry/],
+  "a value in a server's env": [(m) => { cx(m).project.mcpServers.issues.env.ISSUES_API_TOKEN = "the-value"; }, /env holds a value/],
+  "a server's env named for another variable": [(m) => { cx(m).project.mcpServers.issues.env.ISSUES_API_TOKEN = { fromEnv: "PATH" }; }, /env holds a value/],
+  "a header value": [(m) => { cx(m).project.mcpServers.docs.env_http_headers.Authorization = "Bearer the-value"; }, /headers hold a value/],
+  "a header helper": [(m) => { cx(m).project.mcpServers.docs.http_headers_helper = "make-headers"; }, /docs has a key this version does not read/],
+  "per-tool approvals": [(m) => { cx(m).project.mcpServers.issues.tools = { search: { approval_mode: "approve" } }; }, /issues has a key this version does not read/],
+  "an unpinned server": [(m) => { cx(m).user.mcpServers.search.args = ["search-mcp"]; }, /names no exact version/],
+  "an unpinned notify": [(m) => { cx(m).user.settings.notify = ["npx", "notifier"]; }, /notify: npx notifier names no exact version/],
+  "a notify naming a path": [(m) => { cx(m).user.settings.notify = ["/opt/acme/notify"]; }, /notify names a path on someone's machine/],
+  "a file aimed into ~/.ssh": [(m) => Object.assign(cx(m).files.find((f) => f.kind === "prompt"), { installTo: "home:.ssh/authorized_keys", path: "files/codex/home/.ssh/authorized_keys" }), /not a place a setup may write one/],
+  "a Claude file in the Codex part": [(m) => Object.assign(cx(m).files.find((f) => f.kind === "prompt"), { kind: "agent" }), /it lists a codex file this version does not install/],
+  "a Codex file filed as a Claude one": [(m) => Object.assign(cx(m).files.find((f) => f.kind === "prompt"), { path: "files/claude-code/user/prompts/review.md" }), /filed somewhere other than where its place says/],
+  "a server added without its line in runs": [(m) => { cx(m).user.mcpServers.extra = { command: "uvx", args: ["extra@1.0.0"] }; }, /list of what it runs does not match/],
+};
+for (const [name, [change, expected]] of Object.entries(codexCases)) {
+  test(`refused, Codex: ${name}`, () => {
+    const { manifest, files } = codexBaseline();
+    change(manifest, files);
+    const problems = checkSetup(manifest, files, { role: "web", name: "codex-flow" });
+    assert.ok(problems.some((p) => expected.test(p)), `${name}: ${JSON.stringify(problems)}`);
+  });
+}
+
+test("refused, Codex: a skill whose agents/openai.yaml declares dependencies, even with its hash made to match", () => {
+  const { manifest, files } = codexBaseline();
+  const yaml = "dependencies:\n  tools:\n    - type: mcp\n";
+  const f = { kind: "skill", path: "files/codex/project/.agents/skills/release/agents/openai.yaml", installTo: "project:.agents/skills/release/agents/openai.yaml", sha256: sha256Text(yaml) };
+  cx(manifest).files.push(f);
+  files.set(f.path, yaml);
+  assert.ok(checkSetup(manifest, files, { role: "web", name: "codex-flow" }).some((p) => /declares dependencies, which this version does not adopt/.test(p)));
 });

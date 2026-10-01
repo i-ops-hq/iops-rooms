@@ -84,7 +84,7 @@ The board and the room:
   rooms auth logout
   rooms help
 
-Setups (Claude Code), shared through the team room:
+Setups (Claude Code and Codex), shared through the team room:
   rooms setup export --role <role> --name <name>   commit this project's setup to a branch there; you push
   rooms setup show [<role/name>]           what a setup holds, runs and needs, and who added it
   rooms setup adopt <role/name> [--user]   a plan first; applied only after you approve it
@@ -118,7 +118,7 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
   "code", "provider", "host", "client-id", "window-size", "agent", "to", "team", "every", "hours",
-  "role", "summary", "cost", "only", "skip", "ref", "approve",
+  "role", "summary", "cost", "only", "skip", "ref", "approve", "tool",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",

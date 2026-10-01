@@ -21,6 +21,8 @@ if (!process.env.ROOMS_HOME) {
 // land in a scratch folder, never in the ~/.claude of whoever runs the suite. It also holds the
 // .claude.json the reader would otherwise find in the real home.
 process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "iops-rooms-claude-"));
+// Codex's folder, for the same reason: `rooms setup export --user` reads it and `adopt --user` writes it.
+process.env.CODEX_HOME = mkdtempSync(join(tmpdir(), "iops-rooms-codex-"));
 // No test wants a browser window, and a headless CI box has nothing to open one with.
 process.env.ROOMS_NO_OPEN = process.env.ROOMS_NO_OPEN || "1";
 // No test asks GitHub anything: a pull request's state would depend on the network and on whoever

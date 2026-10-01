@@ -16,7 +16,7 @@ import { randomBytes } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { filePathFor, installPlace, TOOL } from "./manifest.js";
+import { filePathFor, installPlace, TOOLS } from "./manifest.js";
 
 export const branchFor = (role, name) => `setup/${role}/${name}`;
 export const dirFor = (role, name) => `setups/${role}/${name}`;
@@ -138,11 +138,14 @@ export async function readSetupAt(clone, commit, role, name) {
     return { found: true, manifest: null, files: new Map(), problems: ["setup.json is not valid JSON"] };
   }
   const files = new Map();
-  const list = manifest?.tools?.[TOOL]?.files;
-  for (const f of Array.isArray(list) ? list.slice(0, 500) : []) {
-    if (!f || typeof f.installTo !== "string" || !installPlace(f.installTo, f.kind) || f.path !== filePathFor(f.installTo)) continue;
-    const t = await blob(clone, commit, `${dir}/${f.path}`);
-    if (t !== null) files.set(f.path, t);
+  for (const tool of TOOLS) {
+    const part = manifest?.tools && Object.prototype.hasOwnProperty.call(manifest.tools, tool) ? manifest.tools[tool] : null;
+    const list = part && Array.isArray(part.files) ? part.files.slice(0, 500) : [];
+    for (const f of list) {
+      if (!f || typeof f.installTo !== "string" || !installPlace(f.installTo, f.kind, tool) || f.path !== filePathFor(f.installTo, tool)) continue;
+      const t = await blob(clone, commit, `${dir}/${f.path}`);
+      if (t !== null) files.set(f.path, t);
+    }
   }
   return { found: true, manifest, files, problems: [] };
 }

@@ -10,6 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { CHECKED_AGAINST, ENV_NAME, HOOK_KEYS, MODEL, SERVER_NAME, urlRefusal } from "./claude-code.js";
+import { CODEX_CHECKED_AGAINST, CODEX_HTTP_KEYS, CODEX_SETTINGS, CODEX_STDIO_KEYS, approvalRefusal, sandboxRefusal } from "./codex.js";
 import { checkRun, checkShellLine } from "./pins.js";
 import { portableText } from "./paths.js";
 import { actingRefusal, injections } from "./prose.js";
@@ -20,9 +21,15 @@ import { mdText } from "../team-board.js";
 export const SETUP_FORMAT = "iops-rooms/setup";
 export const SETUP_FORMAT_VERSION = 1;
 export const TOOL = "claude-code";
+export const CODEX = "codex";
+/** The tools a setup may hold, in the order they are listed. */
+export const TOOLS = [TOOL, CODEX];
+const CHECKED = { [TOOL]: CHECKED_AGAINST, [CODEX]: CODEX_CHECKED_AGAINST };
+const KINDS = { [TOOL]: new Set(["instructions", "rule", "agent", "command", "skill", "script"]), [CODEX]: new Set(["instructions", "skill", "prompt"]) };
+/** A Codex skill's agents/openai.yaml may declare the MCP servers it depends on: not adopted yet. */
+const DEPENDS = /^\s*["']?dependencies["']?\s*:/m;
 export const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
-const KINDS = new Set(["instructions", "rule", "agent", "command", "skill", "script"]);
 const SCRIPT = /\.(sh|bash|zsh|fish|py|js|mjs|cjs|ts|rb|pl|php|ps1|bat|cmd|lua)$/i;
 
 export const normalizeText = (text) => String(text).replace(/\r\n/g, "\n");
@@ -35,45 +42,60 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // ---- where a setup may write -------------------------------------------------------------------
 
-/** The only places a setup's files may go, by scope and kind; nothing else is ever written. */
+/**
+ * The only places a setup's files may go, by tool, scope and kind; nothing else is ever written.
+ * `project:` is the adopter's project; `user:` the tool's own folder (`~/.claude`, `~/.codex`);
+ * `home:` the adopter's home, for Codex's skills in `~/.agents/skills`.
+ */
 const PLACES = {
-  project: {
-    instructions: /^(?:CLAUDE\.md|\.claude\/CLAUDE\.md)$/,
-    rule: /^\.claude\/rules\/.+\.md$/,
-    agent: /^\.claude\/agents\/.+\.md$/,
-    command: /^\.claude\/commands\/.+\.md$/,
-    skill: /^\.claude\/skills\/[^/]+\/.+$/,
-    script: /^\.claude\/hooks\/.+$/,
+  [TOOL]: {
+    project: {
+      instructions: /^(?:CLAUDE\.md|\.claude\/CLAUDE\.md)$/,
+      rule: /^\.claude\/rules\/.+\.md$/,
+      agent: /^\.claude\/agents\/.+\.md$/,
+      command: /^\.claude\/commands\/.+\.md$/,
+      skill: /^\.claude\/skills\/[^/]+\/.+$/,
+      script: /^\.claude\/hooks\/.+$/,
+    },
+    user: {
+      instructions: /^CLAUDE\.md$/,
+      rule: /^rules\/.+\.md$/,
+      agent: /^agents\/.+\.md$/,
+      command: /^commands\/.+\.md$/,
+      skill: /^skills\/[^/]+\/.+$/,
+      script: /^hooks\/.+$/,
+    },
   },
-  user: {
-    instructions: /^CLAUDE\.md$/,
-    rule: /^rules\/.+\.md$/,
-    agent: /^agents\/.+\.md$/,
-    command: /^commands\/.+\.md$/,
-    skill: /^skills\/[^/]+\/.+$/,
-    script: /^hooks\/.+$/,
+  [CODEX]: {
+    project: { instructions: /^AGENTS\.md$/, skill: /^\.agents\/skills\/[^/]+\/.+$/ },
+    user: { instructions: /^AGENTS(?:\.override)?\.md$/, prompt: /^prompts\/[^/]+\.md$/ },
+    home: { skill: /^\.agents\/skills\/[^/]+\/.+$/ },
   },
 };
+
+/** A property of the object itself: a name from a teammate's file is never read off a prototype. */
+const own = (o, k) => (o && typeof o === "object" && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
 
 /** A name every system can hold: no `.` or `..`, nothing Windows refuses, no control character. */
 const SEGMENT = /^(?!\.{1,2}$)[^\\/:*?"<>|\x00-\x1f]{1,120}$/;
 const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
 
-/** `project:.claude/agents/r.md` as `{ scope, rel }`, if it is a place a file of that kind may go. */
-export function installPlace(installTo, kind) {
-  const m = /^(project|user):(.+)$/.exec(String(installTo));
-  if (!m || !PLACES[m[1]][kind]) return null;
+/** `project:.claude/agents/r.md` as `{ scope, rel }`, if it is a place a file of that kind may go for that tool. */
+export function installPlace(installTo, kind, tool = TOOL) {
+  const m = /^(project|user|home):(.+)$/.exec(String(installTo));
+  const re = m ? own(own(own(PLACES, tool), m[1]), kind) : undefined;
+  if (!(re instanceof RegExp)) return null;
   const [, scope, rel] = m;
   const segments = rel.split("/");
   if (rel.length > 400 || !segments.every((s) => SEGMENT.test(s) && !RESERVED.test(s) && !/[. ]$/.test(s))) return null;
   if (segments.some((s) => s.toLowerCase() === ".git")) return null;
-  return PLACES[scope][kind].test(rel) ? { scope, rel } : null;
+  return re.test(rel) ? { scope, rel } : null;
 }
 
 /** Where a file sits inside the setup's folder: derived from where it goes, so the two cannot disagree. */
-export function filePathFor(installTo) {
-  const [, scope, rel] = /^(project|user):(.+)$/.exec(String(installTo));
-  return `files/${TOOL}/${scope}/${rel}`;
+export function filePathFor(installTo, tool = TOOL) {
+  const [, scope, rel] = /^(project|user|home):(.+)$/.exec(String(installTo));
+  return `files/${tool}/${scope}/${rel}`;
 }
 
 const acts = (f) => f.kind === "agent" || f.kind === "command" || (f.kind === "skill" && f.installTo.endsWith("/SKILL.md"));
@@ -130,6 +152,31 @@ export function deriveRuns(manifest, files) {
     }
     if (isScript(f, text)) runs.push({ tool: TOOL, scope: scopeOf(f.installTo), surface: "script", file: f.installTo });
   }
+  // Codex: what notify runs after each turn, its servers, and the scripts its skills ship. Nothing in
+  // a Codex skill runs as it loads.
+  const cx = manifest.tools?.[CODEX] || {};
+  for (const scope of ["project", "user"]) {
+    const part = cx[scope] || {};
+    const notify = part.settings?.notify;
+    if (Array.isArray(notify) && notify.length) {
+      const check = checkRun(notify[0], notify.slice(1));
+      runs.push({ tool: CODEX, scope, surface: "notify", command: notify.join(" "), ...(check.pinned ? { pinned: [check.pinned] } : {}) });
+    }
+    const servers = part.mcpServers || {};
+    for (const name of Object.keys(servers).sort()) {
+      const s = servers[name];
+      if (s.url) {
+        runs.push({ tool: CODEX, scope, surface: "mcp", name, url: s.url });
+        continue;
+      }
+      const check = checkRun(s.command, s.args || []);
+      runs.push({ tool: CODEX, scope, surface: "mcp", name, command: [s.command, ...(s.args || [])].join(" "), ...(check.pinned ? { pinned: [check.pinned] } : {}) });
+    }
+  }
+  for (const f of [...(cx.files || [])].sort((a, b) => (a.installTo < b.installTo ? -1 : a.installTo > b.installTo ? 1 : 0))) {
+    const text = files.get(f.path);
+    if (text != null && isScript(f, text)) runs.push({ tool: CODEX, scope: scopeOf(f.installTo), surface: "script", file: f.installTo });
+  }
   return runs;
 }
 
@@ -170,6 +217,20 @@ export function deriveRequires(manifest, files) {
     const label = f.installTo.replace(/^project:/, "").replace(/^user:/, "~/.claude/");
     for (const inj of injections(text)) for (const p of checkShellLine(inj.command).needs || []) add(programs, p, label);
   }
+  const cx = manifest.tools?.[CODEX] || {};
+  for (const scope of ["project", "user"]) {
+    const part = cx[scope] || {};
+    const notify = part.settings?.notify;
+    if (Array.isArray(notify) && /^[A-Za-z][\w.+-]*$/.test(notify[0] || "")) add(programs, notify[0], "codex notify");
+    for (const [name, s] of Object.entries(part.mcpServers || {})) {
+      const what = `codex mcp ${name}`;
+      for (const v of Object.values(s.env || {})) add(env, v.fromEnv, what);
+      for (const n of s.env_vars || []) add(env, n, what);
+      if (s.bearer_token_env_var) add(env, s.bearer_token_env_var, what);
+      for (const n of Object.values(s.env_http_headers || {})) add(env, n, what);
+      if (typeof s.command === "string" && /^[A-Za-z][\w.+-]*$/.test(s.command)) add(programs, s.command, what);
+    }
+  }
   const sorted = (map) => [...map].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return [
     ...sorted(env).map(([k, s]) => ({ env: k, for: [...s].sort().join(", ") })),
@@ -200,20 +261,29 @@ const validCost = (c) =>
  * with a reason that repeats no value from their files.
  */
 export function buildManifest({ role, name, owner, summary, cost, version, items, notExported = [] }) {
-  const cc = { checkedAgainst: CHECKED_AGAINST, files: [] };
+  const tools = {};
   const files = new Map();
   for (const item of items.filter((i) => i.selected)) {
-    if (item.kind === "settings" || item.kind === "mcp") {
-      cc[item.scope] ||= {};
-      cc[item.scope][item.kind === "settings" ? "settings" : "mcpServers"] = item.value;
+    const tool = item.tool || TOOL;
+    const t = (tools[tool] ||= { checkedAgainst: CHECKED[tool], files: [] });
+    if (item.kind === "settings" || item.kind === "mcp" || item.kind === "config") {
+      t[item.scope] ||= {};
+      if (item.kind === "settings") t[item.scope].settings = item.value;
+      else if (item.kind === "mcp") t[item.scope].mcpServers = item.value;
+      else {
+        if (item.value.settings) t[item.scope].settings = item.value.settings;
+        if (item.value.mcpServers) t[item.scope].mcpServers = item.value.mcpServers;
+      }
       continue;
     }
-    const path = filePathFor(item.installTo);
+    const path = filePathFor(item.installTo, tool);
     files.set(path, normalizeText(item.content));
-    cc.files.push({ kind: item.kind, path, installTo: item.installTo, sha256: sha256Text(item.content), ...(item.executable ? { executable: true } : {}) });
+    t.files.push({ kind: item.kind, path, installTo: item.installTo, sha256: sha256Text(item.content), ...(item.executable ? { executable: true } : {}) });
   }
-  cc.files.sort((a, b) => (a.installTo < b.installTo ? -1 : a.installTo > b.installTo ? 1 : 0));
-  for (const scope of ["project", "user"]) if (cc[scope]) cc[scope] = { ...(cc[scope].settings ? { settings: cc[scope].settings } : {}), ...(cc[scope].mcpServers ? { mcpServers: cc[scope].mcpServers } : {}) };
+  for (const t of Object.values(tools)) {
+    t.files.sort((a, b) => (a.installTo < b.installTo ? -1 : a.installTo > b.installTo ? 1 : 0));
+    for (const scope of ["project", "user"]) if (t[scope]) t[scope] = { ...(t[scope].settings ? { settings: t[scope].settings } : {}), ...(t[scope].mcpServers ? { mcpServers: t[scope].mcpServers } : {}) };
+  }
   const manifest = {
     format: SETUP_FORMAT,
     formatVersion: SETUP_FORMAT_VERSION,
@@ -223,7 +293,7 @@ export function buildManifest({ role, name, owner, summary, cost, version, items
     ...(summary ? { summary } : {}),
     ...(cost ? { cost } : {}),
     exportedWith: `iops-rooms@${version}`,
-    tools: { [TOOL]: cc },
+    tools: Object.fromEntries(TOOLS.filter((t) => tools[t]).map((t) => [t, tools[t]])),
   };
   manifest.runs = deriveRuns(manifest, files);
   manifest.requires = deriveRequires(manifest, files);
@@ -370,42 +440,27 @@ function checkServers(servers, scope, no) {
  * each listed path to its text, read from git at the setup's commit. Every rule export applies is
  * applied again here, since the setup may have been edited in the team room since.
  */
-export function checkSetup(manifest, files, { role, name } = {}) {
-  const problems = [];
-  const no = (s) => {
-    problems.push(s);
-  };
-  if (!isObj(manifest) || manifest.format !== SETUP_FORMAT) return ["setup.json is not a Rooms setup"];
-  if (!Number.isInteger(manifest.formatVersion) || manifest.formatVersion < 1) return ["setup.json has no format version this version reads"];
-  if (manifest.formatVersion > SETUP_FORMAT_VERSION) {
-    return [`setup.json is format version ${manifest.formatVersion}, newer than this version of Rooms reads (${SETUP_FORMAT_VERSION}); update Rooms to read it`];
-  }
-  if (!SLUG.test(manifest.role || "") || !SLUG.test(manifest.name || "")) no("its role or name is not a plain lowercase name");
-  else if (role && name && (manifest.role !== role || manifest.name !== name)) no(`it says it is ${manifest.role}/${manifest.name}, but it is filed as ${role}/${name}`);
-  if (!LOGIN.test(manifest.owner || "")) no("its owner is not a GitHub login");
-  if (manifest.summary !== undefined && !(typeof manifest.summary === "string" && manifest.summary.length <= 300)) no("its summary is not text of 300 characters at most");
-  if (manifest.exportedWith !== undefined && !(typeof manifest.exportedWith === "string" && manifest.exportedWith.length <= 60)) no("exportedWith is not a short name");
-  if (manifest.cost !== undefined && !validCost(manifest.cost)) no("its cost is not a declared amount in US dollars a month");
-  if (!isObj(manifest.tools)) return [...problems, "it holds no tools"];
-  for (const tool of Object.keys(manifest.tools)) if (tool !== TOOL) no(`it has ${tool.slice(0, 40)}, which this version of Rooms cannot read; update Rooms`);
-  const cc = manifest.tools[TOOL];
-  if (!isObj(cc)) return [...problems, "it holds nothing for Claude Code"];
-  for (const k of Object.keys(cc)) if (!["checkedAgainst", "files", "project", "user"].includes(k)) no(`it has claude-code.${k.slice(0, 40)}, which this version does not read`);
+const words = (v, max = 100) => Array.isArray(v) && v.length <= max && v.every((x) => typeof x === "string" && x.length <= 500);
 
-  const list = cc.files ?? [];
-  if (!Array.isArray(list) || list.length > 500) no("its files are not a list of at most 500");
+/** One tool's files: each a kind that tool has, in a place it may go, filed where that place says, and its bytes as hashed. */
+function checkFiles(tool, list, files, no) {
+  const label = tool === TOOL ? "" : `${tool} `;
+  if (!Array.isArray(list) || list.length > 500) {
+    no(`its ${label}files are not a list of at most 500`);
+    return 0;
+  }
   const seen = new Set();
   let total = 0;
-  for (const f of Array.isArray(list) ? list.slice(0, 500) : []) {
-    if (!isObj(f) || !KINDS.has(f.kind) || Object.keys(f).some((k) => !["kind", "path", "installTo", "sha256", "executable"].includes(k))) {
-      no("it lists a file this version does not install");
+  for (const f of list) {
+    if (!isObj(f) || typeof f.kind !== "string" || !KINDS[tool].has(f.kind) || Object.keys(f).some((k) => !["kind", "path", "installTo", "sha256", "executable"].includes(k))) {
+      no(`it lists a ${label}file this version does not install`);
       continue;
     }
-    if (!installPlace(f.installTo, f.kind)) {
-      no(`it would write a ${f.kind} to ${String(f.installTo).slice(0, 120)}, which is not a place a setup may write one`);
+    if (!installPlace(f.installTo, f.kind, tool)) {
+      no(`it would write a ${label}${f.kind} to ${String(f.installTo).slice(0, 120)}, which is not a place a setup may write one`);
       continue;
     }
-    if (f.path !== filePathFor(f.installTo)) {
+    if (f.path !== filePathFor(f.installTo, tool)) {
       no(`${f.installTo} is filed somewhere other than where its place says`);
       continue;
     }
@@ -431,13 +486,24 @@ export function checkSetup(manifest, files, { role, name } = {}) {
     }
     const secret = scanText(text)[0];
     if (secret) no(`${f.installTo} line ${secret.line} looks like ${secret.kind}`);
-    if (acts(f)) {
+    if (tool === TOOL ? acts(f) : f.kind === "skill" && f.installTo.endsWith("/SKILL.md")) {
       const why = actingRefusal(text);
       if (why) no(`${f.installTo}: ${why.detail}`);
     }
+    if (tool === CODEX && f.kind === "skill" && f.installTo.endsWith("/agents/openai.yaml") && DEPENDS.test(text)) {
+      no(`${f.installTo} declares dependencies, which this version does not adopt`);
+    }
   }
-  if (total > 5_000_000) no("its files come to more than 5 MB");
+  return total;
+}
 
+function checkClaude(cc, files, no) {
+  if (!isObj(cc)) {
+    no("it holds nothing for Claude Code");
+    return 0;
+  }
+  for (const k of Object.keys(cc)) if (!["checkedAgainst", "files", "project", "user"].includes(k)) no(`it has claude-code.${k.slice(0, 40)}, which this version does not read`);
+  const total = checkFiles(TOOL, cc.files ?? [], files, no);
   for (const scope of ["project", "user"]) {
     if (cc[scope] === undefined) continue;
     if (!isObj(cc[scope])) {
@@ -448,6 +514,125 @@ export function checkSetup(manifest, files, { role, name } = {}) {
     if (cc[scope].settings !== undefined) checkSettings(cc[scope].settings, scope, no);
     if (cc[scope].mcpServers !== undefined) checkServers(cc[scope].mcpServers, scope, no);
   }
+  return total;
+}
+
+function checkCodexSettings(st, no) {
+  const label = "codex settings";
+  if (!isObj(st)) return no(`${label} are not an object`);
+  for (const k of Object.keys(st)) if (!CODEX_SETTINGS.includes(k)) no(`${label} have ${k.slice(0, 40)}, which a setup may not carry`);
+  if (st.model !== undefined && !(typeof st.model === "string" && MODEL.test(st.model))) no(`${label}: model is not a model name`);
+  if (st.model_reasoning_effort !== undefined && !(typeof st.model_reasoning_effort === "string" && /^[a-z]{1,20}$/.test(st.model_reasoning_effort))) no(`${label}: model_reasoning_effort is not a reasoning effort`);
+  if (st.approval_policy !== undefined) {
+    const why = approvalRefusal(st.approval_policy);
+    if (why) no(`${label}: ${why}`);
+  }
+  if (st.sandbox_mode !== undefined) {
+    const why = sandboxRefusal(st.sandbox_mode);
+    if (why) no(`${label}: ${why}`);
+  }
+  if (st.notify !== undefined) {
+    if (!words(st.notify, 50) || !st.notify.length) return no(`${label}: notify is not a command`);
+    checkStrings(st.notify, `${label}: notify`, no);
+    if (st.notify.some((a) => a.includes("${PROJECT}"))) no(`${label}: notify is for every project but names one project`);
+    const check = checkRun(st.notify[0], st.notify.slice(1));
+    if (!check.ok) no(`${label}: notify: ${check.why}`);
+  }
+  return undefined;
+}
+
+function checkCodexServers(servers, scope, no) {
+  const label = `codex ${scope} MCP servers`;
+  if (!isObj(servers) || Object.keys(servers).length > 50) return no(`${label} are not a set of at most 50 servers`);
+  for (const [name, s] of Object.entries(servers)) {
+    if (!SERVER_NAME.test(name) || !isObj(s)) {
+      no(`${label}: a server this version does not read`);
+      continue;
+    }
+    const at = `${label}: ${name}`;
+    if (typeof s.command === "string") {
+      if (Object.keys(s).some((k) => !CODEX_STDIO_KEYS.includes(k))) no(`${at} has a key this version does not read`);
+      if (s.args !== undefined && !words(s.args)) {
+        no(`${at}'s args are not a list of words`);
+        continue;
+      }
+      if (s.cwd !== undefined && typeof s.cwd !== "string") no(`${at}'s cwd is not a folder`);
+      const parts = [s.command, ...(s.args || []), ...(typeof s.cwd === "string" ? [s.cwd] : [])];
+      checkStrings(parts, at, no);
+      if (scope === "user" && parts.some((a) => a.includes("${PROJECT}"))) no(`${at} is for every project but names one project`);
+      const check = checkRun(s.command, s.args || []);
+      if (!check.ok) no(`${at}: ${check.why}`);
+      if (s.env !== undefined && (!isObj(s.env) || Object.entries(s.env).some(([k, v]) => !ENV_NAME.test(k) || !isObj(v) || Object.keys(v).join() !== "fromEnv" || v.fromEnv !== k))) {
+        no(`${at}'s env holds a value, where a setup may only name a variable`);
+      }
+      if (s.env_vars !== undefined && !(words(s.env_vars) && s.env_vars.every((n) => ENV_NAME.test(n)))) no(`${at}'s env_vars are not names of variables`);
+    } else if (typeof s.url === "string") {
+      if (Object.keys(s).some((k) => !CODEX_HTTP_KEYS.includes(k))) no(`${at} has a key this version does not read`);
+      const why = urlRefusal(s.url);
+      if (why) no(`${at}: ${why}`);
+      if (s.bearer_token_env_var !== undefined && !(typeof s.bearer_token_env_var === "string" && ENV_NAME.test(s.bearer_token_env_var))) no(`${at}'s bearer_token_env_var is not the name of a variable`);
+      if (s.env_http_headers !== undefined && (!isObj(s.env_http_headers) || Object.entries(s.env_http_headers).some(([h, n]) => !/^[A-Za-z0-9-]{1,100}$/.test(h) || typeof n !== "string" || !ENV_NAME.test(n)))) {
+        no(`${at}'s headers hold a value, where a setup may only name a variable`);
+      }
+    } else {
+      no(`${at} has no command or address`);
+      continue;
+    }
+    if (s.enabled !== undefined && typeof s.enabled !== "boolean") no(`${at}: enabled is not true or false`);
+    for (const k of ["startup_timeout_sec", "tool_timeout_sec"]) if (s[k] !== undefined && !(typeof s[k] === "number" && s[k] > 0 && s[k] < 86_400)) no(`${at}: ${k} is not a number of seconds`);
+    for (const k of ["enabled_tools", "disabled_tools"]) if (s[k] !== undefined && !words(s[k], 500)) no(`${at}: ${k} is not a list of tool names`);
+  }
+  return undefined;
+}
+
+function checkCodex(cx, files, no) {
+  if (!isObj(cx)) {
+    no("it holds nothing for Codex");
+    return 0;
+  }
+  for (const k of Object.keys(cx)) if (!["checkedAgainst", "files", "project", "user"].includes(k)) no(`it has codex.${k.slice(0, 40)}, which this version does not read`);
+  const total = checkFiles(CODEX, cx.files ?? [], files, no);
+  for (const scope of ["project", "user"]) {
+    if (cx[scope] === undefined) continue;
+    if (!isObj(cx[scope])) {
+      no(`codex.${scope} is not an object`);
+      continue;
+    }
+    const allowed = scope === "project" ? ["mcpServers"] : ["settings", "mcpServers"];
+    for (const k of Object.keys(cx[scope])) if (!allowed.includes(k)) no(`codex.${scope}.${k.slice(0, 40)} is not a part this version reads`);
+    if (scope === "user" && cx.user.settings !== undefined) checkCodexSettings(cx.user.settings, no);
+    if (cx[scope].mcpServers !== undefined) checkCodexServers(cx[scope].mcpServers, scope, no);
+  }
+  return total;
+}
+
+/**
+ * Everything wrong with a setup, as sentences; empty when it may be shown and adopted. `files` maps
+ * each listed path to its text, read from git at the setup's commit. Every rule export applies is
+ * applied again here, since the setup may have been edited in the team room since.
+ */
+export function checkSetup(manifest, files, { role, name } = {}) {
+  const problems = [];
+  const no = (s) => {
+    problems.push(s);
+  };
+  if (!isObj(manifest) || manifest.format !== SETUP_FORMAT) return ["setup.json is not a Rooms setup"];
+  if (!Number.isInteger(manifest.formatVersion) || manifest.formatVersion < 1) return ["setup.json has no format version this version reads"];
+  if (manifest.formatVersion > SETUP_FORMAT_VERSION) {
+    return [`setup.json is format version ${manifest.formatVersion}, newer than this version of Rooms reads (${SETUP_FORMAT_VERSION}); update Rooms to read it`];
+  }
+  if (!SLUG.test(manifest.role || "") || !SLUG.test(manifest.name || "")) no("its role or name is not a plain lowercase name");
+  else if (role && name && (manifest.role !== role || manifest.name !== name)) no(`it says it is ${manifest.role}/${manifest.name}, but it is filed as ${role}/${name}`);
+  if (!LOGIN.test(manifest.owner || "")) no("its owner is not a GitHub login");
+  if (manifest.summary !== undefined && !(typeof manifest.summary === "string" && manifest.summary.length <= 300)) no("its summary is not text of 300 characters at most");
+  if (manifest.exportedWith !== undefined && !(typeof manifest.exportedWith === "string" && manifest.exportedWith.length <= 60)) no("exportedWith is not a short name");
+  if (manifest.cost !== undefined && !validCost(manifest.cost)) no("its cost is not a declared amount in US dollars a month");
+  if (!isObj(manifest.tools) || !Object.keys(manifest.tools).length) return [...problems, "it holds no tools"];
+  for (const tool of Object.keys(manifest.tools)) if (!TOOLS.includes(tool)) no(`it has ${tool.slice(0, 40)}, which this version of Rooms cannot read; update Rooms`);
+  let total = 0;
+  if (own(manifest.tools, TOOL) !== undefined) total += checkClaude(manifest.tools[TOOL], files, no);
+  if (own(manifest.tools, CODEX) !== undefined) total += checkCodex(manifest.tools[CODEX], files, no);
+  if (total > 5_000_000) no("its files come to more than 5 MB");
 
   const notExported = manifest.notExported ?? [];
   if (!Array.isArray(notExported) || notExported.length > 300 || notExported.some((n) => !isObj(n) || typeof n.what !== "string" || typeof n.why !== "string" || n.what.length > 300 || n.why.length > 300)) {
@@ -464,22 +649,35 @@ export function checkSetup(manifest, files, { role, name } = {}) {
 
 /** The README beside setup.json, generated from it, with every value escaped for Markdown. */
 export function renderReadme(manifest) {
-  const cc = manifest.tools[TOOL];
   const lines = [`# ${mdText(`${manifest.role}/${manifest.name}`)}`, ""];
   if (manifest.summary) lines.push(mdText(manifest.summary), "");
   const cost = manifest.cost ? ` · costs $${manifest.cost.usdPerMonth} a month${manifest.cost.what ? `, ${mdText(manifest.cost.what)}` : ""} (declared by the owner, not measured)` : "";
   lines.push(`Owner: ${mdText(manifest.owner)} · exported with ${mdText(manifest.exportedWith)}${cost}`, "", "## What it holds", "");
-  for (const f of cc.files) lines.push(`- ${mdText(f.installTo)} · ${f.kind}${f.executable ? " · runs as a program" : ""}`);
-  for (const scope of ["project", "user"]) {
-    if (cc[scope]?.settings) lines.push(`- ${scope} settings: ${mdText(Object.keys(cc[scope].settings).join(", "))}`);
-    if (cc[scope]?.mcpServers) lines.push(`- ${scope} MCP servers: ${mdText(Object.keys(cc[scope].mcpServers).join(", "))}`);
+  let held = 0;
+  for (const [tool, part] of Object.entries(manifest.tools)) {
+    const name = tool === TOOL ? "Claude Code" : "Codex";
+    for (const f of part.files || []) {
+      lines.push(`- ${name}: ${mdText(f.installTo)} · ${f.kind}${f.executable ? " · runs as a program" : ""}`);
+      held += 1;
+    }
+    for (const scope of ["project", "user"]) {
+      if (part[scope]?.settings) {
+        lines.push(`- ${name} ${scope} settings: ${mdText(Object.keys(part[scope].settings).join(", "))}`);
+        held += 1;
+      }
+      if (part[scope]?.mcpServers) {
+        lines.push(`- ${name} ${scope} MCP servers: ${mdText(Object.keys(part[scope].mcpServers).join(", "))}`);
+        held += 1;
+      }
+    }
   }
-  if (!cc.files.length && !cc.project && !cc.user) lines.push("- nothing");
+  if (!held) lines.push("- nothing");
   lines.push("", "## What it runs, as whoever adopts it", "");
   if (!manifest.runs.length) lines.push("- nothing");
   for (const r of manifest.runs) {
     const what = r.command || r.url || "";
-    const where = r.surface === "hook" ? `hook ${r.event}` : r.surface === "mcp" ? `MCP server ${r.name}` : r.surface === "loads" ? `as ${r.file} loads` : `script ${r.file}`;
+    const tool = r.tool === TOOL ? "" : "Codex ";
+    const where = r.surface === "hook" ? `hook ${r.event}` : r.surface === "mcp" ? `${tool}MCP server ${r.name}` : r.surface === "loads" ? `as ${r.file} loads` : r.surface === "notify" ? `${tool}notify, after each turn` : `${tool}script ${r.file}`;
     lines.push(`- ${mdText(where)}${what ? `: ${mdText(what)}` : ""}`);
   }
   lines.push("", "## What it needs", "");

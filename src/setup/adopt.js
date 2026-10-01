@@ -17,7 +17,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, readdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { gitIn } from "../team.js";
-import { installPlace, normalizeText, TOOL } from "./manifest.js";
+import { CODEX, installPlace, normalizeText, TOOL, TOOLS } from "./manifest.js";
+import { mergeCodexToml } from "./toml.js";
 import { describeRule } from "./permissions.js";
 import { frontmatter, toolList } from "./prose.js";
 
@@ -126,6 +127,47 @@ function placedServer(server, where) {
   return { value: out, problems };
 }
 
+/**
+ * A setup's Codex server as Codex's config holds it. Codex does not read `${VAR}`, so the variables a
+ * server needs are named in `env_vars`, which Codex passes through from the adopter's environment.
+ */
+function codexServer(server, where) {
+  const problems = [];
+  const put = (v) => {
+    const p = placed(v, where, { shell: false });
+    if (!p.ok) problems.push(p.why);
+    return p.value ?? v;
+  };
+  const out = {};
+  if (server.command !== undefined) {
+    out.command = put(server.command);
+    if (server.args) out.args = server.args.map(put);
+    const names = [...new Set([...Object.keys(server.env || {}), ...(server.env_vars || [])])];
+    if (names.length) out.env_vars = names;
+    if (server.cwd !== undefined) out.cwd = put(server.cwd);
+  } else {
+    out.url = server.url;
+    if (server.bearer_token_env_var) out.bearer_token_env_var = server.bearer_token_env_var;
+    if (server.env_http_headers) out.env_http_headers = { ...server.env_http_headers };
+  }
+  for (const k of ["enabled", "startup_timeout_sec", "tool_timeout_sec", "enabled_tools", "disabled_tools"]) if (server[k] !== undefined) out[k] = server[k];
+  return { value: out, problems };
+}
+
+/** A Codex setting as what it lets Codex do, for the plan a person approves. */
+function codexSays(key, value) {
+  if (key === "approval_policy") {
+    return {
+      never: "Codex never asks; a command that needs more than its sandbox allows fails instead",
+      "on-request": "Codex asks when a command needs more than its sandbox allows",
+      untrusted: "Codex asks before a command it does not know to be safe",
+      "on-failure": "Codex asks when a command fails in its sandbox",
+    }[value];
+  }
+  if (key === "sandbox_mode") return value === "workspace-write" ? "commands may write in the project, and nowhere else" : "commands may read, and write nothing";
+  return "";
+}
+
 // ---- merging into what is there -----------------------------------------------------------------
 
 const sameHook = (a, b) => JSON.stringify([a.type, a.command, a.args || null]) === JSON.stringify([b.type, b.command, b.args || null]);
@@ -195,9 +237,10 @@ export function mergeServers(existing, servers) {
  * Everything adopting `setup` would do here, without doing any of it. `setup` is a checked setup:
  * `{ manifest, files, commit, revision, team }`. `skip` takes names as the plan shows them.
  */
-export async function planAdoption({ setup, project, config, home, user = false, skip = [] }) {
+export async function planAdoption({ setup, project, config, codexConfig = null, home, user = false, skip = [] }) {
   const { manifest, files } = setup;
-  const cc = manifest.tools[TOOL];
+  const cc = manifest.tools[TOOL] || {};
+  const cx = manifest.tools[CODEX] || {};
   const plan = {
     setup: `${manifest.role}/${manifest.name}`,
     role: manifest.role,
@@ -208,6 +251,7 @@ export async function planAdoption({ setup, project, config, home, user = false,
     revision: setup.revision,
     project,
     config,
+    codexConfig,
     user,
     writes: [],
     skipped: [],
@@ -218,7 +262,8 @@ export async function planAdoption({ setup, project, config, home, user = false,
   };
   const where = { home, project };
   const skipping = (label) => skip.some((p) => label === p || (p.endsWith("/") && label.startsWith(p)));
-  const roots = { project, user: config };
+  const rootsFor = { [TOOL]: { project, user: config }, [CODEX]: { project, user: codexConfig, home } };
+  const labelFor = (tool, scope, rel) => (scope === "project" ? rel : scope === "home" ? `~/${rel}` : tool === TOOL ? `~/.claude/${rel}` : `~/.codex/${rel}`);
 
   const mergeInto = async ({ label, target, scope, shared = false, merge }) => {
     const cur = await current(target);
@@ -238,40 +283,43 @@ export async function planAdoption({ setup, project, config, home, user = false,
     return plan.writes.push({ ...w, action: "merge", before: cur.bytes, after: Buffer.from(`${JSON.stringify(after, null, 2)}\n`, "utf8") });
   };
 
-  for (const f of cc.files || []) {
-    const place = installPlace(f.installTo, f.kind);
-    if (!place) {
-      plan.refused.push(`${String(f.installTo).slice(0, 120)} is not a place a setup may write`);
-      continue;
+  for (const tool of TOOLS) {
+    for (const f of manifest.tools[tool]?.files || []) {
+      const place = installPlace(f.installTo, f.kind, tool);
+      if (!place) {
+        plan.refused.push(`${String(f.installTo).slice(0, 120)} is not a place a setup may write`);
+        continue;
+      }
+      const { scope, rel } = place;
+      const label = labelFor(tool, scope, rel);
+      if (scope !== "project" && !user) {
+        plan.skipped.push({ label, why: "yours, for every project: add --user to adopt it too" });
+        continue;
+      }
+      if (skipping(label)) {
+        plan.skipped.push({ label, why: "you said --skip" });
+        continue;
+      }
+      const root = rootsFor[tool][scope];
+      const target = root ? under(root, rel) : null;
+      if (!target) {
+        plan.refused.push(`${label} has nowhere to go here`);
+        continue;
+      }
+      const after = Buffer.from(normalizeText(files.get(f.path)), "utf8");
+      const cur = await current(target);
+      if (cur.link || cur.notFile) {
+        plan.refused.push(`${label} is ${cur.link ? "a link" : "not a file"} here; Rooms does not write through it`);
+        continue;
+      }
+      const runnable = f.executable && process.platform !== "win32";
+      if (cur.exists && cur.bytes.equals(after) && (!runnable || cur.mode & 0o100)) {
+        plan.writes.push({ label, target, scope, tool, action: "same", file: f });
+        continue;
+      }
+      const tracked = scope === "project" && cur.exists && (await gitIn(project, ["ls-files", "--error-unmatch", "--", rel])).ok;
+      plan.writes.push({ label, target, scope, tool, file: f, action: cur.exists ? "replace" : "new", before: cur.bytes, after, mode: f.executable ? 0o755 : null, tracked, change: cur.exists ? lineChange(cur.bytes, after) : null });
     }
-    const { scope, rel } = place;
-    const label = scope === "user" ? `~/.claude/${rel}` : rel;
-    if (scope === "user" && !user) {
-      plan.skipped.push({ label, why: "yours, for every project: add --user to adopt it too" });
-      continue;
-    }
-    if (skipping(label)) {
-      plan.skipped.push({ label, why: "you said --skip" });
-      continue;
-    }
-    const target = roots[scope] ? under(roots[scope], rel) : null;
-    if (!target) {
-      plan.refused.push(`${label} has nowhere to go here`);
-      continue;
-    }
-    const after = Buffer.from(normalizeText(files.get(f.path)), "utf8");
-    const cur = await current(target);
-    if (cur.link || cur.notFile) {
-      plan.refused.push(`${label} is ${cur.link ? "a link" : "not a file"} here; Rooms does not write through it`);
-      continue;
-    }
-    const runnable = f.executable && process.platform !== "win32";
-    if (cur.exists && cur.bytes.equals(after) && (!runnable || cur.mode & 0o100)) {
-      plan.writes.push({ label, target, scope, action: "same", file: f });
-      continue;
-    }
-    const tracked = scope === "project" && cur.exists && (await gitIn(project, ["ls-files", "--error-unmatch", "--", rel])).ok;
-    plan.writes.push({ label, target, scope, file: f, action: cur.exists ? "replace" : "new", before: cur.bytes, after, mode: f.executable ? 0o755 : null, tracked, change: cur.exists ? lineChange(cur.bytes, after) : null });
   }
 
   for (const scope of ["project", "user"]) {
@@ -311,6 +359,57 @@ export async function planAdoption({ setup, project, config, home, user = false,
     }
   }
 
+  // Codex: a project's servers into its .codex/config.toml; with --user, the person's settings and
+  // servers into Codex's own config.toml. The text is added to, never rewritten.
+  const tomlInto = async ({ label, target, scope, shared = false, note = "", top = {}, servers = {} }) => {
+    const cur = await current(target);
+    if (cur.link || cur.notFile) return plan.refused.push(`${label} is ${cur.link ? "a link" : "not a file"} here; Rooms does not write through it`);
+    let merged;
+    try {
+      merged = mergeCodexToml(cur.exists ? cur.bytes.toString("utf8") : "", { top, servers });
+    } catch (e) {
+      return plan.refused.push(`${label} here: ${e.message}`);
+    }
+    const w = { label, target, scope, tool: CODEX, shared, note, changes: merged.changes, kept: merged.kept, created: !cur.exists };
+    if (!merged.changes.length) return plan.writes.push({ ...w, action: "same" });
+    return plan.writes.push({ ...w, action: cur.exists ? "merge" : "new", before: cur.bytes, after: Buffer.from(merged.text, "utf8") });
+  };
+  const codexServers = (servers, at, label) => {
+    const out = {};
+    for (const [name, server] of Object.entries(servers)) {
+      const r = codexServer(server, at);
+      if (r.problems.length) plan.refused.push(...r.problems.map((p) => `${label} ${name}: ${p}`));
+      out[name] = r.value;
+    }
+    return out;
+  };
+  if (Object.keys(cx.project?.mcpServers || {}).length) {
+    const label = ".codex/config.toml";
+    if (skipping(label)) plan.skipped.push({ label, why: "you said --skip" });
+    else {
+      const servers = codexServers(cx.project.mcpServers, where, label);
+      await tomlInto({ label, target: join(project, ".codex", "config.toml"), scope: "project", shared: true, note: "Codex reads it only in a project you trust", servers });
+    }
+  }
+  if (cx.user?.settings || Object.keys(cx.user?.mcpServers || {}).length) {
+    const label = "~/.codex/config.toml";
+    if (!user) plan.skipped.push({ label, why: "your Codex settings for every project: add --user to adopt them too" });
+    else if (skipping(label)) plan.skipped.push({ label, why: "you said --skip" });
+    else if (!codexConfig) plan.refused.push(`${label} has nowhere to go here`);
+    else {
+      const top = { ...(cx.user.settings || {}) };
+      if (top.notify) {
+        top.notify = top.notify.map((a) => {
+          const p = placed(a, { home, project: null }, { shell: false });
+          if (!p.ok) plan.refused.push(`${label} notify: ${p.why}`);
+          return p.value ?? a;
+        });
+      }
+      const servers = codexServers(cx.user.mcpServers || {}, { home, project: null }, label);
+      await tomlInto({ label, target: join(codexConfig, "config.toml"), scope: "user", top, servers });
+    }
+  }
+
   // A personal settings file this adoption creates stays out of git, as Claude Code keeps its own.
   const local = plan.writes.find((w) => w.label === ".claude/settings.local.json" && w.created && w.action !== "same");
   if (local && !(await gitIn(project, ["check-ignore", "-q", "--", ".claude/settings.local.json"])).ok) {
@@ -327,16 +426,24 @@ export async function planAdoption({ setup, project, config, home, user = false,
 
   // What will run here: only what this adoption actually puts in place.
   const placedLabels = new Set(plan.writes.map((w) => w.label));
-  const placedFiles = new Set(plan.writes.filter((w) => w.file).map((w) => w.file.installTo));
+  const placedFiles = new Set(plan.writes.filter((w) => w.file).map((w) => `${w.tool}|${w.file.installTo}`));
   const settingsIn = (scope) => placedLabels.has(scope === "project" ? ".claude/settings.local.json" : "~/.claude/settings.json");
   const mcp = plan.writes.find((w) => w.label === ".mcp.json");
+  const codexIn = { project: plan.writes.find((w) => w.tool === CODEX && w.label === ".codex/config.toml"), user: plan.writes.find((w) => w.tool === CODEX && w.label === "~/.codex/config.toml") };
   for (const r of manifest.runs) {
+    if (r.tool === CODEX) {
+      const into = codexIn[r.scope];
+      if (r.surface === "notify" && into) plan.runs.push({ ...r, shown: placed(r.command, { home, project: null }, { shell: false }).value || r.command });
+      else if (r.surface === "mcp" && into && !into.kept.includes(r.name)) plan.runs.push({ ...r, shown: r.url || placed(r.command, r.scope === "user" ? { home, project: null } : where, { shell: false }).value || r.command });
+      else if (r.surface === "script" && placedFiles.has(`${CODEX}|${r.file}`)) plan.runs.push({ ...r, shown: r.file.replace(/^project:/, "").replace(/^home:/, "~/") });
+      continue;
+    }
     if (r.surface === "hook" && settingsIn(r.scope)) {
       const shown = placed(r.command, r.scope === "user" ? { home, project: null } : where, { shell: true });
       plan.runs.push({ ...r, shown: shown.value ?? r.command });
     } else if (r.surface === "mcp" && r.scope === "project" && mcp && !mcp.kept.includes(r.name)) {
       plan.runs.push({ ...r, shown: r.url || placed(r.command, where, { shell: false }).value || r.command });
-    } else if ((r.surface === "loads" || r.surface === "script") && placedFiles.has(r.file)) {
+    } else if ((r.surface === "loads" || r.surface === "script") && placedFiles.has(`${TOOL}|${r.file}`)) {
       plan.runs.push({ ...r, shown: r.command || r.file.replace(/^project:/, "").replace(/^user:/, "~/.claude/") });
     }
   }
@@ -347,9 +454,10 @@ export async function planAdoption({ setup, project, config, home, user = false,
     for (const c of w.changes || []) {
       if (c.kind === "rule") plan.grants.push({ where: w.label, list: c.list, rule: c.rule, says: describeRule(c.list, c.rule) });
       if (c.kind === "mode") plan.grants.push({ where: w.label, mode: c.now, was: c.was });
+      if (c.kind === "setting" && (c.key === "approval_policy" || c.key === "sandbox_mode")) plan.grants.push({ where: w.label, setting: c.key, value: c.now, was: c.was, says: codexSays(c.key, c.now) });
     }
     const f = w.file;
-    if (f && (f.kind === "command" || (f.kind === "skill" && f.installTo.endsWith("/SKILL.md")))) {
+    if (f && w.tool === TOOL && (f.kind === "command" || (f.kind === "skill" && f.installTo.endsWith("/SKILL.md")))) {
       for (const rule of toolList(frontmatter(files.get(f.path)).keys["allowed-tools"])) {
         plan.grants.push({ where: w.label, list: "while it runs", rule, says: describeRule("allow", rule) });
       }
@@ -367,6 +475,7 @@ export function planDigest(plan) {
     commit: plan.commit,
     project: plan.project,
     config: plan.config,
+    codexConfig: plan.codexConfig,
     writes: plan.writes.filter((w) => w.action !== "same").map((w) => [w.target, w.action, sha256(w.after)]),
     userServers: plan.userServers.map((s) => [s.name, s.json]),
     runs: plan.runs.map((r) => [r.surface, r.shown]),

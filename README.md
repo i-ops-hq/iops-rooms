@@ -248,11 +248,11 @@ refuses a public one unless you pass `--public`; where it cannot ask, you confir
 GitHub Pages serves a site to the whole internet on every plan except Enterprise Cloud. Anyone who
 can write to the team room can write any file in it, so a status is as trustworthy as that access.
 
-### Setups: share a Claude Code setup, and adopt a teammate's
+### Setups: share a Claude Code or Codex setup, and adopt a teammate's
 
-A setup is how someone has Claude Code set up for a kind of work: their `CLAUDE.md`, agents,
-commands, skills, hooks, permission rules and MCP servers. The team room holds them, one folder per
-setup, reviewed like any other change.
+A setup is how someone has Claude Code or Codex set up for a kind of work: their `CLAUDE.md` or
+`AGENTS.md`, agents, commands, skills, prompts, hooks, permission rules, model and sandbox settings,
+and MCP servers. The team room holds them, one folder per setup, reviewed like any other change.
 
 ```bash
 rooms setup export --role backend --name go-claude   # in your project; shows it all, then commits to a branch
@@ -263,8 +263,10 @@ rooms setup rollback                                 # every file back as it was
 rooms setup status                                   # what you adopted here, and whether there is newer
 ```
 
-Export reads only what it lists: the project's Claude Code files, and yours from `~/.claude` with
-`--user`. It replaces every environment value and header with a placeholder, refuses a file holding
+Export reads only what it lists: the project's Claude Code and Codex files, and yours from
+`~/.claude`, `~/.codex` and `~/.agents/skills` with `--user` (`--tool codex` takes one tool only). Of a
+Codex config it takes the servers, and with `--user` the model, approvals, sandbox and `notify`;
+never a project's trust entry, an environment value, or `danger-full-access`. It replaces every environment value and header with a placeholder, refuses a file holding
 something that looks like a secret or a path in your home or to the project's own folder, and refuses
 launchers without an exact version. It commits to the branch `setup/<role>/<name>` in your clone of the team room and pushes
 nothing: you push it and open a pull request. `--summary` says what it is for, and `--cost "20 Claude
@@ -277,8 +279,9 @@ merge into your `.claude/settings.local.json`, not the project's shared file, an
 folder is changed only with `--user`. A setup cannot turn on `bypassPermissions`, allow any command
 without asking, or run an unpinned package. Every file it changes is backed up first, and `rooms setup
 rollback` puts each back byte for byte, or stops if you changed one since (`--force` puts it back
-anyway and keeps your version). The format is in [docs/format/SETUP.md](docs/format/SETUP.md). Claude
-Code only, for now; Codex and Cursor come next.
+anyway and keeps your version). Codex's settings and servers are added to your `config.toml`'s text,
+which keeps everything else in it as it was, comments included. The format is in
+[docs/format/SETUP.md](docs/format/SETUP.md). Claude Code and Codex for now; Cursor comes next.
 
 ### For teammates who never open a terminal
 
@@ -514,7 +517,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.7.0 mcp install
+npx -y iops-rooms@0.7.1 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -527,7 +530,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.1", "mcp"] } } }
 ```
 
 ## Commands
@@ -545,7 +548,7 @@ Manual wiring, if you prefer:
 | `rooms scm-status` | repo, branches and open PRs via `gh` — read-only, degrades if `gh` is missing |
 | `rooms export` / `export-room` / `sync-merge` | markdown, or move a room between your own machines |
 | `rooms team …` | the team room: `init`, `join`, `sync`, `board`, `live`, `workflow` |
-| `rooms setup …` | Claude Code setups through the team room: `export`, `show`, `adopt`, `rollback`, `status` |
+| `rooms setup …` | Claude Code and Codex setups through the team room: `export`, `show`, `adopt`, `rollback`, `status` |
 
 `ROOMS_NO_OPEN=1` skips launching a browser, for headless boxes and VMs.
 
