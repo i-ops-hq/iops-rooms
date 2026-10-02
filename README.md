@@ -2,7 +2,7 @@
 
 # Rooms by I-Ops
 
-**See who built your project — and which AI helped.**
+**See who built your project and which AI helped. Share your team's status and AI setups through your own GitHub.**
 
 [![npm](https://img.shields.io/npm/v/iops-rooms?color=0b7285&label=npm)](https://www.npmjs.com/package/iops-rooms)
 [![tests](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/i-ops-hq/iops-rooms/actions/workflows/tests.yml)
@@ -17,8 +17,19 @@
 
 ---
 
-Point it at a git repo and find out **who built it, and which agent signed the commit.** No account,
-no server, no model deciding anything — the answer is recomputed from the repository every time.
+Rooms works from your own machine and your own GitHub: no account, no I-Ops server, and no model
+deciding anything. It does three things.
+
+- **Who built a project, and which AI helped.** Point it at a git repository and it reads the
+  history: which agent signed which commit, recomputed from the repository every time.
+- **A team room.** A private repository your team owns holds each member's status: work not yet
+  committed, pull requests and agent sessions, on a board everyone can open.
+  [More below.](#a-team-room-through-your-own-github)
+- **Shared AI setups.** Export your Claude Code, Codex or Cursor setup for a role. A teammate adopts
+  it with a plan they approve first, and can put every byte back.
+  [More below.](#setups-share-a-claude-code-codex-or-cursor-setup-and-adopt-a-teammates)
+
+The first needs nothing but a repository:
 
 ```bash
 npx iops-rooms week
@@ -520,7 +531,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.7.2 mcp install
+npx -y iops-rooms@0.7.3 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -533,7 +544,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.2", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.3", "mcp"] } } }
 ```
 
 ## Commands

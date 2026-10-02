@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.3
+
+### The README says what Rooms does now
+
+The README opened with one thing Rooms does: who built a project, and which AI helped. Since 0.6.0 it
+has also kept a team room in a private GitHub repository, and since 0.7.0 it has shared AI setups,
+but a reader met both only far down the page. The opening now names all three, and links to the team
+room and setups sections. The package's description on npm, which still called Rooms "shared rooms
+for agent sessions", says the same now, and its keywords name Claude Code, Codex and GitHub.
+
+Nothing else changed but the version.
+
 ## 0.7.2
 
 ### Cursor setups
