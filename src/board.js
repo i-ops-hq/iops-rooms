@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { LIVE_CLIENT_SNIPPET } from "./live-client.js";
-import { readGitSnapshot, trackingWords, uncommittedWords } from "./git-info.js";
+import { projectName as projectNameFrom, readGitSnapshot, trackingWords, uncommittedWords } from "./git-info.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { eventVerifiedBadge } from "./identity.js";
@@ -1707,7 +1707,7 @@ export function renderWeek(view) {
 </li>`;
     })
     .join("");
-  const notes = [view.split, view.truncated, view.seen ? view.floor : "", ...(view.seen ? view.config || [] : []), view.why]
+  const notes = [view.split, view.truncated, view.seen ? view.floor : "", ...(view.seen ? view.config || [] : []), view.why, view.away]
     .filter(Boolean)
     .map((text) => `<p class="wk-note">${esc(text)}</p>`)
     .join("");
@@ -1872,8 +1872,21 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   // The room's own state, on one line under the lead. It was five of the top cards, which pushed
   // every fact about the project below the fold; it is worth a sentence, not a quarter of the page.
   const roomLine = `${postersBlurb} Network ${networkLabel} — ${networkDetail}.`;
-  const projectName = boardProjectName(meta, projectDir);
+  // The project as every clone of it names it: `owner/repo` on a hosted remote (git-info.js); the
+  // room's own name only where the project has no remote to be named by.
+  const projectName = await projectNameFrom(projectDir, { snap: git, ownName: meta?.name });
   const boardTitle = `Rooms · ${projectName}`;
+  // How someone else gets here. A teammate comes through the team room; your own other machines use
+  // the room code, which makes this room in another folder and shares nothing by itself.
+  const { teamForProject } = await import("./team.js");
+  const linked = await teamForProject(projectDir).catch(() => ({ team: null }));
+  const codeSpan = (text) => `<span class="code" style="font-size:15px">${escapeHtml(text)}</span>`;
+  const joinHtml = [
+    linked.team
+      ? `Teammates: ${codeSpan(`rooms team join ${linked.id}`)}, in their clone of this project.`
+      : `Teammates: ${codeSpan("rooms team join <owner/repo>")}, through a private repository your team owns, made once with ${codeSpan("rooms team init")}.`,
+    `Your other machines: ${codeSpan(`rooms join ${meta.id || ""}`)} opens this room there.`,
+  ].join("<br>");
   // This branch's pull request, through the person's own gh (src/scm.js says exactly what is sent).
   const { branchPullRequest, pullRequestWords } = await import("./scm.js");
   const pr = git.ok ? await branchPullRequest(projectDir, git) : null;
@@ -1883,7 +1896,9 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
   const week = opts.week && opts.week.ok ? opts.week : null;
   const delta = week ? rep.weekOverWeek(week, opts.prior) : null;
   const weekView = week && {
-    window: "Last 7 days",
+    // On another branch the week is the default branch's, and says so (store.js refreshBoard).
+    window: opts.away ? `${opts.away.base} · Last 7 days` : "Last 7 days",
+    away: opts.away ? rep.awaySentence(opts.away) : "",
     seen: week.seen,
     insertions: week.insertions,
     deletions: week.deletions,
@@ -1911,6 +1926,7 @@ export async function writeBoard(boardPath, meta, events, opts = {}) {
     "{{HERO_SIDE}}": renderHeroSide({ git, auth: opts.auth || null, meta, pr, prWords: pullRequestWords(pr) }),
     "{{ROOM_LINE}}": escapeHtml(roomLine),
     "{{CODE}}": escapeHtml(meta.id || ""),
+    "{{JOIN}}": joinHtml,
     "{{CREATED}}": escapeHtml(meta.createdAt || ""),
     "{{BY}}": escapeHtml(meta.createdBy || ""),
     "{{BRANCH_PANEL}}": renderBranchPanel(git, events, opts.history),

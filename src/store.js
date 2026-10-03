@@ -285,10 +285,20 @@ export async function refreshBoard(projectDir) {
   // Git history is the project's own record and exists before Rooms is installed, so the board can
   // answer "who built this" on the very first run. Failure is not fatal: a folder that is not a
   // checkout still has a room, and the panel simply does not render.
+  // The history a view of the whole project reads: the default branch, wherever the checkout is,
+  // without moving it (git-info.js). `reading.away` says the checkout is on another branch.
+  let reading = null;
+  try {
+    const { readGitSnapshot, projectHistory } = await import("./git-info.js");
+    reading = await projectHistory(projectDir, await readGitSnapshot(projectDir));
+  } catch {
+    reading = null;
+  }
+  const ref = reading?.away ? reading.ref : "";
   let history = null;
   try {
     const { readHistoryGraph } = await import("./git-history.js");
-    history = await readHistoryGraph(projectDir);
+    history = await readHistoryGraph(projectDir, { ref });
   } catch {
     history = null;
   }
@@ -305,21 +315,27 @@ export async function refreshBoard(projectDir) {
   let week = null;
   let prior = null;
   let newest = null;
+  let away = null;
   let activity = [];
   try {
     const { buildReport } = await import("./report.js");
-    week = await buildReport(projectDir, { since: "7d" });
-    if (week.ok) prior = await buildReport(projectDir, { since: "14d" });
+    week = await buildReport(projectDir, { since: "7d", range: ref });
+    if (week.ok) prior = await buildReport(projectDir, { since: "14d", range: ref });
     if (week.ok && !week.seen) {
       const { newestCommitAt } = await import("./git-history.js");
-      newest = await newestCommitAt(projectDir);
+      newest = await newestCommitAt(projectDir, { ref });
+    }
+    // On another branch, what it adds: the same sentence `rooms week` ends with.
+    if (week.ok && reading?.away) {
+      const mine = await buildReport(projectDir, { range: `${reading.ref}..HEAD` });
+      if (mine.ok) away = { branch: reading.current, base: reading.base, report: mine };
     }
     const { readActivity } = await import("./activity.js");
     activity = await readActivity(projectDir);
   } catch {
     week = null;
   }
-  await writeBoard(paths.board, meta, events, { projectDir, history, auth, week, prior, newest, activity });
+  await writeBoard(paths.board, meta, events, { projectDir, history, auth, week, prior, newest, away, activity });
   return paths.board;
 }
 

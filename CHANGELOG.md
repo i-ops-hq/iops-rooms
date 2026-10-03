@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.4
+
+### Rooms starts where you are, and reads main from any branch
+
+`rooms` on its own used to print every command, about fifty of them. It now says what it found where
+it was run, and the few commands that fit:
+- a project, by name and branch, and how far that branch is from the default one;
+- a folder without git, with why nothing can be read there and what would change that;
+- a folder of projects, with which to go into;
+- a project linked to a team room, with its board and setups.
+
+It writes nothing, and `rooms help` still lists everything.
+
+On a branch other than the default one, `rooms week`, `rooms badge` and the board read the default
+branch's history: origin's copy as your last `git fetch` left it, or your own `main` without a
+remote. They used to read the branch you were on without saying so. Rooms never switches your
+checkout. The week names the branch it read, and ends with what your branch adds: how many commits,
+and which agents they record. `--json` carries the same, under `history`. `rooms file` and
+`rooms branch` still read your checkout, as before.
+
+Reports and the board name the project as its remote does, `owner/repo` on GitHub or another host,
+instead of after the folder it happens to be cloned into. A project with no remote keeps its room's
+name, or its folder's.
+
+The board's line under the room code said "Another machine: rooms join … — sync among your devices
+only", which read as if teammates joined that way and as if the code synced something. It now says
+how a teammate joins, through the team room, and that a room code opens the same room on your own
+other machines.
+
 ## 0.7.3
 
 ### The README says what Rooms does now

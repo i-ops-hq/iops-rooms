@@ -289,6 +289,49 @@ export async function readGitSnapshot(projectDir) {
 }
 
 /**
+ * What a project is called, the same on every clone of it: `owner/repo` when its remote is on a
+ * host, the remote's own repository name when the remote is a folder, and only then a name of its
+ * own, the room's if it has one worth showing, or the folder's. The board is titled with it, and
+ * the reports open with it.
+ */
+export async function projectName(projectDir, { snap = null, ownName = "" } = {}) {
+  const url = await git(projectDir, ["remote", "get-url", "origin"]);
+  const remote = snap?.ok ? snap.remote : sanitizeRemote(url);
+  if (remote?.path) return remote.path;
+  const fromUrl = basename(String(url).replace(/[\\/]+$/, "")).replace(/\.git$/i, "");
+  if (fromUrl) return fromUrl;
+  const own = String(ownName || "").trim();
+  if (own && !/^(untitled|room)$/i.test(own)) return own;
+  return basename(resolve(projectDir || ".")) || "project";
+}
+
+/**
+ * The history a view of the whole project reads: the default branch, read where it stands, without
+ * moving the checkout. On that branch, or in a repository without one, that is HEAD. On any other
+ * branch it is origin's copy of the default branch when this clone has one, which `git fetch` keeps
+ * current, or else the local one. The branch the checkout is on is reported beside it, never instead
+ * of it, and never switched to.
+ */
+export async function projectHistory(projectDir, snap) {
+  const base = snap?.ok ? snap.defaultBranch : "";
+  const current = snap?.ok ? snap.current : "";
+  const here = { ref: "HEAD", label: base || current, base, current, away: false };
+  if (!base || !current || current === base) return here;
+  for (const ref of [`refs/remotes/origin/${base}`, `refs/heads/${base}`]) {
+    if (await git(projectDir, ["rev-parse", "--verify", "--quiet", ref])) {
+      return { ref, label: ref.replace(/^refs\/(?:remotes|heads)\//, ""), base, current, away: true };
+    }
+  }
+  return here;
+}
+
+/** How many commits HEAD has that `ref` does not: what a branch adds. 0 when git cannot say. */
+export async function commitsNotIn(projectDir, ref) {
+  const n = Number(await git(projectDir, ["rev-list", "--count", `${ref}..HEAD`]));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
  * The project a command is about, from anywhere inside it.
  *
  * Running `rooms open` in `src/api/` used to create `src/api/.room/` and call the project "api".
