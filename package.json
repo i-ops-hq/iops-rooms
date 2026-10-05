@@ -1,6 +1,6 @@
 {
   "name": "iops-rooms",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "See who built your project and which AI helped, and share your team's status and AI setups (Claude Code, Codex, Cursor) through your own GitHub. Local, no account, no server.",
   "type": "module",
   "license": "MIT",

@@ -38,7 +38,7 @@ npx iops-rooms week
 ```
 Claude co-authored 68 of the last 137 commits here, and Cursor 1.
 
-iops-rooms · last 90d
+i-ops-hq/iops-rooms · last 90d
 137 commits · +21k −2.4k · 1 person
 
   Claude             68  ███████████░░░░░░░░░░░  49%
@@ -62,7 +62,7 @@ it is the more honest picture of what you should expect on a first run:
 ```
 Claude co-authored 35 of the last 500 commits here.
 
-anthropic-sdk-python · last 3650d
+anthropics/anthropic-sdk-python · last 3650d
 500 commits · +165k −31k · 35 people
 
   Claude                                        35  ██░░░░░░░░░░░░░░░░░░░░   7%
@@ -105,6 +105,15 @@ Four commands, all read-only, none of which needs a room:
 Run them from anywhere inside the project. A repository is one project, so a command typed in
 `packages/web/src` reports the whole repo — and `rooms file app.ts` still means the file next to
 you, not one of the same name at the root.
+
+On a branch other than the default one, `rooms week`, `rooms badge` and the board read the default
+branch's history: `origin/main` as your last `git fetch` left it, or your own `main` without a
+remote. Rooms never switches your checkout. A last line says what your branch adds, and `rooms
+branch` shows those commits. Reports and the board name the project as its remote does, `owner/repo`.
+
+Not sure where to start? Type `rooms` on its own, in any folder: it says what it found there, a
+project on some branch, a folder without git, or a folder of projects, and the few commands that
+fit. `rooms help` lists them all.
 
 <p align="center">
   <img src="docs/screenshots/agents.svg" alt="A stacked bar badge reading: agents — Claude 42%, Cursor 1%, unrecorded 57%">
@@ -515,6 +524,10 @@ git add .room && git commit && git push
 Teammates `git pull`, run `rooms join <code>`, and post. Everyone's posts merge on the next pull;
 `--share` writes the git merge rules that make concurrent posts merge instead of conflicting.
 
+A room code on its own shares nothing: `rooms join <code>` makes the same room in another folder, on
+your own machines. To see each other's status and share AI setups, a team uses a team room instead
+(above), and the board says which: `rooms team join <owner/repo>`.
+
 Each person's posts carry their own name, tool and device, so the board shows who did what.
 
 ## What it does not do
@@ -531,7 +544,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.7.3 mcp install
+npx -y iops-rooms@0.7.4 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -544,13 +557,14 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.3", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.4", "mcp"] } } }
 ```
 
 ## Commands
 
 | | |
 |---|---|
+| `rooms` | where you are, and the few commands that fit there |
 | `rooms init` / `join` | create or join `.room/` — `--share` to commit it, `--mcp` to wire agents |
 | `rooms open` / `live` | the board, once or continuously on `127.0.0.1` |
 | `rooms post` / `share-diff` | a note, or a diff (confined to the project; `--allow-outside` to escape) |

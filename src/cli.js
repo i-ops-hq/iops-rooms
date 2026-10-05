@@ -34,8 +34,11 @@ const HELP = `Rooms by I-Ops — who is doing what on this repo, and which agent
 
 Usage:
 
+  rooms                        where you are, and the few commands that fit there
+
 Read your git history — no room, no server, no account:
   rooms week [--since 7d] [--path src/] [--not vendor,dist]
+                               on another branch, read from the default branch; your checkout stays
   rooms branch [<base>]        the mix for commits on this branch only
   rooms file <path>            who and which agent last touched it
   rooms badge [--out <file>]   an SVG for your README
@@ -705,7 +708,7 @@ async function runGithubDeviceFlow(clientId) {
 
 async function main() {
   const argv = args(process.argv.slice(2));
-  const cmd = argv._[0] || "help";
+  const cmd = argv._[0] || "";
   const rest = argv._.slice(1);
 
   // A flag that was accepted and then ignored is the failure this tool exists to argue against.
@@ -725,6 +728,13 @@ async function main() {
 
   if (cmd === "help" || cmd === "-h" || cmd === "--help") {
     process.stdout.write(HELP);
+    return;
+  }
+
+  // Bare `rooms`: where it is, and the few commands that fit here (src/start.js).
+  if (!cmd) {
+    const { startScreen } = await import("./start.js");
+    process.stdout.write(await startScreen(process.cwd()));
     return;
   }
 
@@ -980,31 +990,41 @@ async function main() {
     const exclude = argv.not
       ? String(argv.not).split(",").map((x) => x.trim()).filter(Boolean).map(fromHere)
       : [];
-    const name = basename(dir);
+    // The project as every clone of it names it (`owner/repo`), and the history a view of the whole
+    // project reads: the default branch, wherever the checkout is, without moving it (git-info.js).
+    const { readGitSnapshot, projectName, projectHistory } = await import("./git-info.js");
+    const snap = await readGitSnapshot(dir);
+    const hist = await projectHistory(dir, snap);
+    const range = hist.away ? hist.ref : "";
+    const name = await projectName(dir, { snap });
 
     if (cmd === "week") {
       const since = argv.since ? String(argv.since) : "7d";
-      const r = await buildReport(dir, { since, paths, exclude });
+      const r = await buildReport(dir, { since, paths, exclude, range });
       if (!r.ok) return failNotGit(r);
       // The checkout as it stands, the same lines as the board's Git card.
-      const { readGitSnapshot } = await import("./git-info.js");
       const { branchPullRequest } = await import("./scm.js");
-      const snap = await readGitSnapshot(dir);
       const checkout = snap.ok ? { ...snap, pr: await branchPullRequest(dir, snap) } : null;
+      // On another branch, what that branch adds: the report itself read the default branch.
+      let away = null;
+      if (hist.away) {
+        const mine = await buildReport(dir, { range: `${hist.ref}..HEAD`, paths, exclude });
+        if (mine.ok) away = { branch: hist.current, base: hist.base, report: mine };
+      }
       // An empty window says how old the newest commit is and which window reaches it. Prose only;
       // --json is unchanged.
       let newest = null;
       if (!r.seen && !argv.json) {
         const { newestCommitAt } = await import("./git-history.js");
-        newest = await newestCommitAt(dir, { paths, exclude });
+        newest = await newestCommitAt(dir, { paths, exclude, ref: range });
       }
       // Week over week, because "am I leaning harder on one model" is the question a weekly
       // report is actually asked. Only for the default window — a delta against an arbitrary
       // --since would be comparing this window to a window nobody chose.
-      if (argv.json) return asJson(r, { name, window: `last ${since}`, checkout });
-      const { weekOverWeek } = await import("./report.js");
-      const delta = argv.since ? null : weekOverWeek(r, await buildReport(dir, { since: "14d", paths, exclude }));
-      process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta, newest, checkout }));
+      const { weekOverWeek, awayToJson } = await import("./report.js");
+      if (argv.json) return asJson(r, { name, window: `last ${since}`, checkout, history: away ? awayToJson(away, { ref: hist.label }) : null });
+      const delta = argv.since ? null : weekOverWeek(r, await buildReport(dir, { since: "14d", paths, exclude, range }));
+      process.stdout.write(formatWeek(r, { name, window: `last ${since}`, delta, newest, checkout, reading: hist.away ? hist.base : "", away }));
       return;
     }
 
@@ -1016,8 +1036,6 @@ async function main() {
         process.exitCode = 1;
         return;
       }
-      const { readGitSnapshot } = await import("./git-info.js");
-      const snap = await readGitSnapshot(dir);
       const head = snap.current || "HEAD";
       if (head === base) {
         if (argv.json) return refuseJson(`on ${base} already; there is no branch to compare`);
@@ -1055,8 +1073,8 @@ async function main() {
       return;
     }
 
-    // badge
-    const r = await buildReport(dir, { since: argv.since ? String(argv.since) : "", paths, exclude });
+    // badge: the project's, so the default branch's history wherever the checkout is.
+    const r = await buildReport(dir, { since: argv.since ? String(argv.since) : "", paths, exclude, range });
     if (!r.ok) return failNotGit(r);
     const svg = renderBadgeSvg(r, { label: argv.label ? String(argv.label) : "agents" });
     const out = argv.out ? String(argv.out) : "";

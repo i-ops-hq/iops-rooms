@@ -233,8 +233,8 @@ export function pathArgs({ paths = [], exclude = [] } = {}) {
  * days old with "0 commits" and "no commits in this window", and no way on. The caller's paths
  * apply, so this is the newest commit the same question would have counted.
  */
-export async function newestCommitAt(projectDir, { paths = [], exclude = [] } = {}) {
-  const res = await git(projectDir, ["log", "-1", "--format=%ct", "HEAD", ...pathArgs({ paths, exclude })], {
+export async function newestCommitAt(projectDir, { paths = [], exclude = [], ref = "" } = {}) {
+  const res = await git(projectDir, ["log", "-1", "--format=%ct", ref || "HEAD", ...pathArgs({ paths, exclude })], {
     timeout: 4000,
   });
   const seconds = Number(res.out.trim());
@@ -483,8 +483,10 @@ async function resolveTrunk(projectDir, refs) {
   return head || "main";
 }
 
-export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMIT, maxBranches = 12 } = {}) {
-  const all = await readCommits(projectDir, { limit });
+export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMIT, maxBranches = 12, ref = "" } = {}) {
+  // `ref` is the history the project view reads (git-info.js `projectHistory`): the default branch
+  // when the checkout is on another one, HEAD otherwise.
+  const all = await readCommits(projectDir, { limit, range: ref });
   if (!all.ok) return { ok: false, trunk: [], branches: [], ...all };
 
   const merged = await git(projectDir, [
@@ -493,6 +495,7 @@ export async function readHistoryGraph(projectDir, { limit = DEFAULT_COMMIT_LIMI
     "--merges",
     `--max-count=${maxBranches}`,
     `--format=%H${FS}%h${FS}%aI${FS}%s`,
+    ...(ref ? [ref] : []),
   ]);
 
   const branches = [];

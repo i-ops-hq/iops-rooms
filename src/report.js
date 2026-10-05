@@ -287,11 +287,13 @@ export function formatObserved(observed) {
   return out.join("");
 }
 
-export function reportToJson(report, { name = "", window = "", checkout = null } = {}) {
+export function reportToJson(report, { name = "", window = "", checkout = null, history = null } = {}) {
   const config = report.config || null;
   return {
     // This checkout as it stands, apart from the window: uncommitted counts, upstream, pull request.
     ...(checkout ? { now: nowToJson(checkout) } : {}),
+    // Present only when the checkout is on another branch: the history read was the default branch's.
+    ...(history ? { history } : {}),
     project: name,
     window,
     commits: { seen: report.seen, total: report.total, truncated: Boolean(report.truncated) },
@@ -531,9 +533,9 @@ export function nowToJson(state) {
   };
 }
 
-export function formatWeek(report, { name = "", window = "last 7 days", delta = null, newest = null, now = Date.now(), checkout = null } = {}) {
+export function formatWeek(report, { name = "", window = "last 7 days", delta = null, newest = null, now = Date.now(), checkout = null, reading = "", away = null } = {}) {
   const said = finding(report);
-  const out = [said, said ? "\n" : "", header(name, window, report), "\n", formatMix(report, { delta })];
+  const out = [said, said ? "\n" : "", header(name, reading ? `${reading} · ${window}` : window, report), "\n", formatMix(report, { delta })];
   if (!report.seen && newest) out.push(`\n${wrap(quietWindow(newest, now))}\n`);
   if (report.truncated) {
     out.push(`\nReading the newest ${report.seen} of ${report.total} commits in this window.\n`);
@@ -542,8 +544,39 @@ export function formatWeek(report, { name = "", window = "last 7 days", delta = 
   out.push(formatConfig(report));
   out.push(formatWhyEmpty(report));
   out.push(formatObserved(report.observed));
+  out.push(formatAway(away));
   out.push(formatNow(checkout));
   return out.join("");
+}
+
+/**
+ * The branch the checkout is on, when the report read the default branch instead: how many of its
+ * commits the default branch does not have yet, and what they record. `away` is `{ branch, base,
+ * report }`, the report being `base..HEAD`.
+ */
+export function formatAway(away) {
+  return away ? `\n${wrap(awaySentence(away))}\n` : "";
+}
+
+/** The same sentence, unwrapped, for the board: it says what the terminal says. */
+export function awaySentence(away) {
+  const n = away.report.seen;
+  if (!n) return `This checkout is on ${away.branch}, which has no commits ${away.base} lacks.`;
+  const mix = away.report.rows.filter((r) => r.commits).map((r) => `${r.label} ${r.commits}`).join(", ");
+  return `This checkout is on ${away.branch}: ${n} commit${n === 1 ? "" : "s"} not in ${away.base} yet (${mix}). rooms branch shows them.`;
+}
+
+/** The same, as data for `--json`: the branch read, and what the checkout's own branch adds. */
+export function awayToJson(away, { ref = "" } = {}) {
+  return {
+    branch: away.base,
+    ref,
+    checkout: {
+      branch: away.branch,
+      commits: away.report.seen,
+      rows: away.report.rows.filter((r) => r.commits).map((r) => ({ id: r.id, label: r.label, commits: r.commits })),
+    },
+  };
 }
 
 export function formatBranch(report, { branch = "HEAD", base = "" } = {}) {

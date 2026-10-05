@@ -58,6 +58,10 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   name holding HTML reaches the page as markup
 - Optional: `rooms live` serves that board on `127.0.0.1` and auto-reloads open tabs when `.room/` changes, the agent activity log included
 - Optional: read local `git` for branch stamps; optional read-only `gh` for `scm-status` (never uploads the room)
+- Bare `rooms` reads git and `~/.iops-rooms/teams.json` to say where you are, and writes nothing. On a
+  branch other than the default one, `rooms week`, `rooms badge` and the board read the default
+  branch's history from the local clone, origin's copy as the last `git fetch` left it: nothing is
+  fetched, and the checkout is never switched
 - With `rooms team init`, which shows what it will write and asks first: write `room.json`,
   `README.md`, `status/.gitkeep` and `.gitattributes` into the team room's clone and make one local
   commit. It never pushes; you do
@@ -202,7 +206,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.7.3 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.7.4 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
