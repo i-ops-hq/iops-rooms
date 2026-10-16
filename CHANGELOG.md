@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.1
+
+### Fix: `rooms episode` was unreachable
+
+`rooms episode` was listed in help but nested under the week/branch/file/badge dispatch, so every
+invocation printed `unknown command: episode`. It is a top-level command again. Found during the
+I-Ops solo dogfood of 0.12.0.
+
 ## 0.12.0
 
 ### Cross-member packages and setup catalog
