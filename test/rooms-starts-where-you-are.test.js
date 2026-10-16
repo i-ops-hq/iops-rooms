@@ -60,12 +60,13 @@ test("in a project on its default branch: its name, its branch, and the commands
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /^Rooms · acme\/web, on main\n\n/, "named as every clone names it");
     assert.match(r.out, /\n {2}rooms week +who built it this week, and which AI helped\n/);
+    assert.match(r.out, /\n {2}rooms episode +session → edits → packages → commits on this machine\n/);
     assert.match(r.out, /\n {2}rooms open +the board: commits, people, agents and branches\n/);
     assert.match(r.out, /\n {2}rooms team join +share your status with your team/);
     assert.match(r.out, /\n {2}rooms dash +local activity on this machine\n/);
     assert.doesNotMatch(r.out, /rooms branch/, "nothing to compare on the default branch");
     assert.match(r.out, /\nEvery command: rooms help\n$/);
-    assert.ok(r.out.trim().split("\n").length <= 10, `a start, not every command:\n${r.out}`);
+    assert.ok(r.out.trim().split("\n").length <= 12, `a start, not every command:\n${r.out}`);
     assert.deepEqual((await readdir(web)).sort(), before, "it writes nothing");
   });
 });
@@ -81,6 +82,7 @@ test("on another branch: how far it is from main, and that the week is read from
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /^Rooms · web, on feature\/x \(2 commits not in main yet\)\n\n/);
     assert.match(r.out, /\n {2}rooms week +who built it this week, and which AI helped, read from main\n/);
+    assert.match(r.out, /\n {2}rooms episode +session → edits → packages → commits on this machine\n/);
     assert.match(r.out, /\n {2}rooms branch +what this branch adds, and which AI helped\n/);
 
     await exec("git", ["switch", "-q", "--detach", "HEAD~1"], { cwd: web });
@@ -153,7 +155,9 @@ test("rooms help still lists every command", async () => {
     assert.equal(r.code, 0, r.err);
     for (const line of [
       "rooms week",
+      "rooms episode",
       "rooms team init",
+      "rooms team coverage",
       "rooms org init",
       "rooms share request",
       "rooms inbox",

@@ -64,6 +64,17 @@ function renderLocal(d) {
       .slice(0, 15)
       .map((p) => `<li>${esc(p.name)}${p.version ? `@${esc(p.version)}` : ""} · ${esc(p.action)}</li>`)
       .join("") || `<li class="empty">No package events yet</li>`;
+  const eps =
+    (d.episodes || [])
+      .slice(0, 10)
+      .map(
+        (e) =>
+          `<li><strong>${esc(e.agent)}</strong> · ${e.filesEdited} file(s) · ${e.packages} pkg · ${e.commits} commit(s)` +
+          (e.open ? " · open" : "") +
+          (e.paths?.length ? `<div class="paths">${e.paths.map(esc).join(", ")}</div>` : "") +
+          `</li>`,
+      )
+      .join("") || `<li class="empty">No episodes yet</li>`;
   const week =
     d.week?.commits != null
       ? `<p>Week floor: ${esc(String(d.week.commits.total || 0))} commits · see rooms week for caveats</p>`
@@ -72,6 +83,7 @@ function renderLocal(d) {
         : "";
   return (
     `<p><strong>${esc(d.project)}</strong> · agents (7d): ${agentLine}</p>${week}` +
+    `<h2>Episodes (7d)</h2><ul>${eps}</ul>` +
     `<h2>Sessions (7d)</h2><ul>${sess}</ul>` +
     `<h2>Packages (7d)</h2><ul>${pkgs}</ul>`
   );

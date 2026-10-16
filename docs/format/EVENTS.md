@@ -17,3 +17,5 @@ Team hub projections (`status/…`, `rollups/….agents.json`, `rollups/….pack
 Org room projection: `rollup/org.json` (`kind: org_rollup`) — per-team floors and package-name hits only.
 
 Share metadata on the team hub: `shares/<id>.json` (`kind: share_meta`) — who, type, ref, optional pointer/issue/note. Never ciphertext contents inside the JSON (optional age blobs live under `shares/blobs/`).
+
+Episode view (`rooms episode`): join of `session` + `edit` + overlapping `package` + linked `commit` rows for one agent session. Local only; not a hub projection.

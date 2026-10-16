@@ -11,14 +11,16 @@
 [![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-tested-0b7285)](.github/workflows/tests.yml)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-0-0b7285)](package.json)
 
-*One of the layers of [I-Ops](https://i-ops.dev), open sourced.*
+*One of the layers of [I-Ops](https://i-ops.dev), open sourced — the **share and observe** layer.
+Not runtime control, not assurance; those are separate products.*
 
 </div>
 
 ---
 
 Rooms works from your own machine and your own GitHub: no account, no I-Ops server, and no model
-deciding anything. It does three things.
+deciding anything. It helps with **observability and traceability** of people and their AI agents —
+what was recorded on a laptop, then thin projections a team opts to share. It does three things.
 
 - **Who built a project, and which AI helped.** Point it at a git repository and it reads the
   history: which agent signed which commit, recomputed from the repository every time.
@@ -240,6 +242,7 @@ rooms team sync                   # shows your status and asks before the first 
 rooms team board                  # everyone's status, in its own window
 rooms team live                   # the same board, kept current while it is open
 rooms team workflow               # once, in the team room: BOARD.md, for people who only read GitHub
+rooms team coverage               # who synced, who looks stale, hooks-seen floor
 ```
 
 A status holds the project; if you share it, the branch and its upstream; how far it is ahead or
@@ -295,6 +298,17 @@ rooms share request --to bob --ref setup/backend/go-claude --issue
 rooms share grant --to alice --ref setup/backend/go-claude
 rooms share show <id>
 rooms inbox
+```
+
+### Episodes on this machine
+
+`rooms episode` stitches the local activity log into work episodes: one agent session, the files it
+edited, packages seen in that window, and commits linked by an in-session mark or overlapping
+paths. Floors only — unrecorded work stays blank.
+
+```bash
+rooms episode
+rooms episode --days 14 --json
 ```
 
 ### Dash and companion
@@ -590,7 +604,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.10.0 mcp install
+npx -y iops-rooms@0.11.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -603,7 +617,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.10.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.11.0", "mcp"] } } }
 ```
 
 ## Commands
