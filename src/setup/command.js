@@ -255,7 +255,19 @@ async function catalog(argv) {
   const stale = pulled.ok ? "" : `, as this machine last fetched it (${pulled.why})`;
   const data = await listSetupCatalog(room.path, commit);
   if (argv.json) {
-    out(JSON.stringify({ id, name: room.name, ...data }, null, 2));
+    out(
+      JSON.stringify(
+        {
+          id,
+          name: room.name,
+          pullOk: pulled.ok,
+          ...(pulled.ok ? {} : { pullWhy: pulled.why || "git pull failed" }),
+          ...data,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
   out(renderCatalogText(data, { teamId: id, stale }).trimEnd());

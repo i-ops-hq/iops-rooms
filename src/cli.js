@@ -147,6 +147,7 @@ const VALUE_FLAGS = new Set([
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
   "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run", "no-share", "markdown", "issue",
+  "multi",
 ]);
 
 /**
@@ -513,8 +514,21 @@ async function team(rest, argv) {
       multiOnly: Boolean(argv.multi),
     });
     if (!result.ok) throw new Error(result.why);
+    if (!result.pullOk) process.stderr.write(`(team room not updated: ${result.pullWhy})\n`);
     if (argv.json) {
-      process.stdout.write(`${JSON.stringify({ id: result.id, name: result.name, ...result.surface }, null, 2)}\n`);
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            id: result.id,
+            name: result.name,
+            pullOk: result.pullOk,
+            ...(result.pullOk ? {} : { pullWhy: result.pullWhy }),
+            ...result.surface,
+          },
+          null,
+          2,
+        )}\n`,
+      );
       return;
     }
     process.stdout.write(renderPackageSurfaceText(result.surface, { teamId: result.id, multiOnly: Boolean(argv.multi) }));

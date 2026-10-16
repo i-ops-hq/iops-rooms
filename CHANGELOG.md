@@ -13,6 +13,10 @@ for scripts.
 name, owner, summary, declared cost, tool file counts). It never reads or prints file bodies, hooks,
 or install targets. `rooms setup show` still opens a full setup when you need it.
 
+Hardening: `--multi` is a real boolean flag (no false “unknown flag” warning); package surfaces
+report truncation honestly; package names are sanitized on read; both packages and catalog `--json`
+include `pullOk` / `pullWhy` when the team room could not be fetched.
+
 ## 0.11.0
 
 ### Episode stitching, coverage floor, and product boundary

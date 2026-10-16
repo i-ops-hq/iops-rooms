@@ -83,6 +83,7 @@ test("rooms setup catalog lists metadata without bodies", async () => {
     assert.equal(data.kind, "setup_catalog");
     assert.equal(data.count, 1);
     assert.equal(data.setups[0].owner, "alice");
+    assert.equal(data.pullOk, true);
     assert.doesNotMatch(listed.out, /SECRET BODY|# SECRET/);
 
     const text = await bob.rooms(bob.web, "setup", "catalog");

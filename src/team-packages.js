@@ -5,6 +5,7 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { cleanName, cleanVersion } from "./packages.js";
 import { pullTeamRoom, readRegistry, teamForProject, validPackageRollup } from "./team.js";
 
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -44,14 +45,16 @@ export function buildPackageSurface({ packageRollups = [], multiOnly = false, li
   for (const r of packageRollups) {
     if (!r?.member || !Array.isArray(r.packages)) continue;
     for (const p of r.packages) {
-      if (!p?.name) continue;
-      const key = `${p.name}@${p.version || "?"}`;
+      const name = cleanName(p?.name);
+      if (!name) continue;
+      const version = p.version != null ? cleanVersion(p.version) : null;
+      const key = `${name}@${version || "?"}`;
       const hit =
         by.get(key) ||
         {
-          name: p.name,
-          version: p.version || null,
-          manager: p.manager || null,
+          name,
+          version: version || null,
+          manager: typeof p.manager === "string" ? p.manager.slice(0, 20) : null,
           members: new Set(),
           projects: new Set(),
           lastAt: r.at || null,
@@ -59,7 +62,7 @@ export function buildPackageSurface({ packageRollups = [], multiOnly = false, li
       hit.members.add(r.member);
       if (r.project) hit.projects.add(r.project);
       if (r.at && (!hit.lastAt || r.at > hit.lastAt)) hit.lastAt = r.at;
-      if (p.manager && !hit.manager) hit.manager = p.manager;
+      if (p.manager && !hit.manager && typeof p.manager === "string") hit.manager = p.manager.slice(0, 20);
       by.set(key, hit);
     }
   }
@@ -75,16 +78,20 @@ export function buildPackageSurface({ packageRollups = [], multiOnly = false, li
     }))
     .sort((a, b) => b.members - a.members || a.name.localeCompare(b.name) || String(a.version).localeCompare(String(b.version)));
   if (multiOnly) rows = rows.filter((r) => r.members > 1);
+  const total = rows.length;
+  const listed = rows.slice(0, limit);
   return {
     v: 1,
     kind: "team_packages",
     at: new Date().toISOString(),
     totals: {
-      packages: rows.length,
+      packages: total,
+      listed: listed.length,
       multiMember: rows.filter((r) => r.members > 1).length,
       members: new Set(packageRollups.map((r) => r.member)).size,
     },
-    packages: rows.slice(0, limit),
+    ...(total > limit ? { truncated: true } : {}),
+    packages: listed,
   };
 }
 
@@ -95,7 +102,9 @@ export function renderPackageSurfaceText(surface, { teamId = "", multiOnly = fal
     `_From shared package rollups (names/versions only). Same package on several machines is a floor,` +
       ` not a vulnerability claim._`,
     ``,
-    `**${surface.totals.packages}** package name(s) · **${surface.totals.multiMember}** on >1 member · ` +
+    `**${surface.totals.packages}** package name(s)` +
+      (surface.truncated ? ` · showing ${surface.totals.listed}` : "") +
+      ` · **${surface.totals.multiMember}** on >1 member · ` +
       `**${surface.totals.members}** member(s) with rollups`,
     ``,
   ];
@@ -113,6 +122,7 @@ export function renderPackageSurfaceText(surface, { teamId = "", multiOnly = fal
         (p.manager ? ` · ${p.manager}` : ""),
     );
   }
+  if (surface.truncated) lines.push(`_(truncated — ${surface.totals.packages - surface.totals.listed} more not shown)_`);
   lines.push(``);
   return `${lines.join("\n")}\n`;
 }
@@ -123,8 +133,14 @@ export async function packageSurfaceForProject(projectDir, { team: teamFlag = nu
   const id = teamFlag || linked.id || (Object.keys(reg.teams).length === 1 ? Object.keys(reg.teams)[0] : null);
   if (!id || !reg.teams[id]) return { ok: false, why: "No team room. rooms team join <owner/repo>" };
   const room = reg.teams[id];
-  if (pull) await pullTeamRoom(room.path);
+  let pullOk = true;
+  let pullWhy = null;
+  if (pull) {
+    const pulled = await pullTeamRoom(room.path);
+    pullOk = pulled.ok;
+    pullWhy = pulled.ok ? null : pulled.why || "git pull failed";
+  }
   const packageRollups = await readPackageRollups(room.path);
   const surface = buildPackageSurface({ packageRollups, multiOnly });
-  return { ok: true, id, name: room.name, surface };
+  return { ok: true, id, name: room.name, surface, pullOk, pullWhy };
 }

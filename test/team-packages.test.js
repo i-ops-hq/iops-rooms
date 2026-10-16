@@ -50,6 +50,34 @@ test("buildPackageSurface joins names across members", () => {
   assert.doesNotMatch(md, /package-lock|install script|node_modules/);
 });
 
+test("buildPackageSurface truncates honestly and strips unsafe names", () => {
+  const many = Array.from({ length: 120 }, (_, i) => ({
+    member: "alice",
+    packages: [{ name: `pkg-${i}`, version: "1.0.0" }],
+  }));
+  const surface = buildPackageSurface({ packageRollups: many, limit: 10 });
+  assert.equal(surface.totals.packages, 120);
+  assert.equal(surface.totals.listed, 10);
+  assert.equal(surface.packages.length, 10);
+  assert.equal(surface.truncated, true);
+  assert.match(renderPackageSurfaceText(surface), /showing 10/);
+
+  const dirty = buildPackageSurface({
+    packageRollups: [
+      {
+        member: "alice",
+        packages: [
+          { name: "evil\nname", version: "1.0.0" },
+          { name: "good-pkg", version: "2.0.0" },
+        ],
+      },
+    ],
+  });
+  assert.ok(dirty.packages.every((p) => !/\n/.test(p.name)));
+  assert.ok(dirty.packages.some((p) => p.name === "good-pkg"));
+  assert.ok(dirty.packages.some((p) => p.name === "evilname"));
+});
+
 test("rooms team packages reads hub rollups only", async () => {
   await scratch(async (dir) => {
     const { alice, bob } = await teamOfTwo(dir);
@@ -92,7 +120,11 @@ test("rooms team packages reads hub rollups only", async () => {
 
     const multi = await bob.rooms(bob.web, "team", "packages", "--multi");
     assert.equal(multi.code, 0, multi.err);
+    assert.doesNotMatch(multi.err, /unknown flag --multi/);
     assert.match(multi.out, /left-pad@1\.3\.0/);
     assert.doesNotMatch(multi.out, /secret-body-pkg/);
+
+    const json = JSON.parse(listed.out);
+    assert.equal(json.pullOk, true);
   });
 });
