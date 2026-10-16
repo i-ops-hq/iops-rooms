@@ -33,18 +33,24 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   commit`, which the git hook from `rooms hooks install` runs after each commit. It appends one line
   per commit to `.room/agent-activity.jsonl`: the commit, and the agent, version, entrypoint and
   model those variables named. A test fails if any other variable reaches that file
-- With `rooms hooks install --agent claude-code`, which shows the change and asks first: add Rooms'
-  hooks to `.claude/settings.local.json` (or `~/.claude/settings.json` with `--user`), keeping every
-  other hook and a copy of the file from before Rooms first changed it, and list that file in
-  `.git/info/exclude`.
-  `rooms hooks uninstall --agent claude-code` takes out only what Rooms added
-- Read, from the JSON Claude Code's hooks pass on stdin, the event name, the session id (kept only
-  as a 12-character hash), the model a session starts with, the tool's name and the edited file's
-  path, and nothing else. That
-  payload also carries the whole file for `Write`, the tool's output, the last message and the
-  transcript's path; none of them is kept, and the transcript is never opened. A test fails if any
-  of it reaches `.room/agent-activity.jsonl`. The hook prints nothing and exits 0, so it never
-  speaks to the agent
+- With `rooms hooks install --agent claude-code|codex|cursor`, which shows the change and asks first:
+  add Rooms' hooks to that agent's settings (Claude: `.claude/settings.local.json` or
+  `~/.claude/settings.json` with `--user`; Codex: `.codex/hooks.json` or `~/.codex/hooks.json`;
+  Cursor: `.cursor/hooks.json` or `~/.cursor/hooks.json`), keeping every other hook and a copy of the
+  file from before Rooms first changed it, and list project files in `.git/info/exclude`.
+  Uninstall takes out only what Rooms added for that agent
+- Read, from the JSON those hooks pass on stdin, only allowlisted fields: the event name, the session
+  id (kept only as a 12-character hash), the model a session starts with when present, and the edited
+  file's path. Claude's payload may carry the whole file for `Write`, tool output, the last message
+  and a transcript path; Codex's `apply_patch` carries the patch in `tool_input.command` (only
+  `*** … File:` path lines are kept); Cursor's `afterFileEdit` carries `edits` with old/new strings
+  (never kept). The transcript is never opened. A test fails if any of that reaches
+  `.room/agent-activity.jsonl`. The hook prints nothing and exits 0, so it never speaks to the agent
+- With `rooms record session-start|session-end|edit`, allowlisted JSON (or `--path` for an edit) for
+  custom agents that set `AI_AGENT` — same log, same refusals
+- With `rooms record packages`: read the project's `package-lock.json`, `pnpm-lock.yaml` or
+  `yarn.lock` and append package **name + version** events only; never lockfile scripts or tarball
+  contents. Team sync may push a thin package rollup (names/versions) under `rollups/`
 - Write outside `.room/` only when a command says so: `rooms mcp install` (the MCP configs and the
   skill copies), `rooms hooks install` (`.git/hooks/`), `rooms index --open`
   (`~/.iops-rooms/index.html`), `rooms setup adopt` and `rooms setup rollback` (the files listed
@@ -206,7 +212,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.7.4 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.8.0 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

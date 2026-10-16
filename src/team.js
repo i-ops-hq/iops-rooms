@@ -148,13 +148,17 @@ export function teamRoomFiles(name) {
     "room.json": `${JSON.stringify({ format: TEAM_FORMAT, v: 1, name }, null, 2)}\n`,
     "README.md": README(name),
     "status/.gitkeep": "",
-    ".gitattributes": "status/** text eol=lf\n",
+    "rollups/.gitkeep": "",
+    ".gitattributes": "status/** text eol=lf\nrollups/** text eol=lf\n",
   };
 }
 
 // ---- the status ----------------------------------------------------------------------------------
 
-/** Agent sessions and files edited per agent in the last seven days, from this machine's hooks. */
+/**
+ * Agent sessions and files edited per agent in the last seven days, from this machine's hooks.
+ * Optional `models` (labels only) and `lastAt` for richer team rollups — never paths or prompts.
+ */
 export function agentsLast7Days(activity, now = Date.now()) {
   const since = now - 7 * 86_400_000;
   const by = {};
@@ -162,12 +166,22 @@ export function agentsLast7Days(activity, now = Date.now()) {
     if (!a || !a.agent || !(Date.parse(a.at) >= since)) continue;
     if (a.kind !== "session" && a.kind !== "edit") continue;
     const agent = String(a.agent).slice(0, 40);
-    const entry = (by[agent] ||= { sessions: new Set(), files: new Set() });
+    const entry = (by[agent] ||= { sessions: new Set(), files: new Set(), models: new Set(), lastAt: null });
     if (a.session) entry.sessions.add(String(a.session));
     if (a.kind === "edit" && a.path) entry.files.add(String(a.path));
+    if (a.model) entry.models.add(String(a.model).slice(0, 60));
+    if (a.at && (!entry.lastAt || a.at > entry.lastAt)) entry.lastAt = a.at;
   }
   return Object.fromEntries(
-    Object.entries(by).map(([agent, e]) => [agent, { sessions: e.sessions.size, filesEdited: e.files.size }]),
+    Object.entries(by).map(([agent, e]) => [
+      agent,
+      {
+        sessions: e.sessions.size,
+        filesEdited: e.files.size,
+        ...(e.models.size ? { models: [...e.models].sort().slice(0, 20) } : {}),
+        ...(e.lastAt ? { lastAt: e.lastAt } : {}),
+      },
+    ]),
   );
 }
 
@@ -215,6 +229,14 @@ export function statusPath(status) {
   return `status/${status.member}/${projectSlug(status.project)}.json`;
 }
 
+export function agentsRollupPath(status) {
+  return `rollups/${status.member}/${projectSlug(status.project)}.agents.json`;
+}
+
+export function packagesRollupPath(status) {
+  return `rollups/${status.member}/${projectSlug(status.project)}.packages.json`;
+}
+
 /** The same status apart from when it was taken: an unchanged one is not pushed again. */
 function sameApartFromTime(a, b) {
   const strip = (s) => JSON.stringify({ ...s, at: null });
@@ -222,32 +244,72 @@ function sameApartFromTime(a, b) {
 }
 
 /**
- * What `sync` would do: the file, its content, and whether it differs from what the team room
- * already holds for this member and project.
+ * Thin agent / package projections for the team hub (counts and names only).
+ * Built beside status so sync can push them in one commit when they change.
  */
-export async function planSync({ clonePath, status }) {
-  const rel = statusPath(status);
-  let before = null;
-  try {
-    before = JSON.parse(await readFile(join(clonePath, rel), "utf8"));
-  } catch {
-    before = null;
-  }
-  return { rel, status, content: `${JSON.stringify(status, null, 2)}\n`, changed: !sameApartFromTime(before, status) };
+export async function buildRollups({ projectDir, login, project, now = new Date() }) {
+  const { readActivity } = await import("./activity.js");
+  const { packageRollupFromActivity } = await import("./packages.js");
+  const activity = await readActivity(projectDir);
+  const at = `${now.toISOString().slice(0, 16)}Z`;
+  const agents = agentsLast7Days(activity, now.getTime());
+  return {
+    agents: { v: 1, kind: "agent_rollup", member: login, project, at, agents },
+    packages: {
+      v: 1,
+      kind: "package_rollup",
+      member: login,
+      project,
+      at,
+      packages: packageRollupFromActivity(activity),
+    },
+  };
 }
 
 /**
- * Write, commit and push the member's own status file, and nothing else. The commit names only
- * that path, so anything else changed in the clone stays out of it. A push the remote rejects is
- * rebased once onto what arrived, which cannot conflict, since no one else writes this file.
+ * What `sync` would do: status plus optional rollup files, and whether any differ from the hub.
+ */
+export async function planSync({ clonePath, status, rollups = null }) {
+  const files = [];
+  const add = async (rel, body) => {
+    let before = null;
+    try {
+      before = JSON.parse(await readFile(join(clonePath, rel), "utf8"));
+    } catch {
+      before = null;
+    }
+    const content = `${JSON.stringify(body, null, 2)}\n`;
+    files.push({ rel, content, changed: !sameApartFromTime(before, body) });
+  };
+  await add(statusPath(status), status);
+  if (rollups?.agents) await add(agentsRollupPath(status), rollups.agents);
+  if (rollups?.packages) await add(packagesRollupPath(status), rollups.packages);
+  const primary = files[0];
+  return {
+    rel: primary.rel,
+    status,
+    content: primary.content,
+    changed: files.some((f) => f.changed),
+    files,
+  };
+}
+
+/**
+ * Write, commit and push the member's own status (and rollup) files, and nothing else.
  */
 export async function applySync({ clonePath, plan }) {
-  await mkdir(join(clonePath, plan.rel, ".."), { recursive: true });
-  await writeFile(join(clonePath, plan.rel), plan.content, "utf8");
-  const add = await gitIn(clonePath, ["add", "--", plan.rel]);
+  // Write every planned file when any changed, so status and rollups stay consistent on the hub.
+  const toWrite = plan.files?.length ? plan.files : [{ rel: plan.rel, content: plan.content }];
+  const paths = [];
+  for (const f of toWrite) {
+    await mkdir(join(clonePath, f.rel, ".."), { recursive: true });
+    await writeFile(join(clonePath, f.rel), f.content, "utf8");
+    paths.push(f.rel);
+  }
+  const add = await gitIn(clonePath, ["add", "--", ...paths]);
   if (!add.ok) return { ok: false, why: `git could not stage it: ${add.err}` };
   const message = `status: ${plan.status.member} · ${plan.status.project}`;
-  const commit = await gitIn(clonePath, ["commit", "-q", "-m", message, "--", plan.rel]);
+  const commit = await gitIn(clonePath, ["commit", "-q", "-m", message, "--", ...paths]);
   if (!commit.ok) return { ok: false, why: `git could not commit it: ${commit.err || commit.out}` };
   let push = await gitIn(clonePath, ["push", "-q"]);
   if (!push.ok && /rejected|fetch first|non-fast-forward/i.test(push.err)) {
@@ -296,6 +358,50 @@ export function validStatus(data, folderLogin) {
   if (typeof agents !== "object" || Object.keys(agents).length > 20) return null;
   for (const [id, a] of Object.entries(agents)) {
     if (id.length > 40 || !a || !isCount(a.sessions) || !isCount(a.filesEdited)) return null;
+    if ("models" in a) {
+      if (!Array.isArray(a.models) || a.models.length > 20) return null;
+      if (a.models.some((m) => typeof m !== "string" || m.length > 60)) return null;
+    }
+    if ("lastAt" in a && (typeof a.lastAt !== "string" || !Number.isFinite(Date.parse(a.lastAt)))) return null;
+  }
+  return data;
+}
+
+/** Agent rollup as shown on the hub, or null. */
+export function validAgentRollup(data, folderLogin) {
+  if (!data || data.v !== 1 || data.kind !== "agent_rollup") return null;
+  if (typeof data.member !== "string" || !LOGIN.test(data.member) || data.member !== folderLogin) return null;
+  if (typeof data.project !== "string" || !data.project || data.project.length > 200) return null;
+  if (typeof data.at !== "string" || !Number.isFinite(Date.parse(data.at))) return null;
+  return validStatus(
+    {
+      v: 1,
+      member: data.member,
+      project: data.project,
+      at: data.at,
+      ahead: 0,
+      behind: 0,
+      uncommitted: { files: 0, added: 0, removed: 0, untracked: 0 },
+      pr: { state: "none" },
+      agents7d: data.agents || {},
+    },
+    folderLogin,
+  )
+    ? data
+    : null;
+}
+
+/** Package rollup: names and versions only. */
+export function validPackageRollup(data, folderLogin) {
+  if (!data || data.v !== 1 || data.kind !== "package_rollup") return null;
+  if (typeof data.member !== "string" || !LOGIN.test(data.member) || data.member !== folderLogin) return null;
+  if (typeof data.project !== "string" || !data.project || data.project.length > 200) return null;
+  if (typeof data.at !== "string" || !Number.isFinite(Date.parse(data.at))) return null;
+  if (!Array.isArray(data.packages) || data.packages.length > 200) return null;
+  for (const p of data.packages) {
+    if (!p || typeof p.name !== "string" || p.name.length > 80) return null;
+    if (p.version != null && (typeof p.version !== "string" || p.version.length > 40)) return null;
+    if (p.manager != null && (typeof p.manager !== "string" || p.manager.length > 20)) return null;
   }
   return data;
 }

@@ -202,7 +202,7 @@ Pin a version. Do not run `@latest`.
 | Branches splitting from main and rejoining, with PR numbers | merge commits | nothing |
 | Per-person totals: commits, merges, lines, which agent they lean on | `git log` | nothing |
 | The last 7 days as `rooms week` prints them: the finding, the rows, every caveat | `git log` | nothing |
-| Each agent session on this machine: its model, the files it edited, the commits that carry them | the agents' own hooks | `rooms hooks install --agent claude-code` |
+| Each agent session on this machine: its model, the files it edited, the commits that carry them | the agents' own hooks | `rooms hooks install --agent claude-code\|codex\|cursor` |
 | This checkout right now: what is not committed, its upstream, its pull request | `git`, and your own `gh` for the pull request | `gh` signed in, for the pull request |
 | Live posts, presence, who is on which branch right now | `.room/` | the CLI or MCP |
 
@@ -432,9 +432,10 @@ inherits them. Any agent, a custom one included, can set `AI_AGENT=<name>_<versi
 `AI_AGENT_MODEL` for the model.
 
 **Which files an agent edited.** The commonest way to use a CLI agent leaves neither: it edits, and
-you commit by hand from another terminal. `rooms hooks install --agent claude-code` adds Claude
-Code's own hooks, which report each file it edits with Edit, Write, MultiEdit or NotebookEdit, and
-the git hook notes which of those files each commit carries.
+you commit by hand from another terminal. `rooms hooks install --agent claude-code` (or `codex`, or
+`cursor`) adds that tool's hooks, which report each file it edits, and the git hook notes which of
+those files each commit carries. Custom agents can call `rooms record session-start`, `session-end`,
+and `edit --path`. `rooms record packages` records lockfile package names and versions only.
 
 ```
 Observed on this machine since 2026-09-29, by the git hook you installed:
@@ -544,7 +545,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.7.4 mcp install
+npx -y iops-rooms@0.8.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -557,7 +558,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.7.4", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.8.0", "mcp"] } } }
 ```
 
 ## Commands

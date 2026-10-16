@@ -13,7 +13,7 @@
  */
 
 import { LIVE_HOST, serveLocal } from "./live.js";
-import { applySync, buildStatus, gitIn, planSync, pullTeamRoom, readStatuses } from "./team.js";
+import { applySync, buildRollups, buildStatus, gitIn, planSync, pullTeamRoom, readStatuses } from "./team.js";
 import { renderTeamBoard } from "./team-board.js";
 
 /** The page's own client: reload when the board changed, otherwise only update when it last looked. */
@@ -80,7 +80,9 @@ export async function startTeamLive({ id, room, projectDir = null, login = null,
     const pulled = await pullTeamRoom(room.path);
     if (share && projectDir && login) {
       try {
-        const plan = await planSync({ clonePath: room.path, status: await buildStatus({ projectDir, login, withBranch }) });
+        const status = await buildStatus({ projectDir, login, withBranch });
+        const rollups = await buildRollups({ projectDir, login, project: status.project });
+        const plan = await planSync({ clonePath: room.path, status, rollups });
         // Asked before each push, not once at the start: a team room made public while the board
         // is open would otherwise publish every status pushed after that.
         const allowed = plan.changed ? await mayShare() : { ok: true };
