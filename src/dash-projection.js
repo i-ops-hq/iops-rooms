@@ -11,6 +11,7 @@ import { agentsLast7Days, pullTeamRoom, readStatuses, teamForProject } from "./t
 import { resolveOrg, validOrgRollup } from "./org.js";
 import { githubRepoFromRemote, readInbox, readShares } from "./share.js";
 import { buildReport, reportToJson } from "./report.js";
+import { buildEpisodes } from "./episode.js";
 import { projectName } from "./git-info.js";
 import { readMeta, findRoomDir } from "./store.js";
 import { authStatus } from "./identity.js";
@@ -49,6 +50,19 @@ export async function buildLocalProjection(projectDir, { now = Date.now() } = {}
   }));
   const agents7d = agentsLast7Days(activity, now);
   const packages = packageHits(activity, week);
+  const episodes = buildEpisodes(activity, { since: week, now, limit: 20 }).map((ep) => ({
+    agent: ep.agent,
+    session: ep.session,
+    model: ep.model,
+    start: ep.start,
+    end: ep.end,
+    filesEdited: ep.filesEdited,
+    packages: ep.packages.length,
+    commits: ep.commits.length,
+    open: ep.open,
+    // paths stay on this machine's localhost dash only
+    paths: ep.paths.slice(0, 20),
+  }));
   let weekJson = null;
   let weekWhy = null;
   try {
@@ -72,6 +86,7 @@ export async function buildLocalProjection(projectDir, { now = Date.now() } = {}
     agents7d,
     sessions,
     packages,
+    episodes,
     week: weekJson,
     weekWhy,
   };

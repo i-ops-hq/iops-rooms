@@ -39,10 +39,11 @@ Usage:
 Read your git history — no room, no server, no account:
   rooms week [--since 7d] [--path src/] [--not vendor,dist]
                                on another branch, read from the default branch; your checkout stays
+  rooms episode [--days 7]     session → edits → packages → commits on this machine
   rooms branch [<base>]        the mix for commits on this branch only
   rooms file <path>            who and which agent last touched it
   rooms badge [--out <file>]   an SVG for your README
-  --json                       week, branch and file as data, caveats included
+  --json                       week, branch, episode and file as data, caveats included
 
 The board and the room:
   rooms init [--name <n>] [--code <id>] [--share] [--mcp]
@@ -138,7 +139,7 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
   "code", "provider", "host", "client-id", "window-size", "agent", "to", "team", "every", "hours",
-  "role", "summary", "cost", "only", "skip", "ref", "approve", "tool", "org", "encrypt",
+  "role", "summary", "cost", "only", "skip", "ref", "approve", "tool", "org", "encrypt", "days",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
@@ -1403,6 +1404,19 @@ async function main() {
     const hist = await projectHistory(dir, snap);
     const range = hist.away ? hist.ref : "";
     const name = await projectName(dir, { snap });
+
+    if (cmd === "episode") {
+      const { episodesFor, renderEpisodesText } = await import("./episode.js");
+      const days = argv.days !== undefined ? Number(argv.days) : 7;
+      if (!Number.isFinite(days) || days < 1 || days > 90) throw new Error("--days takes a number from 1 to 90");
+      const bundle = await episodesFor(dir, { sinceDays: days });
+      if (argv.json) {
+        process.stdout.write(`${JSON.stringify(bundle, null, 2)}\n`);
+        return;
+      }
+      process.stdout.write(renderEpisodesText(bundle));
+      return;
+    }
 
     if (cmd === "week") {
       const since = argv.since ? String(argv.since) : "7d";

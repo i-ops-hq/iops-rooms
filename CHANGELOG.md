@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0
+
+### Episode stitching
+
+`rooms episode [--days 7]` joins this machine's activity log into work episodes: agent session →
+files edited → packages seen in that window → commits linked by in-session mark or overlapping
+edited paths. A view only — never invents unrecorded work. `--json` for scripts. The dash shows the
+same episodes under This machine.
+
 ## 0.10.0
 
 ### Org rollup, share inbox, dash, and companion

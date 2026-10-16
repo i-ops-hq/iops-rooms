@@ -297,6 +297,17 @@ rooms share show <id>
 rooms inbox
 ```
 
+### Episodes on this machine
+
+`rooms episode` stitches the local activity log into work episodes: one agent session, the files it
+edited, packages seen in that window, and commits linked by an in-session mark or overlapping
+paths. Floors only — unrecorded work stays blank.
+
+```bash
+rooms episode
+rooms episode --days 14 --json
+```
+
 ### Dash and companion
 
 `rooms dash` opens a localhost page (default `127.0.0.1:7841`) with this machine's sessions and
@@ -590,7 +601,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.10.0 mcp install
+npx -y iops-rooms@0.11.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -603,7 +614,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.10.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.11.0", "mcp"] } } }
 ```
 
 ## Commands

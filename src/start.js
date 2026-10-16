@@ -44,6 +44,7 @@ export async function startScreen(cwd) {
       out.push(`Rooms · ${name}, on ${where}\n\n`);
     }
     out.push(row("rooms week", hist.away ? `who built it this week, and which AI helped, read from ${hist.base}` : "who built it this week, and which AI helped"));
+    out.push(row("rooms episode", "session → edits → packages → commits on this machine"));
     if (hist.away) out.push(row("rooms branch", "what this branch adds, and which AI helped"));
     out.push(row("rooms open", "the board: commits, people, agents and branches"));
     const { teamForProject } = await import("./team.js");

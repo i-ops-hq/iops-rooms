@@ -94,6 +94,9 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   when both exist; ciphertext lands under `shares/blobs/`. Meta never carries secret values.
   `--issue` creates an Issue through your own `gh`. Absolute paths and home paths in `ref`/`pointer`
   are refused
+- With `rooms episode`: read `.room/agent-activity.jsonl` and print a join of sessions, edits,
+  packages, and linked commits for this machine only. Writes nothing. Paths stay local (CLI and
+  localhost dash); never prompts or file bodies
 - With `rooms dash`: serve a read-only observability page on `127.0.0.1` only (default port 7841),
   with the same Host check as `rooms live`. JSON under `/api/local.json`, `/api/team.json`,
   `/api/org.json`, and `/api/inbox.json` is built from local activity and already-approved team/org
@@ -233,7 +236,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.10.0 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.11.0 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
