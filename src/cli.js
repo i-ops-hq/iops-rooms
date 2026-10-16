@@ -1423,7 +1423,7 @@ async function main() {
   // None of these calls requireRoomDir() or roomDirOrCreate(). Reading who built a repo works on a
   // checkout that has never heard of this tool, and making someone create a room first would put a
   // write in front of a read.
-  if (cmd === "week" || cmd === "branch" || cmd === "file" || cmd === "badge") {
+  if (cmd === "week" || cmd === "branch" || cmd === "file" || cmd === "badge" || cmd === "episode") {
     const { resolveProjectRoot } = await import("./git-info.js");
     // Run from the repository root, whichever subdirectory the command was typed in. `git log` was
     // already reading the whole history from a subdirectory, but the report was titled after the
