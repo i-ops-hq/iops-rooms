@@ -30,7 +30,13 @@ test("init makes the team room in one local commit, and pushes nothing", async (
     const made = await alice.rooms(alice.team, "team", "init", "--name", "acme", "--yes", "--confirm-private");
     assert.equal(made.code, 0, made.err);
     assert.equal(await git(alice.team, "log", "--format=%s"), "Team room: acme");
-    assert.deepEqual((await git(alice.team, "show", "--name-only", "--format=", "HEAD")).split("\n").sort(), [".gitattributes", "README.md", "room.json", "status/.gitkeep"]);
+    assert.deepEqual((await git(alice.team, "show", "--name-only", "--format=", "HEAD")).split("\n").sort(), [
+      ".gitattributes",
+      "README.md",
+      "rollups/.gitkeep",
+      "room.json",
+      "status/.gitkeep",
+    ]);
     assert.equal(await git(join(dir, "team.git"), "rev-list", "--all", "--count"), "0", "the remote has nothing until alice pushes");
   });
 });
@@ -45,12 +51,16 @@ test("sync shows the file and asks, then pushes that one file, and never a file 
     const asked = await alice.rooms(alice.web, "team", "sync");
     assert.equal(asked.code, 2);
     assert.match(asked.out, /status\/alice\/web\.json\n\{/, "the exact file is shown");
+    assert.match(asked.out, /rollups\/alice\/web\.agents\.json/, "agent rollup is shown too");
     assert.equal(await git(join(dir, "team.git"), "rev-list", "--count", "main"), "1", "nothing was pushed");
 
     const shared = await alice.rooms(alice.web, "team", "sync", "--yes");
     assert.equal(shared.code, 0, shared.err);
     assert.equal(await git(join(dir, "team.git"), "log", "-1", "--format=%an: %s", "main"), "alice: status: alice · web");
-    assert.equal(await git(join(dir, "team.git"), "show", "--name-only", "--format=", "main"), "status/alice/web.json");
+    assert.deepEqual(
+      (await git(join(dir, "team.git"), "show", "--name-only", "--format=", "main")).split("\n").filter(Boolean).sort(),
+      ["rollups/alice/web.agents.json", "rollups/alice/web.packages.json", "status/alice/web.json"],
+    );
     const status = JSON.parse(await git(join(dir, "team.git"), "show", "main:status/alice/web.json"));
     assert.deepEqual(Object.keys(status).filter((k) => !ALLOWED.includes(k)), []);
     assert.deepEqual([status.branch, status.uncommitted], ["login-page", { files: 1, added: 1, removed: 0, untracked: 1 }]);

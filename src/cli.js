@@ -78,7 +78,11 @@ The board and the room:
   rooms shortcut remove [--to <folder>]
   rooms hooks install [--force]
   rooms hooks uninstall
+  rooms hooks install --agent claude-code|codex|cursor [--user] [--yes]
+  rooms hooks uninstall --agent claude-code|codex|cursor [--user]
   rooms record commit          run by the git hook: notes whether a commit was made inside an agent session
+  rooms record session-start|session-end|edit --path <file>   custom agents (allowlisted JSON on stdin)
+  rooms record packages        lockfile names/versions into the activity log
   rooms mcp
   rooms mcp install   # Cursor + Claude Code + Codex (project-local)
   rooms auth github
@@ -298,9 +302,12 @@ async function team(rest, argv) {
     const pulled = await t.pullTeamRoom(room.path);
     if (!pulled.ok) throw new Error(`Nothing was shared: the team room could not be brought up to date: ${pulled.why}`);
     const status = await t.buildStatus({ projectDir: top, login, withBranch: !argv["no-branch"] });
-    const plan = await t.planSync({ clonePath: room.path, status });
+    const rollups = await t.buildRollups({ projectDir: top, login, project: status.project });
+    const plan = await t.planSync({ clonePath: room.path, status, rollups });
     if (argv["dry-run"]) {
-      process.stdout.write(`${plan.rel} would hold:\n${plan.content}`);
+      for (const f of plan.files || [{ rel: plan.rel, content: plan.content }]) {
+        process.stdout.write(`${f.rel} would hold:\n${f.content}`);
+      }
       return;
     }
     if (!plan.changed) {
@@ -308,9 +315,12 @@ async function team(rest, argv) {
       return;
     }
     if (!room.sharing) {
+      const listing = (plan.files || [{ rel: plan.rel, content: plan.content }])
+        .map((f) => `${f.rel}\n${f.content}`)
+        .join("\n");
       process.stdout.write(
-        `The first status you share with ${id}. This file, and only this file, is committed and pushed\n` +
-          `with your own git; everyone who can read the team room can read it.\n\n${plan.rel}\n${plan.content}\n`,
+        `The first status you share with ${id}. These files are committed and pushed with your own git;\n` +
+          `everyone who can read the team room can read them. Counts and names only — never paths or prompts.\n\n${listing}`,
       );
       if (!(await confirmOrStop(argv, "Share it?"))) return;
       reg.teams[id] = { ...room, sharing: true };
@@ -318,7 +328,8 @@ async function team(rest, argv) {
     }
     const done = await t.applySync({ clonePath: room.path, plan });
     if (!done.ok) throw new Error(`Nothing was shared: ${done.why}`);
-    process.stdout.write(`shared ${plan.rel} with ${id}\n`);
+    const names = (plan.files || [{ rel: plan.rel }]).map((f) => f.rel).join(", ");
+    process.stdout.write(`shared ${names} with ${id}\n`);
     return;
   }
 
@@ -1242,39 +1253,87 @@ async function main() {
   }
 
   if (cmd === "record") {
-    if (rest[0] !== "commit") throw new Error("usage: rooms record commit");
-    // Run by the git hook after every commit, so it must never slow or fail one: it prints nothing
-    // and exits 0 whatever happens. Where there is no room it records nothing and creates nothing.
-    try {
-      const dir = await findRoomDir();
-      if (!dir) return;
-      // HEAD of THIS checkout: in a worktree it differs from the main checkout the room lives in.
-      const { git } = await import("./git-history.js");
-      const head = await git(process.cwd(), ["rev-parse", "HEAD"], { timeout: 4000 });
-      if (!head.ok) return;
-      const { agentFromEnv } = await import("./agent-markers.js");
-      const { appendActivity, readActivity, editedByFor, checkoutRef } = await import("./activity.js");
-      const { resolveBranch } = await import("./git-info.js");
-      const found = agentFromEnv(process.env);
-      const sha = head.out.trim();
-      await appendActivity(dir, {
-        kind: "commit",
-        sha,
-        madeIn: found?.agent ?? null,
-        agentVersion: found?.version ?? null,
-        entry: found?.entry ?? null,
-        model: found?.model ?? null,
-        // The files of this commit an agent's own hook saw it edit here since each was last
-        // committed: what shows the commonest case, edits committed by hand from another terminal.
-        editedBy: await editedByFor(process.cwd(), sha, await readActivity(dir)),
-        checkout: await checkoutRef(process.cwd()),
-        branch: (await resolveBranch(process.cwd())) || "",
-        source: "git-hook",
-      });
-    } catch {
-      /* never fail a commit */
+    const sub = rest[0] || "";
+    if (sub === "commit") {
+      // Run by the git hook after every commit, so it must never slow or fail one: it prints nothing
+      // and exits 0 whatever happens. Where there is no room it records nothing and creates nothing.
+      try {
+        const dir = await findRoomDir();
+        if (!dir) return;
+        // HEAD of THIS checkout: in a worktree it differs from the main checkout the room lives in.
+        const { git } = await import("./git-history.js");
+        const head = await git(process.cwd(), ["rev-parse", "HEAD"], { timeout: 4000 });
+        if (!head.ok) return;
+        const { agentFromEnv } = await import("./agent-markers.js");
+        const { appendActivity, readActivity, editedByFor, checkoutRef } = await import("./activity.js");
+        const { resolveBranch } = await import("./git-info.js");
+        const found = agentFromEnv(process.env);
+        const sha = head.out.trim();
+        await appendActivity(dir, {
+          kind: "commit",
+          sha,
+          madeIn: found?.agent ?? null,
+          agentVersion: found?.version ?? null,
+          entry: found?.entry ?? null,
+          model: found?.model ?? null,
+          // The files of this commit an agent's own hook saw it edit here since each was last
+          // committed: what shows the commonest case, edits committed by hand from another terminal.
+          editedBy: await editedByFor(process.cwd(), sha, await readActivity(dir)),
+          checkout: await checkoutRef(process.cwd()),
+          branch: (await resolveBranch(process.cwd())) || "",
+          source: "git-hook",
+        });
+      } catch {
+        /* never fail a commit */
+      }
+      return;
     }
-    return;
+    // Custom agents (and tests): allowlisted session/edit records. Quiet like agent-hook.
+    if (sub === "session-start" || sub === "session-end" || sub === "edit") {
+      try {
+        const { recordCustom } = await import("./agent-hooks.js");
+        let body = {};
+        if (!process.stdin.isTTY) {
+          const chunks = [];
+          for await (const c of process.stdin) chunks.push(c);
+          const raw = Buffer.concat(chunks).toString("utf8").trim();
+          if (raw) body = JSON.parse(raw);
+        }
+        if (sub === "session-start") {
+          await recordCustom({ ...body, kind: "session", phase: "start", cwd: body.cwd || process.cwd() });
+        } else if (sub === "session-end") {
+          await recordCustom({ ...body, kind: "session", phase: "end", cwd: body.cwd || process.cwd() });
+        } else {
+          const path = argv.path || body.path || body.file || rest[1];
+          if (!path) throw new Error("usage: rooms record edit --path <file>");
+          await recordCustom({
+            ...body,
+            kind: "edit",
+            path: String(path),
+            via: body.via || "record",
+            cwd: body.cwd || process.cwd(),
+          });
+        }
+      } catch {
+        /* never disturb the agent */
+      }
+      process.exitCode = 0;
+      return;
+    }
+    if (sub === "packages") {
+      // Lockfile snapshot → package.* events (names/versions only). Opt-in; prints a one-line count.
+      const { recordLockfilePackages } = await import("./packages.js");
+      const r = await recordLockfilePackages(process.cwd());
+      process.stdout.write(
+        r
+          ? `packages  ${r.added} new · ${r.changed} upgraded · ${r.removed} removed (${r.manager})\n`
+          : "packages  no lockfile found (package-lock.json, pnpm-lock.yaml, or yarn.lock)\n",
+      );
+      return;
+    }
+    throw new Error(
+      "usage: rooms record commit | session-start | session-end | edit --path <file> | packages",
+    );
   }
 
   if (cmd === "agent-hook") {
@@ -1360,24 +1419,54 @@ async function main() {
 
   if (cmd === "hooks" && argv.agent) {
     const agent = String(argv.agent);
-    if (agent !== "claude-code") {
-      throw new Error(`no hooks for "${agent}" yet: claude-code is the one supported so far`);
+    const a = await import("./agent-hooks.js");
+    if (!a.HOOK_AGENTS.includes(agent)) {
+      throw new Error(`no hooks for "${agent}": supported agents are ${a.HOOK_AGENTS.join(", ")}`);
     }
     const sub = rest[0] || "";
-    const a = await import("./agent-hooks.js");
     const { installHooks, CLI_PATH } = await import("./hooks.js");
     const user = Boolean(argv.user);
+    const labels = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
+    const planFns = {
+      "claude-code": a.planClaudeHooks,
+      codex: a.planCodexHooks,
+      cursor: a.planCursorHooks,
+    };
+    const applyFns = {
+      "claude-code": a.applyClaudeHooks,
+      codex: a.applyCodexHooks,
+      cursor: a.applyCursorHooks,
+    };
+    const removeFns = {
+      "claude-code": a.removeClaudeHooks,
+      codex: a.removeCodexHooks,
+      cursor: a.removeCursorHooks,
+    };
+    const cmdFns = {
+      "claude-code": a.claudeHookCommand,
+      codex: a.codexHookCommand,
+      cursor: a.cursorHookCommand,
+    };
+    const eventLines = {
+      "claude-code": "  + SessionStart, SessionEnd, and PostToolUse on Edit|Write|MultiEdit|NotebookEdit\n",
+      codex: "  + SessionStart, SessionEnd, and PostToolUse on apply_patch|Edit|Write\n",
+      cursor: "  + sessionStart, sessionEnd, and afterFileEdit (Agent / Cmd+K; not Tab-only)\n",
+    };
     if (sub === "uninstall") {
-      const r = await a.removeClaudeHooks({ cwd: process.cwd(), user });
+      const r = await removeFns[agent]({ cwd: process.cwd(), user });
       process.stdout.write(r.removed ? `removed the Rooms hooks from ${r.path}\n` : `no Rooms hooks in ${r.path}\n`);
       return;
     }
-    if (sub !== "install") throw new Error("usage: rooms hooks install --agent claude-code [--user] [--yes] | rooms hooks uninstall --agent claude-code [--user]");
-    const plan = await a.planClaudeHooks({ cwd: process.cwd(), user, cliPath: CLI_PATH });
+    if (sub !== "install") {
+      throw new Error(
+        `usage: rooms hooks install --agent ${a.HOOK_AGENTS.join("|")} [--user] [--yes] | rooms hooks uninstall --agent …`,
+      );
+    }
+    const plan = await planFns[agent]({ cwd: process.cwd(), user, cliPath: CLI_PATH });
     process.stdout.write(
-      `Claude Code  ${plan.path}${plan.exists ? "" : "  (new file)"}\n` +
-        "  + SessionStart, SessionEnd, and PostToolUse on Edit|Write|MultiEdit|NotebookEdit\n" +
-        `  runs  ${a.claudeHookCommand({ cliPath: CLI_PATH })}\n` +
+      `${labels[agent]}  ${plan.path}${plan.exists ? "" : "  (new file)"}\n` +
+        eventLines[agent] +
+        `  runs  ${cmdFns[agent]({ cliPath: CLI_PATH })}\n` +
         (plan.hasOurs
           ? "  the Rooms hooks already in it are replaced; every other hook stays as it is\n"
           : plan.exists
@@ -1409,14 +1498,11 @@ async function main() {
       }
     }
     await installHooks({ cwd: process.cwd(), force: Boolean(argv.force) });
-    await a.applyClaudeHooks(plan, { cwd: process.cwd(), user });
+    await applyFns[agent](plan, { cwd: process.cwd(), user });
     process.stdout.write(
-      // Not "when a session starts": the first time this was tried, a Claude Code Desktop session
-      // already running took the hook at once, on its next edit. Whether the terminal CLI does the
-      // same is not checked yet, so the line says what to do if it does not.
-      `installed. Claude Code uses it from its next edit; if a session that is already open records\n` +
+      `installed. ${labels[agent]} uses it from its next edit; if a session that is already open records\n` +
         `nothing, start a new one.\n` +
-        `undo: ${rerunCommand()} hooks uninstall --agent claude-code${user ? " --user" : ""}\n`,
+        `undo: ${rerunCommand()} hooks uninstall --agent ${agent}${user ? " --user" : ""}\n`,
     );
     return;
   }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+### Codex and Cursor hooks, package events, and thin team rollups
+
+Agent activity is no longer Claude Code only. `rooms hooks install --agent codex` and
+`--agent cursor` wire the same quiet allowlisted log Claude already used: sessions and file edits
+into `.room/agent-activity.jsonl`, never prompts, patch bodies, or `edits` text. Custom agents can
+call `rooms record session-start`, `session-end`, and `edit --path`. `rooms record packages` reads
+the project's lockfile and records package names and versions only.
+
+`rooms team sync` now also pushes thin rollups under `rollups/<login>/` (agent counts and package
+names) beside the existing status file. Counts and names only — still never paths or prompts.
+Format notes: `docs/format/EVENTS.md`.
+
 ## 0.7.4
 
 ### Rooms starts where you are, and reads main from any branch

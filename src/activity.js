@@ -17,6 +17,9 @@ import { git } from "./git-history.js";
 
 export const ACTIVITY_FILE = "agent-activity.jsonl";
 
+/** Kinds this log may hold. Unknown kinds are soft-skipped when reading rollups, never invented. */
+export const ACTIVITY_KINDS = Object.freeze(["session", "edit", "commit", "package"]);
+
 export function activityPath(projectDir) {
   return join(roomPaths(projectDir).root, ACTIVITY_FILE);
 }
