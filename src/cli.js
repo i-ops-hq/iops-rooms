@@ -53,6 +53,7 @@ The board and the room:
   rooms rename <name>
   rooms open
   rooms live [--port N] [--tab]   own app window; --tab for a browser tab
+  rooms dash [--port N] [--tab]   local + team/org floors dashboard (127.0.0.1)
   rooms branches
   rooms scm-status
   rooms sync-hint
@@ -74,6 +75,18 @@ The board and the room:
   rooms team live [--every 5m] [--no-share] the team board, kept current while it is open
   rooms team board --markdown [--out BOARD.md]  the board as Markdown, for GitHub to show
   rooms team workflow [--hours 1]          add the Action that rebuilds BOARD.md in the team room
+  rooms org init [--name <name>]           make this repository an org room (private only)
+  rooms org join <owner/repo | folder>     register an org room on this machine
+  rooms org link <owner/repo>              add a team room to the org's rollup list
+  rooms org refresh [--dry-run]            floors-only rollup from linked teams into the org room
+  rooms org show [--org <owner/repo>]      print the last org rollup
+  rooms share request --to <login> --ref <path> [--note <text>] [--issue]
+  rooms share grant --to <login> --ref <path> [--encrypt <file>] [--note <text>] [--issue]
+  rooms share show <id>                    one share_meta record from the team room
+  rooms inbox                              share_meta for you, plus open [rooms] Issues
+  rooms companion [--every 5m]             inbox/team notifications while this process runs
+  rooms companion install [--yes] [--to <folder>]  opt-in launcher (off by default)
+  rooms companion remove [--to <folder>]
   rooms shortcut [--to <folder>] [--yes]   a file to double-click that opens this board
   rooms shortcut remove [--to <folder>]
   rooms hooks install [--force]
@@ -125,11 +138,11 @@ Auth mints a local verified GitHub/GitLab identity only — does not upload room
 const VALUE_FLAGS = new Set([
   "since", "path", "not", "out", "label", "port", "timeout", "name", "note",
   "code", "provider", "host", "client-id", "window-size", "agent", "to", "team", "every", "hours",
-  "role", "summary", "cost", "only", "skip", "ref", "approve", "tool",
+  "role", "summary", "cost", "only", "skip", "ref", "approve", "tool", "org", "encrypt",
 ]);
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
-  "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run", "no-share", "markdown",
+  "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run", "no-share", "markdown", "issue",
 ]);
 
 /**
@@ -462,6 +475,328 @@ async function team(rest, argv) {
   }
 
   throw new Error(usage);
+}
+
+/** `rooms org …`: lead rollup of linked team rooms (floors only). */
+async function org(rest, argv) {
+  const sub = rest[0] || "";
+  const o = await import("./org.js");
+  const t = await import("./team.js");
+  const { repositoryTop } = await import("./git-info.js");
+  const { roomsHomeDir } = await import("./identity.js");
+  const { realpath, stat, mkdir, writeFile, readFile } = await import("node:fs/promises");
+  const usage =
+    "usage: rooms org init [--name <name>] | rooms org join <owner/repo | folder> | " +
+    "rooms org link <owner/repo> | rooms org refresh [--dry-run] | rooms org show";
+  const flags = { confirmPrivate: Boolean(argv["confirm-private"]), allowPublic: Boolean(argv.public) };
+
+  if (sub === "init") {
+    const top = await repositoryTop(process.cwd());
+    if (!top) throw new Error("Run this inside a clone of the repository that will be the org room.");
+    const existing = await o.readOrgRoom(top);
+    if (existing) {
+      process.stdout.write(`already an org room: ${existing.name} (${existing.id})\n`);
+      return;
+    }
+    const { id, remote } = await t.teamIdFor(top);
+    const name = String(argv.name || basename(top));
+    const priv = await t.checkPrivate(remote, flags);
+    if (!priv.ok) throw new Error(`No org room was made: ${priv.why}. To go ahead: ${priv.fix}.`);
+    const files = o.orgRoomFiles(name);
+    for (const rel of Object.keys(files)) {
+      if (await stat(join(top, rel)).then(() => true, () => false)) {
+        throw new Error(`${rel} already exists in this repository and is not an org room's; nothing was changed.`);
+      }
+    }
+    process.stdout.write(
+      `Org room  ${id}  (${priv.how})\n` +
+        `  + ${Object.keys(files).join(", ")}\n` +
+        "  then one commit in this clone. Rooms does not push it; you do.\n",
+    );
+    if (!(await confirmOrStop(argv, "Make it?"))) return;
+    for (const [rel, content] of Object.entries(files)) {
+      await mkdir(join(top, rel, ".."), { recursive: true });
+      await writeFile(join(top, rel), content, "utf8");
+    }
+    const add = await t.gitIn(top, ["add", "--", ...Object.keys(files)]);
+    const commit = add.ok
+      ? await t.gitIn(top, ["commit", "-q", "-m", `Org room: ${name}`, "--", ...Object.keys(files)])
+      : add;
+    if (!commit.ok) throw new Error(`The files are written, but git could not commit them: ${commit.err || commit.out}`);
+    await o.registerOrg({ id, name, path: top, remote });
+    process.stdout.write(`made. Push it with git push, then: rooms org link <team-owner/repo>\n`);
+    return;
+  }
+
+  if (sub === "join") {
+    const target = rest[1];
+    if (!target) throw new Error(usage);
+    const asFolder = resolve(String(target));
+    const isFolder = await stat(asFolder).then((s) => s.isDirectory(), () => false);
+    let clonePath = isFolder ? await realpath(asFolder) : null;
+    let cloneFrom = null;
+    if (!isFolder) {
+      if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(target)) throw new Error(`"${target}" is neither a folder nor owner/repo.\n${usage}`);
+      clonePath = join(roomsHomeDir(), "orgs", ...target.split("/"));
+      if (!(await stat(join(clonePath, ".git")).then(() => true, () => false))) cloneFrom = `https://github.com/${target}.git`;
+      const before = await t.checkPrivate({ host: "github.com", path: target }, flags);
+      if (!before.ok) throw new Error(`Not joined: ${before.why}. To go ahead: ${before.fix}.`);
+    }
+    process.stdout.write(
+      `Org room  ${target}\n` +
+        (cloneFrom ? `  clone   ${cloneFrom}\n          into ${clonePath}, with your own git credentials\n` : `  folder  ${clonePath}\n`) +
+        `  register in ${join(roomsHomeDir(), "teams.json")} under orgs\n`,
+    );
+    if (!(await confirmOrStop(argv, "Join?"))) return;
+    if (cloneFrom) {
+      await mkdir(join(clonePath, ".."), { recursive: true });
+      const cloned = await t.gitIn(process.cwd(), ["clone", "-q", cloneFrom, clonePath], { timeout: 120000 });
+      if (!cloned.ok) throw new Error(`git could not clone ${cloneFrom}: ${cloned.err}`);
+    }
+    const room = await o.readOrgRoom(clonePath);
+    if (!room) throw new Error(`${clonePath} is not an org room: it has no room.json from rooms org init.`);
+    const priv = await t.checkPrivate(room.remote, flags);
+    if (!priv.ok) throw new Error(`Not joined: ${priv.why}. To go ahead: ${priv.fix}.`);
+    await o.registerOrg({ id: room.id, name: room.name, path: clonePath, remote: room.remote });
+    process.stdout.write(`joined ${room.name} (${room.id}). Link teams: rooms org link <owner/repo>\n`);
+    return;
+  }
+
+  if (sub === "link") {
+    const teamId = rest[1];
+    if (!teamId) throw new Error(usage);
+    const { id, org: entry, ids } = await o.resolveOrg(argv.org);
+    if (!entry) {
+      throw new Error(
+        ids.length
+          ? `Which org room? rooms org link ${teamId} --org <one of: ${ids.join(", ")}>`
+          : "No org room yet: rooms org join <owner/repo>",
+      );
+    }
+    const reg = await t.readRegistry();
+    if (!reg.teams[teamId]?.path) {
+      throw new Error(`No team room "${teamId}" on this machine. Join it first: rooms team join ${teamId}`);
+    }
+    const list = await o.readOrgTeamsList(entry.path);
+    if (list.teams.includes(teamId)) {
+      process.stdout.write(`already linked: ${teamId} in ${id}\n`);
+      return;
+    }
+    list.teams.push(teamId);
+    process.stdout.write(`Link  ${teamId}\n  into ${id}'s teams.json\n  then one commit and push with your own git.\n`);
+    if (!(await confirmOrStop(argv, "Link it?"))) return;
+    await o.writeOrgTeamsList(entry.path, list.teams);
+    const add = await t.gitIn(entry.path, ["add", "--", "teams.json"]);
+    const commit = add.ok
+      ? await t.gitIn(entry.path, ["commit", "-q", "-m", `org: link ${teamId}`, "--", "teams.json"])
+      : add;
+    if (!commit.ok) throw new Error(`Could not commit teams.json: ${commit.err || commit.out}`);
+    let push = await t.gitIn(entry.path, ["push", "-q"]);
+    if (!push.ok && /rejected|fetch first|non-fast-forward/i.test(push.err)) {
+      const rebase = await t.gitIn(entry.path, ["pull", "--rebase", "--autostash", "-q"]);
+      if (!rebase.ok) throw new Error(`Could not catch up: ${rebase.err}`);
+      push = await t.gitIn(entry.path, ["push", "-q"]);
+    }
+    if (!push.ok) throw new Error(`Committed but could not push: ${push.err}`);
+    process.stdout.write(`linked ${teamId}. Refresh: rooms org refresh\n`);
+    return;
+  }
+
+  if (sub === "refresh") {
+    const { id, org: entry, ids } = await o.resolveOrg(argv.org);
+    if (!entry) {
+      throw new Error(ids.length ? `Which org? rooms org refresh --org <one of: ${ids.join(", ")}>` : "No org room yet: rooms org join <owner/repo>");
+    }
+    const priv = await t.checkPrivate(
+      entry.remote ? { host: entry.remote.split("/")[0], path: entry.remote.split("/").slice(1).join("/") } : null,
+      { confirmPrivate: Boolean(argv["confirm-private"]), allowPublic: Boolean(argv.public) },
+    );
+    if (!priv.ok) throw new Error(`Nothing was written: ${priv.why}. To go ahead: ${priv.fix}.`);
+    const built = await o.refreshOrg({ orgPath: entry.path });
+    if (argv["dry-run"]) {
+      process.stdout.write(built.files.map((f) => `${f}\n`).join(""));
+      process.stdout.write(await readFile(join(entry.path, "ORG.md"), "utf8"));
+      if (built.missing.length) process.stdout.write(`\n(missing teams: ${built.missing.join("; ")})\n`);
+      return;
+    }
+    process.stdout.write(
+      `Org rollup for ${id}\n` +
+        `  ${built.rollup.totals.teams} team(s) · ${built.rollup.totals.members} member-slots · ` +
+        `${built.rollup.totals.sessions7d} sessions (7d)\n` +
+        `  writes ${built.files.join(", ")}, then pushes with your own git.\n` +
+        (built.missing.length ? `  skipped: ${built.missing.join("; ")}\n` : ""),
+    );
+    if (!(await confirmOrStop(argv, "Push it?"))) return;
+    const done = await o.applyOrgRefresh({ orgPath: entry.path, files: built.files });
+    if (!done.ok) throw new Error(`Nothing was pushed: ${done.why}`);
+    process.stdout.write(done.unchanged ? "rollup unchanged; nothing pushed\n" : `pushed org rollup to ${id}\n`);
+    return;
+  }
+
+  if (sub === "show") {
+    const { id, org: entry, ids } = await o.resolveOrg(argv.org);
+    if (!entry) {
+      throw new Error(ids.length ? `Which org? rooms org show --org <one of: ${ids.join(", ")}>` : "No org room yet: rooms org join <owner/repo>");
+    }
+    await t.pullTeamRoom(entry.path);
+    try {
+      process.stdout.write(await readFile(join(entry.path, "ORG.md"), "utf8"));
+    } catch {
+      throw new Error(`No ORG.md in ${id} yet. Run: rooms org refresh`);
+    }
+    return;
+  }
+
+  throw new Error(usage);
+}
+
+/** Resolve the team room for share/inbox: --team, or the project link, or the only registered team. */
+async function teamRoomForShare(argv) {
+  const t = await import("./team.js");
+  const reg = await t.readRegistry();
+  const linked = await t.teamForProject(process.cwd());
+  const ids = Object.keys(reg.teams);
+  const id = argv.team ? String(argv.team) : linked.id || (ids.length === 1 ? ids[0] : null);
+  if (!id || !reg.teams[id]) {
+    throw new Error(ids.length ? `Which team? pass --team <one of: ${ids.join(", ")}>` : "No team room yet: rooms team join <owner/repo>");
+  }
+  return { t, reg, id, room: reg.teams[id] };
+}
+
+/** `rooms share …`: share_meta in the team hub (metadata only; optional age ciphertext). */
+async function shareCmd(rest, argv) {
+  const sub = rest[0] || "";
+  const s = await import("./share.js");
+  const { authStatus } = await import("./identity.js");
+  const { readFile } = await import("node:fs/promises");
+  const usage =
+    "usage: rooms share request --to <login> --ref <path> [--note <text>] [--issue] | " +
+    "rooms share grant --to <login> --ref <path> [--encrypt <file>] [--note <text>] [--issue] | " +
+    "rooms share show <id>";
+
+  if (sub === "show") {
+    const id = rest[1];
+    if (!id || !/^[a-f0-9]{8,32}$/.test(id)) throw new Error(usage);
+    const { t, room } = await teamRoomForShare(argv);
+    await t.pullTeamRoom(room.path);
+    const { shares } = await s.readShares(room.path);
+    const meta = shares.find((x) => x.id === id);
+    if (!meta) throw new Error(`No share ${id} in this team room.`);
+    process.stdout.write(`${JSON.stringify(meta, null, 2)}\n`);
+    return;
+  }
+
+  if (sub !== "request" && sub !== "grant") throw new Error(usage);
+  const to = String(argv.to || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const ref = argv.ref ? String(argv.ref) : "";
+  if (!to.length || !ref) throw new Error(usage);
+  const login = (await authStatus()).github?.login;
+  if (!login) throw new Error("Shares are filed under your GitHub login: rooms auth github");
+  const { t, id: teamId, room } = await teamRoomForShare(argv);
+  const priv = await t.checkPrivate(
+    room.remote ? { host: room.remote.split("/")[0], path: room.remote.split("/").slice(1).join("/") } : null,
+    { confirmPrivate: Boolean(room.confirmedPrivate), allowPublic: Boolean(room.allowPublic) },
+  );
+  if (!priv.ok) throw new Error(`Nothing was shared: ${priv.why}. To go ahead: ${priv.fix}.`);
+  const pulled = await t.pullTeamRoom(room.path);
+  if (!pulled.ok) throw new Error(`Nothing was shared: ${pulled.why}`);
+
+  const type = sub === "grant" ? "setup" : "request";
+  let pointer = null;
+  const extraPaths = [];
+  const shareId = s.shareId();
+  if (sub === "grant" && argv.encrypt) {
+    const plaintext = await readFile(resolve(String(argv.encrypt)));
+    const enc = await s.encryptToGithubUser({
+      clonePath: room.path,
+      login: to[0],
+      plaintext,
+      id: shareId,
+    });
+    if (!enc.ok) throw new Error(`Could not encrypt: ${enc.why}`);
+    pointer = enc.pointer;
+    extraPaths.push(enc.pointer);
+  }
+
+  const meta = s.buildShareMeta({
+    id: shareId,
+    from: login,
+    to,
+    type,
+    ref,
+    pointer,
+    note: argv.note ? String(argv.note) : null,
+  });
+  if (!meta) throw new Error("Share meta failed validation (check --to logins and --ref path).");
+
+  process.stdout.write(
+    `Share  ${meta.type}  ${meta.ref}\n` +
+      `  from  @${meta.from} → ${meta.to.map((x) => `@${x}`).join(", ")}\n` +
+      `  file  shares/${meta.id}.json` +
+      (pointer ? `\n  blob  ${pointer}` : "") +
+      `\n  into  ${teamId}` +
+      (argv.issue ? "\n  then open a GitHub Issue assigned to the first recipient" : "") +
+      "\nCounts/metadata only — never secret values in the JSON.\n",
+  );
+  if (argv["dry-run"]) {
+    process.stdout.write(`${JSON.stringify(meta, null, 2)}\n`);
+    return;
+  }
+  if (!(await confirmOrStop(argv, "Share it?"))) return;
+  const done = await s.commitShare({ clonePath: room.path, meta, extraPaths });
+  if (!done.ok) throw new Error(`Nothing was shared: ${done.why}`);
+
+  let issueLine = "";
+  if (argv.issue) {
+    const remotePath = s.githubRepoFromRemote(room.remote);
+    if (!remotePath) {
+      issueLine = "\nissue  not opened: team room has no GitHub remote path";
+    } else {
+      const issue = await s.openShareIssue({ remotePath, meta });
+      if (issue?.number) {
+        const withIssue = { ...meta, issue: issue.number };
+        const again = await s.commitShare({ clonePath: room.path, meta: withIssue });
+        if (!again.ok) issueLine = `\nissue  #${issue.number} opened but meta not updated: ${again.why}`;
+        else issueLine = `\nissue  #${issue.number}${issue.url ? ` ${issue.url}` : ""}`;
+      } else if (issue?.why) {
+        issueLine = `\nissue  not opened: ${issue.why}`;
+      }
+    }
+  }
+  process.stdout.write(`shared shares/${meta.id}.json with ${teamId}${issueLine}\n`);
+}
+
+/** `rooms inbox`: share_meta for you + open [rooms] Issues on the team hub. */
+async function inbox(argv) {
+  const s = await import("./share.js");
+  const { authStatus } = await import("./identity.js");
+  const login = (await authStatus()).github?.login;
+  if (!login) throw new Error("Inbox is under your GitHub login: rooms auth github");
+  const { room, id } = await teamRoomForShare(argv);
+  const box = await s.readInbox({
+    clonePath: room.path,
+    remotePath: s.githubRepoFromRemote(room.remote),
+    login,
+  });
+  if (!box.pullOk) process.stderr.write(`(team room not updated: ${box.pullWhy})\n`);
+  process.stdout.write(`inbox  ${id}  @${login}\n`);
+  if (!box.shares.length && !box.issues.length) {
+    process.stdout.write("nothing waiting\n");
+    return;
+  }
+  for (const m of box.shares) {
+    process.stdout.write(
+      `  share  ${m.id}  ${m.type}  ${m.ref}  from @${m.from} → ${m.to.map((t) => `@${t}`).join(", ")}` +
+        (m.issue ? `  #${m.issue}` : "") +
+        "\n",
+    );
+  }
+  for (const i of box.issues) {
+    process.stdout.write(`  issue  #${i.number}  ${i.title}${i.url ? `  ${i.url}` : ""}\n`);
+  }
 }
 
 function args(argv) {
@@ -874,6 +1209,66 @@ async function main() {
         `(bind ${live.host} only — Ctrl+C to stop)\n`,
     );
     await new Promise(() => {});
+    return;
+  }
+
+  if (cmd === "dash") {
+    const { resolveProjectRoot } = await import("./git-info.js");
+    const dir = await resolveProjectRoot(process.cwd());
+    const { startDash, DASH_DEFAULT_PORT } = await import("./dash.js");
+    const { LIVE_HOST } = await import("./live.js");
+    const port = argv.port !== undefined ? Number(argv.port) : DASH_DEFAULT_PORT;
+    const dash = await startDash(dir, { port });
+    const opened = openPath(dash.url, { app: argv.app !== false && !argv.tab });
+    process.stdout.write(
+      `dash  ${dash.url}\n` +
+        `${opened.mode === "app" ? "window  its own app window (--tab for a browser tab instead)\n" : ""}` +
+        `(bind ${LIVE_HOST} only — Ctrl+C to stop)\n`,
+    );
+    await new Promise(() => {});
+    return;
+  }
+
+  if (cmd === "companion") {
+    const sub = rest[0] || "";
+    const c = await import("./companion.js");
+    const { resolveProjectRoot } = await import("./git-info.js");
+    const { CLI_PATH } = await import("./hooks.js");
+    const { boardProjectName } = await import("./board.js");
+    const projectDir = await resolveProjectRoot(process.cwd());
+    if (sub === "install" || sub === "remove") {
+      const meta = await readMeta(projectDir).catch(() => ({}));
+      const folder = argv.to ? resolve(String(argv.to)) : undefined;
+      const opts = {
+        folder,
+        name: boardProjectName(meta, projectDir),
+        nodeBin: process.execPath,
+        cliPath: CLI_PATH,
+        projectDir,
+      };
+      if (sub === "remove") {
+        const r = await c.removeCompanionLauncher(opts);
+        process.stdout.write(
+          r === "removed" ? `removed companion launcher\n`
+            : r === "not-ours" ? `that path was not a Rooms companion launcher; left alone\n`
+              : `no companion launcher found\n`,
+        );
+        return;
+      }
+      process.stdout.write(
+        `Companion launcher\n` +
+          `  runs    rooms companion in ${projectDir}\n` +
+          `  notify  OS notifications for new shares/issues while it runs\n` +
+          "  off by default — this only writes the launcher; login-items are still yours to enable.\n",
+      );
+      if (!(await confirmOrStop(argv, "Write it?"))) return;
+      const p = await c.installCompanionLauncher(opts);
+      process.stdout.write(`written ${p.path}\nremove: ${rerunCommand()} companion remove${argv.to ? ` --to "${folder}"` : ""}\n`);
+      return;
+    }
+    if (sub) throw new Error("usage: rooms companion [--every 5m] | rooms companion install|remove [--to <folder>] [--yes]");
+    const everyMs = parseEvery(argv.every);
+    await c.runCompanion({ projectDir, everyMs });
     return;
   }
 
@@ -1352,6 +1747,21 @@ async function main() {
 
   if (cmd === "team") {
     await team(rest, argv);
+    return;
+  }
+
+  if (cmd === "org") {
+    await org(rest, argv);
+    return;
+  }
+
+  if (cmd === "share") {
+    await shareCmd(rest, argv);
+    return;
+  }
+
+  if (cmd === "inbox") {
+    await inbox(argv);
     return;
   }
 

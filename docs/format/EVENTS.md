@@ -13,3 +13,7 @@ Rooms stamps `v` and `at` after the writer's fields so callers cannot override t
 **Never kept:** prompts, file bodies, patch text, tool output, transcripts, env values, absolute home paths.
 
 Team hub projections (`status/…`, `rollups/….agents.json`, `rollups/….packages.json`) are reductions of this log: counts and package names only.
+
+Org room projection: `rollup/org.json` (`kind: org_rollup`) — per-team floors and package-name hits only.
+
+Share metadata on the team hub: `shares/<id>.json` (`kind: share_meta`) — who, type, ref, optional pointer/issue/note. Never ciphertext contents inside the JSON (optional age blobs live under `shares/blobs/`).

@@ -49,9 +49,9 @@ function registryPath() {
 export async function readRegistry() {
   try {
     const data = JSON.parse(await readFile(registryPath(), "utf8"));
-    return { v: 1, teams: data.teams || {}, projects: data.projects || {} };
+    return { v: 1, teams: data.teams || {}, projects: data.projects || {}, orgs: data.orgs || {} };
   } catch {
-    return { v: 1, teams: {}, projects: {} };
+    return { v: 1, teams: {}, projects: {}, orgs: {} };
   }
 }
 
@@ -149,7 +149,8 @@ export function teamRoomFiles(name) {
     "README.md": README(name),
     "status/.gitkeep": "",
     "rollups/.gitkeep": "",
-    ".gitattributes": "status/** text eol=lf\nrollups/** text eol=lf\n",
+    "shares/.gitkeep": "",
+    ".gitattributes": "status/** text eol=lf\nrollups/** text eol=lf\nshares/** text eol=lf\n",
   };
 }
 
