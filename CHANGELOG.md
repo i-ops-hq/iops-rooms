@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.9.0
+## 0.10.0
 
-### Org rollup and share inbox
+### Org rollup, share inbox, dash, and companion
 
 A lead can keep a second private **org room** that rolls up linked team rooms into floors only:
 `rooms org init`, `join`, `link <team>`, `refresh`, and `show`. The rollup is counts and package
@@ -12,6 +12,12 @@ On the team hub, `rooms share request|grant` writes allowlisted `share_meta` und
 `rooms inbox` lists meta for you plus open GitHub Issues titled `[rooms]`. Optional `--encrypt`
 uses the `age` CLI and the recipient's GitHub SSH keys when both are present; without `age`, meta
 still points at a setup path or peer pull. `--issue` opens a notification Issue via your own `gh`.
+
+`rooms dash` serves a localhost observability page (default port 7841) over read-only JSON APIs:
+local sessions/packages/week floor, team pulse, org rollup, and inbox. Same Host check as
+`rooms live`. `rooms companion` is a foreground notifier for new shares/issues (and team HEAD
+moves); it pauses when the process stops. `rooms companion install` writes an opt-in launcher
+(off by default), separate from `rooms shortcut`.
 
 ## 0.8.0
 

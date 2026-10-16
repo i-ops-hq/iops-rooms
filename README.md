@@ -297,6 +297,22 @@ rooms share show <id>
 rooms inbox
 ```
 
+### Dash and companion
+
+`rooms dash` opens a localhost page (default `127.0.0.1:7841`) with this machine's sessions and
+packages, the week floor, and — when linked — team pulse, org rollup, and inbox. Read-only JSON
+under `/api/*.json`; same Host check as `rooms live`.
+
+`rooms companion` runs in the foreground and posts OS notifications for new shares/issues (and when
+the team room's HEAD moves). It does nothing while the process is stopped (laptop sleep included).
+`rooms companion install` writes an opt-in launcher; login-items stay yours to enable.
+
+```bash
+rooms dash
+rooms companion --every 5m
+rooms companion install --yes
+```
+
 ### Setups: share a Claude Code, Codex or Cursor setup, and adopt a teammate's
 
 A setup is how someone has Claude Code, Codex or Cursor set up for a kind of work: their `CLAUDE.md`,
@@ -574,7 +590,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.9.0 mcp install
+npx -y iops-rooms@0.10.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -587,7 +603,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.9.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.10.0", "mcp"] } } }
 ```
 
 ## Commands

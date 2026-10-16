@@ -50,10 +50,13 @@ export async function startScreen(cwd) {
     const linked = await teamForProject(dir).catch(() => ({ team: null }));
     if (linked.team) {
       out.push(row("rooms team board", `your team's status, from ${linked.id}`));
+      out.push(row("rooms dash", "local activity plus team/org floors"));
       out.push(row("rooms inbox", "share requests and [rooms] Issues for you"));
+      out.push(row("rooms companion", "OS notifications for inbox while it runs"));
       out.push(row("rooms setup show", "the AI setups your team shares"));
     } else {
       out.push(row("rooms team join", "share your status with your team, through a private GitHub repository"));
+      out.push(row("rooms dash", "local activity on this machine"));
     }
   }
   out.push("\nEvery command: rooms help\n");

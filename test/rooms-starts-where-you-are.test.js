@@ -62,9 +62,10 @@ test("in a project on its default branch: its name, its branch, and the commands
     assert.match(r.out, /\n {2}rooms week +who built it this week, and which AI helped\n/);
     assert.match(r.out, /\n {2}rooms open +the board: commits, people, agents and branches\n/);
     assert.match(r.out, /\n {2}rooms team join +share your status with your team/);
+    assert.match(r.out, /\n {2}rooms dash +local activity on this machine\n/);
     assert.doesNotMatch(r.out, /rooms branch/, "nothing to compare on the default branch");
     assert.match(r.out, /\nEvery command: rooms help\n$/);
-    assert.ok(r.out.trim().split("\n").length <= 8, `a start, not every command:\n${r.out}`);
+    assert.ok(r.out.trim().split("\n").length <= 10, `a start, not every command:\n${r.out}`);
     assert.deepEqual((await readdir(web)).sort(), before, "it writes nothing");
   });
 });
@@ -120,7 +121,9 @@ test("in a project linked to a team room: the team's board and its setups", asyn
     const r = await alice.rooms(alice.web);
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /\n {2}rooms team board +your team's status, from \S+\n/);
+    assert.match(r.out, /\n {2}rooms dash +local activity plus team\/org floors\n/);
     assert.match(r.out, /\n {2}rooms inbox +share requests and \[rooms\] Issues for you\n/);
+    assert.match(r.out, /\n {2}rooms companion +OS notifications for inbox while it runs\n/);
     assert.match(r.out, /\n {2}rooms setup show +the AI setups your team shares\n/);
     assert.doesNotMatch(r.out, /rooms team join/, "already joined");
   });
@@ -154,6 +157,8 @@ test("rooms help still lists every command", async () => {
       "rooms org init",
       "rooms share request",
       "rooms inbox",
+      "rooms dash",
+      "rooms companion",
       "rooms setup export",
       "rooms hooks install",
       "rooms mcp install",

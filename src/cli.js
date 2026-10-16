@@ -53,6 +53,7 @@ The board and the room:
   rooms rename <name>
   rooms open
   rooms live [--port N] [--tab]   own app window; --tab for a browser tab
+  rooms dash [--port N] [--tab]   local + team/org floors dashboard (127.0.0.1)
   rooms branches
   rooms scm-status
   rooms sync-hint
@@ -83,6 +84,9 @@ The board and the room:
   rooms share grant --to <login> --ref <path> [--encrypt <file>] [--note <text>] [--issue]
   rooms share show <id>                    one share_meta record from the team room
   rooms inbox                              share_meta for you, plus open [rooms] Issues
+  rooms companion [--every 5m]             inbox/team notifications while this process runs
+  rooms companion install [--yes] [--to <folder>]  opt-in launcher (off by default)
+  rooms companion remove [--to <folder>]
   rooms shortcut [--to <folder>] [--yes]   a file to double-click that opens this board
   rooms shortcut remove [--to <folder>]
   rooms hooks install [--force]
@@ -1205,6 +1209,66 @@ async function main() {
         `(bind ${live.host} only — Ctrl+C to stop)\n`,
     );
     await new Promise(() => {});
+    return;
+  }
+
+  if (cmd === "dash") {
+    const { resolveProjectRoot } = await import("./git-info.js");
+    const dir = await resolveProjectRoot(process.cwd());
+    const { startDash, DASH_DEFAULT_PORT } = await import("./dash.js");
+    const { LIVE_HOST } = await import("./live.js");
+    const port = argv.port !== undefined ? Number(argv.port) : DASH_DEFAULT_PORT;
+    const dash = await startDash(dir, { port });
+    const opened = openPath(dash.url, { app: argv.app !== false && !argv.tab });
+    process.stdout.write(
+      `dash  ${dash.url}\n` +
+        `${opened.mode === "app" ? "window  its own app window (--tab for a browser tab instead)\n" : ""}` +
+        `(bind ${LIVE_HOST} only — Ctrl+C to stop)\n`,
+    );
+    await new Promise(() => {});
+    return;
+  }
+
+  if (cmd === "companion") {
+    const sub = rest[0] || "";
+    const c = await import("./companion.js");
+    const { resolveProjectRoot } = await import("./git-info.js");
+    const { CLI_PATH } = await import("./hooks.js");
+    const { boardProjectName } = await import("./board.js");
+    const projectDir = await resolveProjectRoot(process.cwd());
+    if (sub === "install" || sub === "remove") {
+      const meta = await readMeta(projectDir).catch(() => ({}));
+      const folder = argv.to ? resolve(String(argv.to)) : undefined;
+      const opts = {
+        folder,
+        name: boardProjectName(meta, projectDir),
+        nodeBin: process.execPath,
+        cliPath: CLI_PATH,
+        projectDir,
+      };
+      if (sub === "remove") {
+        const r = await c.removeCompanionLauncher(opts);
+        process.stdout.write(
+          r === "removed" ? `removed companion launcher\n`
+            : r === "not-ours" ? `that path was not a Rooms companion launcher; left alone\n`
+              : `no companion launcher found\n`,
+        );
+        return;
+      }
+      process.stdout.write(
+        `Companion launcher\n` +
+          `  runs    rooms companion in ${projectDir}\n` +
+          `  notify  OS notifications for new shares/issues while it runs\n` +
+          "  off by default — this only writes the launcher; login-items are still yours to enable.\n",
+      );
+      if (!(await confirmOrStop(argv, "Write it?"))) return;
+      const p = await c.installCompanionLauncher(opts);
+      process.stdout.write(`written ${p.path}\nremove: ${rerunCommand()} companion remove${argv.to ? ` --to "${folder}"` : ""}\n`);
+      return;
+    }
+    if (sub) throw new Error("usage: rooms companion [--every 5m] | rooms companion install|remove [--to <folder>] [--yes]");
+    const everyMs = parseEvery(argv.every);
+    await c.runCompanion({ projectDir, everyMs });
     return;
   }
 

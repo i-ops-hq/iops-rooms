@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rooms · dash</title>
+    <!--
+      Observability dashboard (D7). Design tokens match the project board. No remote CSS/fonts/scripts.
+      Panels are filled server-side; SSE reloads the page when local/team signatures change.
+    -->
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      :root {
+        --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --ink: #14151a; --ink-2: #5b606b; --ink-3: #8a8f99;
+        --line: #e9eaed; --bg: #ffffff; --bg-soft: #f5f5f3;
+        --blue: #2f6fed; --maxw: 920px; --gutter: 28px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #f3f5f9; --ink-2: #a7afbe; --ink-3: #79808f;
+          --line: #242833; --bg: #0d0f14; --bg-soft: #12141b; --blue: #6a9bff;
+        }
+      }
+      body {
+        margin: 0; background: var(--bg); color: var(--ink);
+        font-family: var(--font); font-size: 16px; line-height: 1.5;
+      }
+      main { max-width: var(--maxw); margin: 0 auto; padding: 28px var(--gutter) 64px; }
+      header { margin-bottom: 28px; }
+      h1 { font-size: 1.6rem; margin: 0 0 6px; letter-spacing: -0.02em; }
+      .sub { color: var(--ink-2); font-size: 0.95rem; }
+      .checked { color: var(--ink-3); font-size: 0.85rem; margin-top: 4px; }
+      section {
+        border-top: 1px solid var(--line); padding: 20px 0 8px; margin-top: 8px;
+      }
+      h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em;
+        color: var(--ink-3); margin: 0 0 10px; font-weight: 600; }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+      li:last-child { border-bottom: 0; }
+      li.empty, .muted { color: var(--ink-3); }
+      .paths { color: var(--ink-2); font-size: 0.85rem; margin-top: 2px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+      a { color: var(--blue); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Rooms dash</h1>
+        <p class="sub">Local activity and team/org floors on this machine. Nothing leaves localhost.</p>
+        <p class="checked" data-checked>loading…</p>
+      </header>
+      <section aria-label="this machine">
+        <h2>This machine</h2>
+        <!--LOCAL-->
+      </section>
+      <section aria-label="team">
+        <h2>Team</h2>
+        <!--TEAM-->
+      </section>
+      <section aria-label="org">
+        <h2>Org</h2>
+        <!--ORG-->
+      </section>
+      <section aria-label="inbox">
+        <h2>Inbox</h2>
+        <!--INBOX-->
+      </section>
+    </main>
+  </body>
+</html>

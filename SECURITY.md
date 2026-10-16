@@ -94,6 +94,16 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   when both exist; ciphertext lands under `shares/blobs/`. Meta never carries secret values.
   `--issue` creates an Issue through your own `gh`. Absolute paths and home paths in `ref`/`pointer`
   are refused
+- With `rooms dash`: serve a read-only observability page on `127.0.0.1` only (default port 7841),
+  with the same Host check as `rooms live`. JSON under `/api/local.json`, `/api/team.json`,
+  `/api/org.json`, and `/api/inbox.json` is built from local activity and already-approved team/org
+  projections. Local session paths appear only on this machine's dash. No write routes
+- With `rooms companion`: while the process runs, pull the team room and inbox on an interval
+  (thirty seconds at the least), compare to `~/.iops-rooms/companion.json`, and show an OS
+  notification for new shares/issues (or a single "back after a pause" note after sleep). Uses
+  `osascript` / `notify-send` / PowerShell when present, otherwise stderr. Stops when you stop it.
+  `rooms companion install` writes an opt-in launcher (shown and asked first), marked separately
+  from `rooms shortcut`; it never enables login-items by itself
 - With `rooms team board`: pull the team room, read each status field by field (anything else is
   left out and counted), and write `~/.iops-rooms/teams/<team>.board.html`, with every value
   escaped. Anyone with write access to the team room can write any file in it, so a status is as
@@ -223,7 +233,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.9.0 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.10.0 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.
