@@ -97,6 +97,12 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
 - With `rooms episode`: read `.room/agent-activity.jsonl` and print a join of sessions, edits,
   packages, and linked commits for this machine only. Writes nothing. Paths stay local (CLI and
   localhost dash); never prompts or file bodies
+- With `rooms team coverage`: pull the team room and print floors from status/rollups (fresh/stale,
+  hooks-seen from agent counts). Writes nothing. Never claims hooks are installed — only what was
+  shared
+- With `rooms team sync`, before sharing: if this project's `user.name` / `user.email` do not look
+  like the GitHub login that will sync, show a one-line warn and ask (remembered per team as
+  `authorMismatchOk`). Never merges two logins into one person
 - With `rooms dash`: serve a read-only observability page on `127.0.0.1` only (default port 7841),
   with the same Host check as `rooms live`. JSON under `/api/local.json`, `/api/team.json`,
   `/api/org.json`, and `/api/inbox.json` is built from local activity and already-approved team/org

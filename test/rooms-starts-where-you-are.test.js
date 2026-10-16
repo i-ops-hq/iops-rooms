@@ -157,6 +157,7 @@ test("rooms help still lists every command", async () => {
       "rooms week",
       "rooms episode",
       "rooms team init",
+      "rooms team coverage",
       "rooms org init",
       "rooms share request",
       "rooms inbox",

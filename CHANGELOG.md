@@ -2,12 +2,20 @@
 
 ## 0.11.0
 
-### Episode stitching
+### Episode stitching, coverage floor, and product boundary
 
 `rooms episode [--days 7]` joins this machine's activity log into work episodes: agent session →
 files edited → packages seen in that window → commits linked by in-session mark or overlapping
 edited paths. A view only — never invents unrecorded work. `--json` for scripts. The dash shows the
 same episodes under This machine.
+
+`rooms team coverage` prints who synced recently, who looks stale, and a **hooks-seen floor** from
+shared status (agent sessions/edits in the sync — not a claim that hooks are installed everywhere).
+`rooms team sync` warns once when the project's git author does not look like the GitHub login about
+to sync; Rooms never merges two identities.
+
+Rooms stays the I-Ops **share and observe** layer. Runtime/process control and Assurance are other
+products — not this package.
 
 ## 0.10.0
 

@@ -75,6 +75,7 @@ The board and the room:
   rooms team board [--team <owner/repo>]   everyone's status, in its own window
   rooms team live [--every 5m] [--no-share] the team board, kept current while it is open
   rooms team board --markdown [--out BOARD.md]  the board as Markdown, for GitHub to show
+  rooms team coverage [--days 7]           who synced, who looks stale, hooks-seen floor
   rooms team workflow [--hours 1]          add the Action that rebuilds BOARD.md in the team room
   rooms org init [--name <name>]           make this repository an org room (private only)
   rooms org join <owner/repo | folder>     register an org room on this machine
@@ -215,7 +216,8 @@ async function team(rest, argv) {
   const { realpath, stat, mkdir, writeFile } = await import("node:fs/promises");
   const usage =
     "usage: rooms team init [--name <name>] | rooms team join <owner/repo | folder> | " +
-    "rooms team sync [--no-branch] [--dry-run] | rooms team board [--team <owner/repo>]";
+    "rooms team sync [--no-branch] [--dry-run] | rooms team board [--team <owner/repo>] | " +
+    "rooms team coverage [--days 7]";
   const flags = { confirmPrivate: Boolean(argv["confirm-private"]), allowPublic: Boolean(argv.public) };
 
   if (sub === "init") {
@@ -307,6 +309,16 @@ async function team(rest, argv) {
     if (!room) throw new Error("This project is not linked to a team room: rooms team join <owner/repo>");
     const login = (await authStatus()).github?.login;
     if (!login) throw new Error("Your status is filed under your GitHub login, and this machine has none linked: rooms auth github");
+    // Traceability floor: do not silently sync as @login when this project's git author looks like someone else.
+    const { authorLoginMismatch } = await import("./identity-warn.js");
+    const mismatch = await authorLoginMismatch(top, login);
+    if (!mismatch.ok && !room.authorMismatchOk) {
+      process.stdout.write(`${mismatch.why}.\n${mismatch.detail}\n`);
+      if (!(await confirmOrStop(argv, "Sync anyway as this login?"))) return;
+      reg.teams[id] = { ...room, authorMismatchOk: true };
+      await t.writeRegistry(reg);
+      room.authorMismatchOk = true;
+    }
     // Asked again on every sync: a team room made public since joining would publish this status.
     const priv = await t.checkPrivate(room.remote ? { host: room.remote.split("/")[0], path: room.remote.split("/").slice(1).join("/") } : null, {
       confirmPrivate: Boolean(room.confirmedPrivate),
@@ -472,6 +484,23 @@ async function team(rest, argv) {
         "\n" +
         (opened.mode === "app" ? "window  its own app window (--tab for a browser tab instead)\n" : ""),
     );
+    return;
+  }
+
+  if (sub === "coverage") {
+    const { coverageForProject, renderCoverageText } = await import("./coverage.js");
+    const days = argv.days !== undefined ? Number(argv.days) : 7;
+    if (!Number.isFinite(days) || days < 1 || days > 90) throw new Error("--days takes a number from 1 to 90");
+    const result = await coverageForProject(process.cwd(), {
+      team: argv.team ? String(argv.team) : null,
+      staleDays: days,
+    });
+    if (!result.ok) throw new Error(result.why);
+    if (argv.json) {
+      process.stdout.write(`${JSON.stringify({ id: result.id, name: result.name, ...result.coverage, skipped: result.skipped }, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(renderCoverageText(result.coverage, { teamId: result.id }));
     return;
   }
 
