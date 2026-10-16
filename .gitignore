@@ -2,3 +2,7 @@ node_modules/
 .DS_Store
 *.log
 .room/
+
+# Product / architecture notes — local only, not part of the open-source tree.
+# Public docs that ship: README, SECURITY, CHANGELOG, CONTRIBUTING, docs/format/, docs/screenshots/.
+docs/design/
