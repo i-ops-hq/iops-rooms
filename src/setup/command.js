@@ -20,7 +20,17 @@ import { CHECKED_AGAINST, claudeDirs, readClaudeCode, selectItems } from "./clau
 import { CODEX_CHECKED_AGAINST, codexDirs, readCodex } from "./codex.js";
 import { CURSOR_CHECKED_AGAINST, cursorCliDir, cursorDir, describeCursorRule, readCursor } from "./cursor.js";
 import { buildManifest, checkSetup, filePathFor, parseCost, renderReadme, SLUG } from "./manifest.js";
-import { branchFor, commitSetup, dirFor, lastChange, listSetups, readSetupAt, resolveCommit, whoAdded } from "./room.js";
+import {
+  branchFor,
+  commitSetup,
+  dirFor,
+  lastChange,
+  listSetups,
+  listSetupCatalog,
+  readSetupAt,
+  resolveCommit,
+  whoAdded,
+} from "./room.js";
 import { applyAdoption, changedSince, planAdoption, readAdoptions, rollBack } from "./adopt.js";
 import { describeRule } from "./permissions.js";
 import { frontmatter, toolList } from "./prose.js";
@@ -29,6 +39,7 @@ const USAGE = [
   "usage: rooms setup export --role <role> --name <name> [--summary <text>] [--cost \"100 what it pays for\"]",
   "                          [--tool claude-code,codex,cursor] [--user] [--only <a,b>] [--skip <a,b>] [--team <owner/repo>] [--dry-run] [--yes]",
   "       rooms setup show [<role/name>] [--ref <commit or branch>] [--team <owner/repo>]",
+  "       rooms setup catalog [--ref <commit or branch>] [--team <owner/repo>]  metadata only (no file bodies)",
   "       rooms setup adopt <role/name> [--user] [--skip <a,b>] [--ref <commit or branch>] [--approve <digest>]",
   "       rooms setup rollback [<id>] [--force] [--yes]",
   "       rooms setup status",
@@ -206,6 +217,60 @@ async function exportSetup(argv, h) {
   out(`  look at it  git -C ${shWord(room.path)} show --stat ${branch}`);
   out(`  share it    git -C ${shWord(room.path)} push -u origin ${branch}`);
   out(`              then open a pull request from ${branch}${room.remote?.startsWith("github.com/") ? `: gh pr create --repo ${room.remote.slice(11)} --head ${branch} --fill` : ""}`);
+}
+
+// ---- catalog (metadata only) ----------------------------------------------------------------------
+
+function renderCatalogText(catalog, { teamId = "", stale = "" } = {}) {
+  const lines = [
+    `Setup catalog · ${teamId || "team"} at ${String(catalog.commit).slice(0, 7)}${stale}`,
+    ``,
+    `_Metadata from setup.json only — never file bodies, hooks, or install targets._`,
+    ``,
+    `**${catalog.count}** setup(s)`,
+    ``,
+  ];
+  if (!catalog.setups.length) {
+    lines.push("No setups yet. Share yours: rooms setup export --role <role> --name <name>");
+    return `${lines.join("\n")}\n`;
+  }
+  for (const s of catalog.setups) {
+    const tools = Object.keys(s.tools || {}).join(", ") || "—";
+    const cost = s.cost?.usdPerMonth != null ? ` · $${s.cost.usdPerMonth}/mo` : "";
+    lines.push(
+      `- ${s.role}/${s.name} · @${s.owner || "?"}${cost}` +
+        (s.summary ? `\n  ${s.summary}` : "") +
+        `\n  tools: ${tools}`,
+    );
+  }
+  lines.push(``);
+  return `${lines.join("\n")}\n`;
+}
+
+async function catalog(argv) {
+  const { id, room } = await teamRoom(argv);
+  const pulled = await pullTeamRoom(room.path);
+  const commit = await resolveCommit(room.path, argv.ref ? String(argv.ref) : "HEAD");
+  if (!commit) throw new Error(`${argv.ref ? `--ref ${argv.ref}` : "The team room"} is not a commit this clone has.`);
+  const stale = pulled.ok ? "" : `, as this machine last fetched it (${pulled.why})`;
+  const data = await listSetupCatalog(room.path, commit);
+  if (argv.json) {
+    out(
+      JSON.stringify(
+        {
+          id,
+          name: room.name,
+          pullOk: pulled.ok,
+          ...(pulled.ok ? {} : { pullWhy: pulled.why || "git pull failed" }),
+          ...data,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  out(renderCatalogText(data, { teamId: id, stale }).trimEnd());
 }
 
 // ---- show -----------------------------------------------------------------------------------------
@@ -456,6 +521,7 @@ export async function setupCommand(rest, argv, h) {
   const sub = rest[0] || "";
   if (sub === "export") return exportSetup(argv, h);
   if (sub === "show") return show(rest[1], argv);
+  if (sub === "catalog") return catalog(argv);
   if (sub === "adopt") return adopt(rest[1], argv, h);
   if (sub === "rollback") return rollback(rest[1], argv, h);
   if (sub === "status") return status();

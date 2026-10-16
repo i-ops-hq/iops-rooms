@@ -255,7 +255,7 @@ async function handle(msg) {
     return ok(id, {
       protocolVersion: params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "iops-rooms", version: "0.11.0" },
+      serverInfo: { name: "iops-rooms", version: "0.12.0" },
     });
   }
   if (method === "notifications/initialized" || method === "initialized") {

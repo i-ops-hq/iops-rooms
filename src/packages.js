@@ -10,12 +10,13 @@ import { appendActivity, readActivity } from "./activity.js";
 import { findRoomDir } from "./store.js";
 import { repositoryTop } from "./git-info.js";
 
-function cleanName(value, max = 80) {
+/** Package name for activity/rollups/observe surfaces — never newlines or shell metacharacters. */
+export function cleanName(value, max = 80) {
   const s = String(value || "").trim().replace(/[^A-Za-z0-9@/._+-]/g, "").slice(0, max);
   return s || null;
 }
 
-function cleanVersion(value) {
+export function cleanVersion(value) {
   const s = String(value || "").trim().replace(/[^A-Za-z0-9._+-]/g, "").slice(0, 40);
   return s || null;
 }

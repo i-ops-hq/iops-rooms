@@ -76,6 +76,7 @@ The board and the room:
   rooms team live [--every 5m] [--no-share] the team board, kept current while it is open
   rooms team board --markdown [--out BOARD.md]  the board as Markdown, for GitHub to show
   rooms team coverage [--days 7]           who synced, who looks stale, hooks-seen floor
+  rooms team packages [--multi]            package names/versions across members (observe)
   rooms team workflow [--hours 1]          add the Action that rebuilds BOARD.md in the team room
   rooms org init [--name <name>]           make this repository an org room (private only)
   rooms org join <owner/repo | folder>     register an org room on this machine
@@ -109,6 +110,7 @@ The board and the room:
 Setups (Claude Code, Codex and Cursor), shared through the team room:
   rooms setup export --role <role> --name <name>   commit this project's setup to a branch there; you push
   rooms setup show [<role/name>]           what a setup holds, runs and needs, and who added it
+  rooms setup catalog                      metadata only (names/roles/owners — no file bodies)
   rooms setup adopt <role/name> [--user]   a plan first; applied only after you approve it
   rooms setup rollback [--force]           every file back as it was before adopting
   rooms setup status                       what you adopted here, and whether the team room has newer
@@ -145,6 +147,7 @@ const VALUE_FLAGS = new Set([
 const BOOL_FLAGS = new Set([
   "app", "tab", "open", "force", "mcp", "share", "device-flow", "new-window", "allow-outside", "help", "version",
   "json", "yes", "user", "confirm-private", "public", "no-branch", "dry-run", "no-share", "markdown", "issue",
+  "multi",
 ]);
 
 /**
@@ -217,7 +220,7 @@ async function team(rest, argv) {
   const usage =
     "usage: rooms team init [--name <name>] | rooms team join <owner/repo | folder> | " +
     "rooms team sync [--no-branch] [--dry-run] | rooms team board [--team <owner/repo>] | " +
-    "rooms team coverage [--days 7]";
+    "rooms team coverage [--days 7] | rooms team packages [--multi]";
   const flags = { confirmPrivate: Boolean(argv["confirm-private"]), allowPublic: Boolean(argv.public) };
 
   if (sub === "init") {
@@ -501,6 +504,34 @@ async function team(rest, argv) {
       return;
     }
     process.stdout.write(renderCoverageText(result.coverage, { teamId: result.id }));
+    return;
+  }
+
+  if (sub === "packages") {
+    const { packageSurfaceForProject, renderPackageSurfaceText } = await import("./team-packages.js");
+    const result = await packageSurfaceForProject(process.cwd(), {
+      team: argv.team ? String(argv.team) : null,
+      multiOnly: Boolean(argv.multi),
+    });
+    if (!result.ok) throw new Error(result.why);
+    if (!result.pullOk) process.stderr.write(`(team room not updated: ${result.pullWhy})\n`);
+    if (argv.json) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            id: result.id,
+            name: result.name,
+            pullOk: result.pullOk,
+            ...(result.pullOk ? {} : { pullWhy: result.pullWhy }),
+            ...result.surface,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      return;
+    }
+    process.stdout.write(renderPackageSurfaceText(result.surface, { teamId: result.id, multiOnly: Boolean(argv.multi) }));
     return;
   }
 

@@ -243,6 +243,8 @@ rooms team board                  # everyone's status, in its own window
 rooms team live                   # the same board, kept current while it is open
 rooms team workflow               # once, in the team room: BOARD.md, for people who only read GitHub
 rooms team coverage               # who synced, who looks stale, hooks-seen floor
+rooms team packages               # package names/versions across members (observe)
+rooms team packages --multi       # only packages on more than one member
 ```
 
 A status holds the project; if you share it, the branch and its upstream; how far it is ahead or
@@ -336,6 +338,7 @@ sandbox settings, and MCP servers. The team room holds them, one folder per setu
 ```bash
 rooms setup export --role backend --name go-claude   # in your project; shows it all, then commits to a branch
 rooms setup show                                     # every setup in the team room
+rooms setup catalog                                  # metadata only (names/roles/owners — no file bodies)
 rooms setup show backend/go-claude                   # what it holds, runs and needs, and who added each part
 rooms setup adopt backend/go-claude                  # a plan first; nothing changes until you approve it
 rooms setup rollback                                 # every file back as it was
@@ -604,7 +607,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.11.0 mcp install
+npx -y iops-rooms@0.12.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -617,7 +620,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.11.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.12.0", "mcp"] } } }
 ```
 
 ## Commands
