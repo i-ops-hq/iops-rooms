@@ -120,6 +120,7 @@ test("in a project linked to a team room: the team's board and its setups", asyn
     const r = await alice.rooms(alice.web);
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /\n {2}rooms team board +your team's status, from \S+\n/);
+    assert.match(r.out, /\n {2}rooms inbox +share requests and \[rooms\] Issues for you\n/);
     assert.match(r.out, /\n {2}rooms setup show +the AI setups your team shares\n/);
     assert.doesNotMatch(r.out, /rooms team join/, "already joined");
   });
@@ -147,7 +148,16 @@ test("rooms help still lists every command", async () => {
   await scratch(async (dir) => {
     const r = await run(dir, ["help"]);
     assert.equal(r.code, 0, r.err);
-    for (const line of ["rooms week", "rooms team init", "rooms setup export", "rooms hooks install", "rooms mcp install"]) {
+    for (const line of [
+      "rooms week",
+      "rooms team init",
+      "rooms org init",
+      "rooms share request",
+      "rooms inbox",
+      "rooms setup export",
+      "rooms hooks install",
+      "rooms mcp install",
+    ]) {
       assert.ok(r.out.includes(line), `${line} is in rooms help`);
     }
   });

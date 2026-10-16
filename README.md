@@ -268,6 +268,35 @@ refuses a public one unless you pass `--public`; where it cannot ask, you confir
 GitHub Pages serves a site to the whole internet on every plan except Enterprise Cloud. Anyone who
 can write to the team room can write any file in it, so a status is as trustworthy as that access.
 
+### An org room, for leads
+
+When several team rooms exist, a lead can keep a separate private **org room** that holds only a
+rollup of those teams: member counts, session floors, package names shared across machines, and who
+has not synced in a week. It never embeds file paths, prompts, or setup bodies.
+
+```bash
+rooms org init --name acme-org    # once, in a clone of a new private repository; then git push
+rooms org join acme/org-room      # on the lead's machine
+rooms org link acme/team-room     # add a team already joined with rooms team join
+rooms org refresh                 # shows the rollup and asks before pushing
+rooms org show                    # print ORG.md
+```
+
+### Share requests and inbox
+
+To ask for or grant a setup without a new repository per share, Rooms writes small `share_meta`
+records under `shares/` in the team room (who, what kind, ref, optional pointer). Optional
+`--encrypt <file>` uses `age` and the recipient's GitHub SSH keys when both are available.
+`--issue` opens a GitHub Issue on the hub assigned to the recipient. `rooms inbox` lists meta for
+you and open Issues titled `[rooms]`.
+
+```bash
+rooms share request --to bob --ref setup/backend/go-claude --issue
+rooms share grant --to alice --ref setup/backend/go-claude
+rooms share show <id>
+rooms inbox
+```
+
 ### Setups: share a Claude Code, Codex or Cursor setup, and adopt a teammate's
 
 A setup is how someone has Claude Code, Codex or Cursor set up for a kind of work: their `CLAUDE.md`,
@@ -545,7 +574,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.8.0 mcp install
+npx -y iops-rooms@0.9.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -558,7 +587,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.8.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.9.0", "mcp"] } } }
 ```
 
 ## Commands

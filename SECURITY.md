@@ -75,14 +75,25 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   into `~/.iops-rooms/teams/<owner>/<repo>` with your own git, and record the team room and which
   project belongs to it in `~/.iops-rooms/teams.json`. Joining from a folder clones nothing
 - With `rooms team sync`: pull the team room (fast-forward only), write your status to
-  `status/<login>/<project>.json`, commit that one path, and push it with your own git. The first
-  push to a team room shows the whole file and asks. A status holds only the project, optionally the
-  branch and its upstream, ahead and behind, the pull request's state, what is not committed as
-  counts, and agent sessions and files edited as counts; never a file name, a line of code, a
-  commit message or a prompt, and a test fails if anything else reaches it. An unchanged status is
-  not pushed. Every sync asks GitHub, through your own `gh repo view`, whether the team room is
-  private, and refuses a public one unless `--public` is given; where it cannot ask, it needs
-  `--confirm-private`
+  `status/<login>/<project>.json` and thin rollups under `rollups/<login>/`, commit those paths, and
+  push them with your own git. The first push to a team room shows the files and asks. A status
+  holds only the project, optionally the branch and its upstream, ahead and behind, the pull
+  request's state, what is not committed as counts, and agent sessions and files edited as counts;
+  never a file name, a line of code, a commit message or a prompt, and a test fails if anything else
+  reaches it. An unchanged status is not pushed. Every sync asks GitHub, through your own
+  `gh repo view`, whether the team room is private, and refuses a public one unless `--public` is
+  given; where it cannot ask, it needs `--confirm-private`
+- With `rooms org init|join|link|refresh`: an org room is a second private repository that holds
+  only a floors rollup of linked team rooms (`rollup/org.json`, `ORG.md`) — team and member counts,
+  session floors, package names, stale syncs. Never paths, prompts, or setup bodies. Refresh pulls
+  each linked team clone, writes the rollup, and pushes with your own git after asking. The same
+  private-repo checks as the team room apply
+- With `rooms share request|grant` and `rooms inbox`: write allowlisted `share_meta` JSON under
+  `shares/` (who, type, ref, optional pointer and note) and list meta plus open Issues titled
+  `[rooms]`. Optional `--encrypt` runs the local `age` CLI against the recipient's GitHub SSH keys
+  when both exist; ciphertext lands under `shares/blobs/`. Meta never carries secret values.
+  `--issue` creates an Issue through your own `gh`. Absolute paths and home paths in `ref`/`pointer`
+  are refused
 - With `rooms team board`: pull the team room, read each status field by field (anything else is
   left out and counted), and write `~/.iops-rooms/teams/<team>.board.html`, with every value
   escaped. Anyone with write access to the team room can write any file in it, so a status is as
@@ -212,7 +223,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.8.0 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.9.0 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

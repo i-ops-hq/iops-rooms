@@ -35,6 +35,7 @@ test("init makes the team room in one local commit, and pushes nothing", async (
       "README.md",
       "rollups/.gitkeep",
       "room.json",
+      "shares/.gitkeep",
       "status/.gitkeep",
     ]);
     assert.equal(await git(join(dir, "team.git"), "rev-list", "--all", "--count"), "0", "the remote has nothing until alice pushes");

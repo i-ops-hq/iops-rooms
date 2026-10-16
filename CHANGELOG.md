@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0
+
+### Org rollup and share inbox
+
+A lead can keep a second private **org room** that rolls up linked team rooms into floors only:
+`rooms org init`, `join`, `link <team>`, `refresh`, and `show`. The rollup is counts and package
+names (`rollup/org.json` + `ORG.md`) — never paths, prompts, or setup bodies.
+
+On the team hub, `rooms share request|grant` writes allowlisted `share_meta` under `shares/`, and
+`rooms inbox` lists meta for you plus open GitHub Issues titled `[rooms]`. Optional `--encrypt`
+uses the `age` CLI and the recipient's GitHub SSH keys when both are present; without `age`, meta
+still points at a setup path or peer pull. `--issue` opens a notification Issue via your own `gh`.
+
 ## 0.8.0
 
 ### Codex and Cursor hooks, package events, and thin team rollups
