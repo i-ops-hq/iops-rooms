@@ -118,6 +118,72 @@ export async function listSetups(clone, commit) {
   return found;
 }
 
+/**
+ * Catalog metadata from setup.json only — never file bodies.
+ * Allowlisted: role, name, owner, summary, cost (declared), exportedWith, tools present + file counts.
+ */
+export function catalogMetaFromManifest(role, name, manifest) {
+  if (!manifest || typeof manifest !== "object") return null;
+  const tools = {};
+  for (const [tool, part] of Object.entries(manifest.tools || {})) {
+    if (!part || typeof part !== "object") continue;
+    const files = Array.isArray(part.files) ? part.files.length : 0;
+    tools[String(tool).slice(0, 40)] = {
+      checkedAgainst: typeof part.checkedAgainst === "string" ? part.checkedAgainst.slice(0, 80) : null,
+      files,
+    };
+  }
+  return {
+    v: 1,
+    kind: "setup_catalog_entry",
+    role: String(role).slice(0, 40),
+    name: String(name).slice(0, 40),
+    owner: typeof manifest.owner === "string" ? manifest.owner.slice(0, 39) : null,
+    summary: typeof manifest.summary === "string" ? manifest.summary.slice(0, 300) : null,
+    cost:
+      manifest.cost && typeof manifest.cost === "object"
+        ? {
+            usdPerMonth: Number.isFinite(manifest.cost.usdPerMonth) ? manifest.cost.usdPerMonth : null,
+            what: typeof manifest.cost.what === "string" ? manifest.cost.what.slice(0, 120) : null,
+          }
+        : null,
+    exportedWith: typeof manifest.exportedWith === "string" ? manifest.exportedWith.slice(0, 60) : null,
+    tools,
+  };
+}
+
+/** Read only setups/.../setup.json for catalog — never install targets or file contents. */
+export async function readSetupMetaAt(clone, commit, role, name) {
+  const dir = dirFor(role, name);
+  const text = await blob(clone, commit, `${dir}/setup.json`);
+  if (text === null) return { found: false };
+  try {
+    const manifest = JSON.parse(text);
+    const meta = catalogMetaFromManifest(role, name, manifest);
+    return meta ? { found: true, meta } : { found: true, meta: null };
+  } catch {
+    return { found: true, meta: null };
+  }
+}
+
+/** Full catalog for a team room commit. */
+export async function listSetupCatalog(clone, commit) {
+  const setups = await listSetups(clone, commit);
+  const entries = [];
+  for (const { role, name } of setups) {
+    const { meta } = await readSetupMetaAt(clone, commit, role, name);
+    if (meta) entries.push(meta);
+  }
+  return {
+    v: 1,
+    kind: "setup_catalog",
+    at: new Date().toISOString(),
+    commit: String(commit).slice(0, 40),
+    count: entries.length,
+    setups: entries,
+  };
+}
+
 async function blob(clone, commit, path) {
   const r = await git(clone, ["cat-file", "blob", `${commit}:${path}`]);
   return r.ok ? r.out : null;

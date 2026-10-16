@@ -126,6 +126,8 @@ test("in a project linked to a team room: the team's board and its setups", asyn
     assert.match(r.out, /\n {2}rooms dash +local activity plus team\/org floors\n/);
     assert.match(r.out, /\n {2}rooms inbox +share requests and \[rooms\] Issues for you\n/);
     assert.match(r.out, /\n {2}rooms companion +OS notifications for inbox while it runs\n/);
+    assert.match(r.out, /\n {2}rooms team packages +package names across the team \(observe\)\n/);
+    assert.match(r.out, /\n {2}rooms setup catalog +setup names and owners \(no file bodies\)\n/);
     assert.match(r.out, /\n {2}rooms setup show +the AI setups your team shares\n/);
     assert.doesNotMatch(r.out, /rooms team join/, "already joined");
   });
@@ -158,12 +160,14 @@ test("rooms help still lists every command", async () => {
       "rooms episode",
       "rooms team init",
       "rooms team coverage",
+      "rooms team packages",
       "rooms org init",
       "rooms share request",
       "rooms inbox",
       "rooms dash",
       "rooms companion",
       "rooms setup export",
+      "rooms setup catalog",
       "rooms hooks install",
       "rooms mcp install",
     ]) {

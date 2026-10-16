@@ -54,6 +54,8 @@ export async function startScreen(cwd) {
       out.push(row("rooms dash", "local activity plus team/org floors"));
       out.push(row("rooms inbox", "share requests and [rooms] Issues for you"));
       out.push(row("rooms companion", "OS notifications for inbox while it runs"));
+      out.push(row("rooms team packages", "package names across the team (observe)"));
+      out.push(row("rooms setup catalog", "setup names and owners (no file bodies)"));
       out.push(row("rooms setup show", "the AI setups your team shares"));
     } else {
       out.push(row("rooms team join", "share your status with your team, through a private GitHub repository"));

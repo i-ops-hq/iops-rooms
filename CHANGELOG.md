@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0
+
+### Cross-member packages and setup catalog
+
+`rooms team packages [--multi]` joins package rollups already on the team hub into one observe
+surface: which package names/versions appear on how many members. Counts and names only — never
+lockfile bodies or install scripts. `--multi` keeps packages seen on more than one member; `--json`
+for scripts.
+
+`rooms setup catalog` lists every setup in the team room from `setup.json` metadata alone (role,
+name, owner, summary, declared cost, tool file counts). It never reads or prints file bodies, hooks,
+or install targets. `rooms setup show` still opens a full setup when you need it.
+
 ## 0.11.0
 
 ### Episode stitching, coverage floor, and product boundary
