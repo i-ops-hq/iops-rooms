@@ -14,6 +14,10 @@
 *One of the layers of [I-Ops](https://i-ops.dev), open sourced — the **share and observe** layer.
 Not runtime control, not assurance; those are separate products.*
 
+**Status: early / in testing.** The spine (local events → team/org projections → dash) is
+shipped and dogfooded, but the product is still settling. **Collaborators and suggestions are
+welcome** — issues, PRs, and security notes especially. Pin a version; do not use `@latest`.
+
 </div>
 
 ---
@@ -245,6 +249,7 @@ rooms team workflow               # once, in the team room: BOARD.md, for people
 rooms team coverage               # who synced, who looks stale, hooks-seen floor
 rooms team packages               # package names/versions across members (observe)
 rooms team packages --multi       # only packages on more than one member
+rooms dash                        # localhost board: local + team floors (incl. packages / catalog)
 ```
 
 A status holds the project; if you share it, the branch and its upstream; how far it is ahead or
@@ -607,7 +612,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.12.1 mcp install
+npx -y iops-rooms@0.13.0 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -620,7 +625,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.12.1", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.13.0", "mcp"] } } }
 ```
 
 ## Commands
@@ -667,6 +672,22 @@ the project and secret-looking filenames; and the whole of `src/` is unminified 
 
 Verify it yourself: open the board as `file://` and watch the network tab stay empty.
 
+## Status and collaboration
+
+Rooms is **open source and open for collaborators**, while still **in testing**. Expect sharp edges,
+honest floors (unrecorded work stays blank), and occasional patch releases as dogfood finds bugs
+(for example `rooms episode` was unreachable in 0.12.0 and fixed in 0.12.1).
+
+Ways to help:
+
+- Run it on a real project (`npx -y iops-rooms@0.13.0` or `npm i -g iops-rooms@0.13.0`) and open an
+  issue when something looks wrong, confusing, or missing.
+- Send a PR for docs, tests, or a small scoped fix.
+- Review [SECURITY.md](SECURITY.md) and say if a boundary should be tighter.
+- Suggest observe surfaces (never runtime/control features for this package).
+
+Email **hello@i-ops.dev** if you prefer not to use GitHub Issues.
+
 ## Contributing
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup — `npm install`, `npm test`, and two smoke
@@ -702,8 +723,8 @@ that answers *who is doing what, and which agent did it* — and it was **built 
 repository**, not carved out of the product. Nothing here is a stripped-down copy of something
 closed; it is a small tool that stands on its own, and you can read all 4,000 lines of it.
 
-**Feedback is genuinely wanted.** If you try it and something is confusing, wrong, or missing — or
-if you have read the code and disagree with a decision in it — please say so. Open an
+**Still in testing; collaboration welcome.** If you try it and something is confusing, wrong, or
+missing — or if you have read the code and disagree with a decision in it — please say so. Open an
 [issue](https://github.com/i-ops-hq/iops-rooms/issues), send a pull request, or email
 **hello@i-ops.dev**. Reviews of the security posture in [SECURITY.md](SECURITY.md) are especially
 welcome.

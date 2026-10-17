@@ -1,5 +1,8 @@
 # Contributing
 
+Rooms is **in testing and open for collaborators**. Small PRs, dogfood reports from real repos, and
+security notes are all useful. Pin a version when you install; do not use `@latest`.
+
 ## The two rules that are not negotiable
 
 **No number may read as more than it is.** Every share this tool prints is a *floor*, because an
