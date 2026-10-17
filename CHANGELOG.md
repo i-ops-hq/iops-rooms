@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.0
+
+### Observe floors on the dash
+
+`rooms dash` now shows team **packages**, **coverage**, and **setup catalog** metadata beside the
+existing team pulse — same floors as `rooms team packages`, `coverage`, and `setup catalog`, on
+localhost only. Catalog never includes file bodies.
+
+README marks the project as early / in testing and open for collaborators and suggestions.
+
 ## 0.12.1
 
 ### Fix: `rooms episode` was unreachable

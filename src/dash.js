@@ -100,9 +100,38 @@ function renderTeam(d) {
           ` · uncommitted ${s.uncommitted?.files ?? "?"} · pr ${esc(s.pr || "none")}</li>`,
       )
       .join("") || `<li class="empty">No statuses yet</li>`;
+  const cov = d.coverage?.totals || {};
+  const coverageLine =
+    d.coverage
+      ? `<p class="muted">Coverage: ${cov.fresh ?? 0} fresh · ${cov.stale ?? 0} stale · ` +
+        `${cov.hooksSeen ?? 0} hooks-seen (floor)</p>`
+      : "";
+  const pkgRows =
+    (d.packages?.packages || [])
+      .slice(0, 12)
+      .map(
+        (p) =>
+          `<li>${esc(p.name)}${p.version ? `@${esc(p.version)}` : ""} · ${p.members} member(s)` +
+          (p.memberLogins?.length ? `: ${p.memberLogins.map((m) => `@${esc(m)}`).join(", ")}` : "") +
+          `</li>`,
+      )
+      .join("") || `<li class="empty">No package rollups yet</li>`;
+  const catRows =
+    (d.catalog?.setups || [])
+      .slice(0, 12)
+      .map(
+        (s) =>
+          `<li>${esc(s.role)}/${esc(s.name)} · @${esc(s.owner || "?")}` +
+          (s.summary ? ` · ${esc(s.summary)}` : "") +
+          `</li>`,
+      )
+      .join("") || `<li class="empty">No setups in catalog yet</li>`;
   return (
     `<p><strong>${esc(d.name)}</strong> (${esc(d.id)}) · ${d.members} member(s) · ` +
-    `${d.sessions7d} sessions (7d) · ${d.shares} share(s)</p><ul>${rows}</ul>`
+    `${d.sessions7d} sessions (7d) · ${d.shares} share(s)</p>${coverageLine}` +
+    `<ul>${rows}</ul>` +
+    `<h2>Team packages</h2><ul>${pkgRows}</ul>` +
+    `<h2>Setup catalog</h2><ul>${catRows}</ul>`
   );
 }
 

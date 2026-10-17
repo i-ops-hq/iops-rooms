@@ -92,7 +92,7 @@ export async function buildLocalProjection(projectDir, { now = Date.now() } = {}
   };
 }
 
-/** Team pulse from the registered team clone (after pull). */
+/** Team pulse from the registered team clone (after pull), plus observe floors (packages / coverage / catalog). */
 export async function buildTeamProjection(projectDir, { pull = true } = {}) {
   const linked = await teamForProject(projectDir);
   if (!linked.team) return { v: 1, kind: "dash_team", linked: false };
@@ -108,6 +108,23 @@ export async function buildTeamProjection(projectDir, { pull = true } = {}) {
       filesEdited7d += a.filesEdited || 0;
     }
   }
+
+  // Observe surfaces already available as CLI (0.12): reuse after the single pull above.
+  const { readPackageRollups, buildPackageSurface } = await import("./team-packages.js");
+  const { buildCoverage, readAgentRollups } = await import("./coverage.js");
+  const { listSetupCatalog, resolveCommit } = await import("./setup/room.js");
+  const agentRollups = await readAgentRollups(linked.team.path);
+  const packageRollups = await readPackageRollups(linked.team.path);
+  const packages = buildPackageSurface({ packageRollups, limit: 40 });
+  const coverage = buildCoverage({ statuses, agentRollups });
+  let catalog = { count: 0, setups: [] };
+  try {
+    const commit = await resolveCommit(linked.team.path, "HEAD");
+    if (commit) catalog = await listSetupCatalog(linked.team.path, commit);
+  } catch {
+    catalog = { count: 0, setups: [] };
+  }
+
   return {
     v: 1,
     kind: "dash_team",
@@ -129,6 +146,31 @@ export async function buildTeamProjection(projectDir, { pull = true } = {}) {
       pr: s.pr?.state || null,
       agents7d: s.agents7d || {},
     })),
+    packages: {
+      totals: packages.totals,
+      truncated: Boolean(packages.truncated),
+      packages: packages.packages.slice(0, 20),
+    },
+    coverage: {
+      totals: coverage.totals,
+      staleDays: coverage.staleDays,
+      members: (coverage.members || []).slice(0, 20).map((m) => ({
+        member: m.member,
+        stale: m.stale,
+        hooksSeen: m.hooksSeen,
+        ageDays: m.ageDays,
+        projects: m.projects,
+      })),
+    },
+    catalog: {
+      count: catalog.count,
+      setups: (catalog.setups || []).slice(0, 20).map((s) => ({
+        role: s.role,
+        name: s.name,
+        owner: s.owner,
+        summary: s.summary,
+      })),
+    },
   };
 }
 
