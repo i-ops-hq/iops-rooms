@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.1
+
+### The hooks install says every git hook it writes
+
+`rooms hooks install --agent claude-code|codex|cursor` installs two git hooks, `post-commit` and
+`post-checkout`, but its preview named only `post-commit`. It now lists both by path, says what each
+posts to the room (a commit's subject and changed file names; the branch you switch to), and whether
+each is new or replaces Rooms' own. If a git hook of yours is already there, the preview says so,
+and that the install stops on it unless you pass `--force`, which keeps yours as a `.rooms-backup`.
+
 ## 0.13.0
 
 ### Observe floors on the dash

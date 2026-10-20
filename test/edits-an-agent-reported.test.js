@@ -405,3 +405,35 @@ test("without a terminal or --yes nothing is installed, and a broken settings fi
     assert.equal(await readFile(settings, "utf8"), "{ broken");
   });
 });
+
+test("the install preview names every git hook it writes, and what each posts to the room", async () => {
+  await scratch(async (dir) => {
+    await repoWithRoom(dir);
+    const preview = await run(dir, ["hooks", "install", "--agent", "cursor"]);
+    assert.equal(preview.code, 2, "not a terminal, so nothing is changed");
+    assert.match(preview.out, /\ngit {10}\.git\/hooks\/post-commit {2}\(new file\)\n {15}joins the edits to the commit that carries them, and posts the commit's subject and changed file names to this room\n/);
+    assert.match(preview.out, /\ngit {10}\.git\/hooks\/post-checkout {2}\(new file\)\n {15}posts the branch name to this room when you switch branches\n/);
+    assert.match(preview.out, /in the room's own log, commit subjects, changed file names and branch switches/);
+    assert.equal(await exists(join(dir, ".git", "hooks", "post-checkout")), false, "the preview writes nothing");
+
+    const installed = await run(dir, ["hooks", "install", "--agent", "cursor", "--yes"]);
+    assert.equal(installed.code, 0, installed.err);
+    for (const name of ["post-commit", "post-checkout"]) {
+      assert.ok(await exists(join(dir, ".git", "hooks", name)), `${name}, as the preview said`);
+    }
+    assert.match((await run(dir, ["hooks", "install", "--agent", "cursor"])).out, /post-checkout {2}\(replaces Rooms' own\)/);
+  });
+});
+
+test("a git hook of your own is named in the preview, before the install stops on it", async () => {
+  await scratch(async (dir) => {
+    await repoWithRoom(dir);
+    await writeFile(join(dir, ".git", "hooks", "post-checkout"), "#!/bin/sh\necho mine\n", { mode: 0o755 });
+    const preview = await run(dir, ["hooks", "install", "--agent", "codex"]);
+    assert.match(preview.out, /post-checkout {2}\(yours is there: the install stops, unless --force, which keeps yours as a \.rooms-backup beside it\)/);
+    const installed = await run(dir, ["hooks", "install", "--agent", "codex", "--yes"]);
+    assert.notEqual(installed.code, 0, "and the install does stop");
+    assert.match(installed.err, /Refusing to overwrite existing hook/);
+    assert.equal(await readFile(join(dir, ".git", "hooks", "post-checkout"), "utf8"), "#!/bin/sh\necho mine\n");
+  });
+});

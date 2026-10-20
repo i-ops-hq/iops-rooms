@@ -500,8 +500,10 @@ inherits them. Any agent, a custom one included, can set `AI_AGENT=<name>_<versi
 
 **Which files an agent edited.** The commonest way to use a CLI agent leaves neither: it edits, and
 you commit by hand from another terminal. `rooms hooks install --agent claude-code` (or `codex`, or
-`cursor`) adds that tool's hooks, which report each file it edits, and the git hook notes which of
-those files each commit carries. Custom agents can call `rooms record session-start`, `session-end`,
+`cursor`) adds that tool's hooks, which report each file it edits, and two git hooks: `post-commit`
+notes which of those files each commit carries and posts the commit's subject and changed file names
+to the room, and `post-checkout` posts the branch you switch to. The preview names every file it
+writes, and says so first if a git hook of yours is already there. Custom agents can call `rooms record session-start`, `session-end`,
 and `edit --path`. `rooms record packages` records lockfile package names and versions only.
 
 ```
@@ -612,7 +614,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.13.0 mcp install
+npx -y iops-rooms@0.13.1 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -625,7 +627,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.13.0", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.13.1", "mcp"] } } }
 ```
 
 ## Commands
@@ -680,7 +682,7 @@ honest floors (unrecorded work stays blank), and occasional patch releases as do
 
 Ways to help:
 
-- Run it on a real project (`npx -y iops-rooms@0.13.0` or `npm i -g iops-rooms@0.13.0`) and open an
+- Run it on a real project (`npx -y iops-rooms@0.13.1` or `npm i -g iops-rooms@0.13.1`) and open an
   issue when something looks wrong, confusing, or missing.
 - Send a PR for docs, tests, or a small scoped fix.
 - Review [SECURITY.md](SECURITY.md) and say if a boundary should be tighter.
