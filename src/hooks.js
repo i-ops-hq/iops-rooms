@@ -183,6 +183,29 @@ export async function installHooks({
   return { root, hooksDir, written, nodeBin: opts.nodeBin, cliPath: opts.cliPath };
 }
 
+/** What each git hook does, as the install preview says it. */
+export const GIT_HOOK_PURPOSE = {
+  "post-commit": "joins the edits to the commit that carries them, and posts the commit's subject and changed file names to this room",
+  "post-checkout": "posts the branch name to this room when you switch branches",
+};
+
+/**
+ * The git hooks `installHooks` would write, without writing them: each one's path, and whether it is
+ * new, Rooms' own already, or somebody else's (which the install refuses without --force).
+ */
+export async function planGitHooks({ cwd = process.cwd() } = {}) {
+  const root = await gitRoot(cwd);
+  if (!root) return { root: null, hooks: [] };
+  const hooksDir = await hooksDirFor(cwd, root);
+  const hooks = [];
+  for (const name of ["post-commit", "post-checkout"]) {
+    const path = join(hooksDir, name);
+    const state = !(await exists(path)) ? "new" : isOurs(await readFile(path, "utf8")) ? "ours" : "theirs";
+    hooks.push({ name, path, state, purpose: GIT_HOOK_PURPOSE[name] });
+  }
+  return { root, hooksDir, hooks };
+}
+
 /** Remove Rooms-managed hooks (leaves foreign hooks alone). */
 export async function uninstallHooks({ cwd = process.cwd() } = {}) {
   const root = await gitRoot(cwd);

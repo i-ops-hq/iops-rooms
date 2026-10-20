@@ -37,8 +37,12 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   add Rooms' hooks to that agent's settings (Claude: `.claude/settings.local.json` or
   `~/.claude/settings.json` with `--user`; Codex: `.codex/hooks.json` or `~/.codex/hooks.json`;
   Cursor: `.cursor/hooks.json` or `~/.cursor/hooks.json`), keeping every other hook and a copy of the
-  file from before Rooms first changed it, and list project files in `.git/info/exclude`.
-  Uninstall takes out only what Rooms added for that agent
+  file from before Rooms first changed it, and list project files in `.git/info/exclude`; and add
+  the git hooks `post-commit` and `post-checkout`, each named in the preview, which post to the room's
+  local log the commit's subject and changed file names (secret-looking paths redacted) and the
+  branch switched to. A git hook of the person's own is named before the install stops on it, and
+  replaced only with `--force`, which keeps it beside as `.rooms-backup`. Uninstall takes out only
+  what Rooms added for that agent
 - Read, from the JSON those hooks pass on stdin, only allowlisted fields: the event name, the session
   id (kept only as a 12-character hash), the model a session starts with when present, and the edited
   file's path. Claude's payload may carry the whole file for `Write`, tool output, the last message
@@ -242,7 +246,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.13.0 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.13.1 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

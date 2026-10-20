@@ -1947,6 +1947,21 @@ async function main() {
       );
     }
     const plan = await planFns[agent]({ cwd: process.cwd(), user, cliPath: CLI_PATH });
+    // Every git hook the install writes, by name, and what each one posts to the room.
+    const { planGitHooks } = await import("./hooks.js");
+    const gitPlan = await planGitHooks({ cwd: process.cwd() });
+    const gitLines = gitPlan.hooks
+      .map((h) => {
+        const where = gitPlan.root ? relative(gitPlan.root, h.path).split(sep).join("/") : h.path;
+        const state =
+          h.state === "new"
+            ? "(new file)"
+            : h.state === "ours"
+              ? "(replaces Rooms' own)"
+              : "(yours is there: the install stops, unless --force, which keeps yours as a .rooms-backup beside it)";
+        return `git          ${where}  ${state}\n               ${h.purpose}\n`;
+      })
+      .join("");
     process.stdout.write(
       `${labels[agent]}  ${plan.path}${plan.exists ? "" : "  (new file)"}\n` +
         eventLines[agent] +
@@ -1962,9 +1977,10 @@ async function main() {
             ? "  the copy beside it, from before Rooms first changed the file, is kept\n"
             : "") +
         (user ? "" : "  the file is added to .git/info/exclude, so it cannot be committed by accident\n") +
-        "git          the post-commit hook, which joins the edits to the commit that carries them\n" +
+        gitLines +
         "Kept, in .room/agent-activity.jsonl: which session, which file in this project it edited, and\n" +
-        "when. Never code, prompts, replies or the transcript. Nothing is sent anywhere.\n",
+        "when; and in the room's own log, commit subjects, changed file names and branch switches.\n" +
+        "Never code, prompts, replies or the transcript. Nothing is sent anywhere.\n",
     );
     if (!argv.yes) {
       if (!process.stdin.isTTY || !process.stdout.isTTY) {
