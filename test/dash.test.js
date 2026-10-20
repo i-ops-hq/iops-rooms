@@ -128,6 +128,10 @@ test("team projection marks linked after join", async () => {
       const team = await buildTeamProjection(alice.web);
       assert.equal(team.linked, true);
       assert.ok(team.statuses >= 1);
+      assert.ok(team.packages?.totals);
+      assert.ok(team.coverage?.totals);
+      assert.equal(typeof team.catalog?.count, "number");
+      assert.doesNotMatch(JSON.stringify(team.catalog), /files\/|CLAUDE\.md|# /);
     } finally {
       if (prev === undefined) delete process.env.ROOMS_HOME;
       else process.env.ROOMS_HOME = prev;

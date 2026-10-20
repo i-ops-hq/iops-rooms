@@ -10,7 +10,7 @@ import { validAgentRollup } from "./team.js";
 
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
-async function readAgentRollups(clonePath) {
+export async function readAgentRollups(clonePath) {
   const out = [];
   let members = [];
   try {
