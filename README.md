@@ -322,7 +322,9 @@ rooms episode --days 14 --json
 
 `rooms dash` opens a localhost page (default `127.0.0.1:7841`) with this machine's sessions and
 packages, the week floor, and — when linked — team pulse, org rollup, and inbox. Read-only JSON
-under `/api/*.json`; same Host check as `rooms live`.
+under `/api/*.json`; same Host check as `rooms live`. If the team or org room could not be fetched,
+the panel says so, with git's reason, and shows what this machine last fetched; the JSON carries
+`pullOk` and `pullWhy`, as `rooms team packages --json` does.
 
 `rooms companion` runs in the foreground and posts OS notifications for new shares/issues (and when
 the team room's HEAD moves). It does nothing while the process is stopped (laptop sleep included).
@@ -614,7 +616,7 @@ Each person's posts carry their own name, tool and device, so the board shows wh
 Agents post as they work, through MCP. One command wires it up:
 
 ```bash
-npx -y iops-rooms@0.13.1 mcp install
+npx -y iops-rooms@0.13.2 mcp install
 ```
 
 That writes `.cursor/mcp.json`, `.claude/`, and a Codex entry, keeping any MCP servers you already
@@ -627,7 +629,7 @@ Pin the version. Do not use `@latest` — an MCP server is a program you are let
 Manual wiring, if you prefer:
 
 ```json
-{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.13.1", "mcp"] } } }
+{ "mcpServers": { "iops-rooms": { "command": "npx", "args": ["-y", "iops-rooms@0.13.2", "mcp"] } } }
 ```
 
 ## Commands
@@ -682,7 +684,7 @@ honest floors (unrecorded work stays blank), and occasional patch releases as do
 
 Ways to help:
 
-- Run it on a real project (`npx -y iops-rooms@0.13.1` or `npm i -g iops-rooms@0.13.1`) and open an
+- Run it on a real project (`npx -y iops-rooms@0.13.2` or `npm i -g iops-rooms@0.13.2`) and open an
   issue when something looks wrong, confusing, or missing.
 - Send a PR for docs, tests, or a small scoped fix.
 - Review [SECURITY.md](SECURITY.md) and say if a boundary should be tighter.

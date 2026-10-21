@@ -89,6 +89,11 @@ function renderLocal(d) {
   );
 }
 
+/** A failed fetch, said where the stale numbers are, in the CLI's words. */
+function staleLine(d) {
+  return d?.pullOk === false ? `<p class="stale">Team room not updated: ${esc(d.pullWhy || "git pull failed")}. Showing what this machine last fetched.</p>` : "";
+}
+
 function renderTeam(d) {
   if (!d?.linked) return `<p class="muted">No team room linked. rooms team join &lt;owner/repo&gt;</p>`;
   const rows =
@@ -127,6 +132,7 @@ function renderTeam(d) {
       )
       .join("") || `<li class="empty">No setups in catalog yet</li>`;
   return (
+    staleLine(d) +
     `<p><strong>${esc(d.name)}</strong> (${esc(d.id)}) · ${d.members} member(s) · ` +
     `${d.sessions7d} sessions (7d) · ${d.shares} share(s)</p>${coverageLine}` +
     `<ul>${rows}</ul>` +
@@ -137,9 +143,10 @@ function renderTeam(d) {
 
 function renderOrg(d) {
   if (!d?.linked) return `<p class="muted">No org room. rooms org join &lt;owner/repo&gt;</p>`;
-  if (!d.rollup) return `<p>Org ${esc(d.id)} — no rollup yet. rooms org refresh</p>`;
+  if (!d.rollup) return `${staleLine(d)}<p>Org ${esc(d.id)} — no rollup yet. rooms org refresh</p>`;
   const t = d.rollup.totals || {};
   return (
+    staleLine(d) +
     `<p><strong>${esc(d.name)}</strong> · ${t.teams || 0} team(s) · ${t.members || 0} member-slots · ` +
     `${t.sessions7d || 0} sessions · ${t.packages || 0} package name(s) · ${t.stale || 0} stale</p>`
   );
@@ -153,17 +160,21 @@ function renderInbox(d) {
     ),
     ...(d.issues || []).map((i) => `<li>issue #${esc(i.number)} · ${esc(i.title)}</li>`),
   ].join("") || `<li class="empty">nothing waiting</li>`;
-  return `<p>@${esc(d.login)}${d.team ? ` · ${esc(d.team)}` : ""}</p><ul>${lines}</ul>`;
+  return `${staleLine(d)}<p>@${esc(d.login)}${d.team ? ` · ${esc(d.team)}` : ""}</p><ul>${lines}</ul>`;
 }
 
 async function htmlPage(projectDir) {
-  const [tpl, local, team, org, inbox] = await Promise.all([
+  // The team panel and the inbox read one clone: it is pulled once, by the team panel, and the inbox
+  // reads after it. Two pulls at once in one clone collide ("Cannot fast-forward to multiple branches").
+  const [tpl, local, team, org] = await Promise.all([
     readFile(TEMPLATE, "utf8"),
     buildLocalProjection(projectDir),
     buildTeamProjection(projectDir),
     buildOrgProjection(),
-    buildInboxProjection(projectDir),
   ]);
+  const inbox = await buildInboxProjection(projectDir, {
+    pulled: team.linked && team.pullOk !== undefined ? { ok: team.pullOk, why: team.pullWhy } : null,
+  });
   const checked = `updated ${new Date().toLocaleTimeString()}`;
   let html = tpl
     .replace("<!--LOCAL-->", renderLocal(local))

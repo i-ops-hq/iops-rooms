@@ -130,6 +130,15 @@ test("in a project linked to a team room: the team's board and its setups", asyn
     assert.match(r.out, /\n {2}rooms setup catalog +setup names and owners \(no file bodies\)\n/);
     assert.match(r.out, /\n {2}rooms setup show +the AI setups your team shares\n/);
     assert.doesNotMatch(r.out, /rooms team join/, "already joined");
+    // Every description starts in one column, however long the command beside it.
+    const rows = r.out.split("\n").filter((l) => /^ {2}rooms /.test(l));
+    assert.ok(rows.length >= 8, r.out);
+    const columns = rows.map((l) => {
+      const m = /^ {2}(.+?) {2,}(\S.*)$/.exec(l);
+      return m ? l.length - m[2].length : -1;
+    });
+    assert.ok(!columns.includes(-1), `every row has a command and a description:\n${rows.join("\n")}`);
+    assert.equal(new Set(columns).size, 1, `rows line up:\n${rows.join("\n")}`);
   });
 });
 

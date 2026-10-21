@@ -5,7 +5,8 @@
  */
 import { basename, relative } from "node:path";
 
-const row = (command, what) => `  ${command.padEnd(17)} ${what}\n`;
+/** One command and what it does; laid out at the end, so every row lines up with the longest. */
+const row = (command, what) => ({ command, what });
 /** A folder name as a shell reads it: quoted only when it has to be. */
 const shellWord = (name) => (/^[\w./-]+$/.test(name) ? name : `'${name.replace(/'/g, "'\\''")}'`);
 const UNREADABLE = new Set(["git-missing", "git-refused", "git-failed"]);
@@ -63,5 +64,6 @@ export async function startScreen(cwd) {
     }
   }
   out.push("\nEvery command: rooms help\n");
-  return out.join("");
+  const width = Math.max(0, ...out.filter((o) => typeof o === "object").map((o) => o.command.length)) + 1;
+  return out.map((o) => (typeof o === "object" ? `  ${o.command.padEnd(width)} ${o.what}\n` : o)).join("");
 }
