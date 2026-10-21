@@ -92,11 +92,21 @@ export async function buildLocalProjection(projectDir, { now = Date.now() } = {}
   };
 }
 
+/** A pull's result as the CLI's JSON carries it: `pullOk`, and `pullWhy` when it failed. Nothing when no pull was asked for. */
+function pullFields(pulled) {
+  if (!pulled || pulled.ok === undefined) return {};
+  if (pulled.ok) return { pullOk: true };
+  // git's first line, without the full stop it ends with: the page adds its own sentence after it.
+  const why = String(pulled.why || "git pull failed").split("\n")[0].trim().replace(/\.+$/, "");
+  return { pullOk: false, pullWhy: why || "git pull failed" };
+}
+
 /** Team pulse from the registered team clone (after pull), plus observe floors (packages / coverage / catalog). */
 export async function buildTeamProjection(projectDir, { pull = true } = {}) {
   const linked = await teamForProject(projectDir);
   if (!linked.team) return { v: 1, kind: "dash_team", linked: false };
-  if (pull) await pullTeamRoom(linked.team.path);
+  // Kept, not discarded: a failed fetch must read as stale, as the CLI says it (0.12, Bugbot).
+  const pulled = pull ? await pullTeamRoom(linked.team.path) : null;
   const { statuses, skipped } = await readStatuses(linked.team.path);
   const { shares } = await readShares(linked.team.path);
   const members = new Set(statuses.map((s) => s.member));
@@ -131,6 +141,7 @@ export async function buildTeamProjection(projectDir, { pull = true } = {}) {
     linked: true,
     id: linked.id,
     name: linked.team.name,
+    ...pullFields(pulled),
     members: members.size,
     statuses: statuses.length,
     skipped,
@@ -178,10 +189,7 @@ export async function buildTeamProjection(projectDir, { pull = true } = {}) {
 export async function buildOrgProjection({ org: orgFlag = null, pull = true } = {}) {
   const { id, org: entry } = await resolveOrg(orgFlag);
   if (!entry) return { v: 1, kind: "dash_org", linked: false };
-  if (pull) {
-    const { pullTeamRoom } = await import("./team.js");
-    await pullTeamRoom(entry.path);
-  }
+  const pulled = pull ? await pullTeamRoom(entry.path) : null;
   let rollup = null;
   try {
     rollup = validOrgRollup(JSON.parse(await readFile(join(entry.path, "rollup", "org.json"), "utf8")));
@@ -194,12 +202,17 @@ export async function buildOrgProjection({ org: orgFlag = null, pull = true } = 
     linked: true,
     id,
     name: entry.name,
+    ...pullFields(pulled),
     rollup,
   };
 }
 
 /** Inbox slice for the dash (same allowlist as CLI). */
-export async function buildInboxProjection(projectDir) {
+/**
+ * `pulled` is the team panel's pull of this same clone, when the page has just made one: the inbox
+ * then reads the clone without pulling it again, and carries that result.
+ */
+export async function buildInboxProjection(projectDir, { pulled = null } = {}) {
   const login = (await authStatus()).github?.login || null;
   const linked = await teamForProject(projectDir);
   if (!linked.team || !login) {
@@ -209,6 +222,7 @@ export async function buildInboxProjection(projectDir) {
     clonePath: linked.team.path,
     remotePath: githubRepoFromRemote(linked.team.remote),
     login,
+    pull: !pulled,
   });
   return {
     v: 1,
@@ -216,7 +230,7 @@ export async function buildInboxProjection(projectDir) {
     login,
     linked: true,
     team: linked.id,
-    pullOk: box.pullOk,
+    ...pullFields(pulled || { ok: box.pullOk, why: box.pullWhy }),
     shares: box.shares,
     issues: box.issues,
   };

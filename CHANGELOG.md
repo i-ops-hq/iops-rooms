@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.13.2
+
+### The dash says when a team room could not be fetched
+
+`rooms dash` pulled the team room and the org room and then threw the result away, so a failed
+fetch looked as fresh as a good one. The CLI stopped doing that in 0.12, when the same thing was
+found in `rooms team packages`; the dash had not followed. Its team, org and inbox panels now say
+"Team room not updated", with the first line of git's reason, and go on to show what this machine
+last fetched. `/api/team.json`, `/api/org.json` and `/api/inbox.json` carry `pullOk` and
+`pullWhy`.
+
+Making that visible found a second fault: each page pulled the same team clone twice at once, once
+for the team panel and once for the inbox, and the two pulls could collide ("Cannot fast-forward to
+multiple branches"). The page now pulls it once and the inbox reads after it.
+
+Bare `rooms` lines its descriptions up again. In a project linked to a team room, the two longest
+commands, `rooms team packages` and `rooms setup catalog`, ran into their descriptions; the column
+now fits the longest command shown.
+
 ## 0.13.1
 
 ### The hooks install says every git hook it writes

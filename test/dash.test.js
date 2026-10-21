@@ -139,3 +139,63 @@ test("team projection marks linked after join", async () => {
     assert.ok(await git(join(dir, "team.git"), "rev-parse", "HEAD"));
   });
 });
+
+/** GET a path from a running dash, as the browser would. */
+function get(port, path) {
+  return new Promise((resolve, reject) => {
+    const r = request({ host: "127.0.0.1", port, path, headers: { Host: `127.0.0.1:${port}` } }, (res) => {
+      let d = "";
+      res.on("data", (c) => (d += c));
+      res.on("end", () => resolve(d));
+    });
+    r.on("error", reject);
+    r.end();
+  });
+}
+
+test("a team room that could not be fetched reads as stale on the dash, as the CLI says it", async () => {
+  await scratch(async (dir) => {
+    const { alice } = await teamOfTwo(dir);
+    await alice.rooms(alice.web, "team", "sync", "--yes");
+    const prev = process.env.ROOMS_HOME;
+    process.env.ROOMS_HOME = alice.home;
+    try {
+      const fresh = await buildTeamProjection(alice.web);
+      assert.equal(fresh.pullOk, true);
+      assert.equal(fresh.pullWhy, undefined);
+      assert.equal((await buildTeamProjection(alice.web, { pull: false })).pullOk, undefined, "no pull asked, nothing claimed");
+
+      // A healthy team room says nothing stale, however many panels read its one clone.
+      const healthy = await startDash(alice.web, { port: 0 });
+      try {
+        for (let i = 0; i < 3; i++) assert.doesNotMatch(await get(healthy.port, "/"), /class="stale"/);
+      } finally {
+        await healthy.close();
+      }
+
+      await git(alice.team, "remote", "set-url", "origin", join(dir, "gone.git"));
+      const stale = await buildTeamProjection(alice.web);
+      assert.equal(stale.pullOk, false);
+      assert.ok(stale.pullWhy, "with git's reason");
+      assert.doesNotMatch(stale.pullWhy, /\n|\.$/, "its first line, without git's full stop");
+      assert.ok(stale.statuses >= 1, "and what this machine last fetched is still shown");
+
+      const dash = await startDash(alice.web, { port: 0 });
+      try {
+        const team = JSON.parse(await get(dash.port, "/api/team.json"));
+        assert.equal(team.pullOk, false);
+        const inbox = JSON.parse(await get(dash.port, "/api/inbox.json"));
+        assert.equal(inbox.pullOk, false, "the inbox reads the same clone");
+        assert.ok(inbox.pullWhy);
+        const html = await get(dash.port, "/");
+        const stale = html.match(/<p class="stale">Team room not updated: [^<]+\. Showing what this machine last fetched\.<\/p>/g) || [];
+        assert.equal(stale.length, 2, "said on the team panel and on the inbox");
+      } finally {
+        await dash.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.ROOMS_HOME;
+      else process.env.ROOMS_HOME = prev;
+    }
+  });
+});

@@ -173,8 +173,9 @@ export async function openShareIssue({ remotePath, meta, dryRun = false }) {
 /**
  * Inbox: open Issues on the team hub assigned to me (or titled [rooms]), plus share_meta for me.
  */
-export async function readInbox({ clonePath, remotePath, login, runGh: gh = runGh }) {
-  const pulled = await pullTeamRoom(clonePath);
+export async function readInbox({ clonePath, remotePath, login, runGh: gh = runGh, pull = true }) {
+  // `pull: false` when the caller has just pulled this clone: two pulls at once in one clone collide.
+  const pulled = pull ? await pullTeamRoom(clonePath) : { ok: undefined, why: undefined };
   const { shares } = await readShares(clonePath);
   const forMe = shares.filter((s) => s.to.includes(login) || s.from === login);
   let issues = [];

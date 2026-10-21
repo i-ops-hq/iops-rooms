@@ -2,6 +2,7 @@
 // package names only, never paths, prompts, or setup bodies.
 
 import test from "node:test";
+import { request } from "node:http";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -120,4 +121,50 @@ test("validOrgRollup refuses junk", () => {
     validOrgRollup({ v: 1, kind: "org_rollup", at: "2026-10-16T12:00Z", teams: [{ id: "x", members: -1 }] }),
     null,
   );
+});
+
+test("an org room that could not be fetched reads as stale on the dash", async () => {
+  await scratch(async (dir) => {
+    const { alice } = await teamOfTwo(dir);
+    await exec("git", ["init", "-q", "--bare", "-b", "main", join(dir, "org.git")]);
+    const orgClone = join(dir, "alice", "org");
+    await exec("git", ["clone", "-q", join(dir, "org.git"), orgClone]);
+    await git(orgClone, "config", "user.name", "alice");
+    await git(orgClone, "config", "user.email", "alice@example.com");
+    const made = await alice.rooms(orgClone, "org", "init", "--name", "acme-org", "--yes", "--confirm-private");
+    assert.equal(made.code, 0, made.err);
+    await git(orgClone, "push", "-q", "-u", "origin", "main");
+
+    const prev = process.env.ROOMS_HOME;
+    process.env.ROOMS_HOME = alice.home;
+    try {
+      const { buildOrgProjection } = await import("../src/dash-projection.js");
+      assert.equal((await buildOrgProjection()).pullOk, true);
+      await git(orgClone, "remote", "set-url", "origin", join(dir, "gone.git"));
+      const stale = await buildOrgProjection();
+      assert.equal(stale.linked, true);
+      assert.equal(stale.pullOk, false);
+      assert.ok(stale.pullWhy);
+
+      const { startDash } = await import("../src/dash.js");
+      const dash = await startDash(alice.web, { port: 0 });
+      try {
+        const html = await new Promise((resolve, reject) => {
+          const r = request({ host: "127.0.0.1", port: dash.port, path: "/", headers: { Host: `127.0.0.1:${dash.port}` } }, (res) => {
+            let d = "";
+            res.on("data", (c) => (d += c));
+            res.on("end", () => resolve(d));
+          });
+          r.on("error", reject);
+          r.end();
+        });
+        assert.equal((html.match(/<p class="stale">/g) || []).length, 1, "only the org panel: the team room fetched fine");
+      } finally {
+        await dash.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.ROOMS_HOME;
+      else process.env.ROOMS_HOME = prev;
+    }
+  });
 });
