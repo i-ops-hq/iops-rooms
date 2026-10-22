@@ -82,6 +82,9 @@ const cases = {
   "a kind read off a prototype": [(m) => Object.assign(fileAt(m, "project:CLAUDE.md"), { kind: "constructor" }), /it lists a file this version does not install/],
   "an owner that is not a login": [(m) => { m.owner = "alice smith"; }, /owner is not a GitHub login/],
   "a setup filed under another name": [(m) => { m.name = "other"; }, /it says it is backend\/other, but it is filed as backend\/go-claude/],
+  "a cost whose words look like a secret": [(m) => { m.cost = { usdPerMonth: 20, what: `seat ghp_${"a1B2c3D4e5".repeat(3)}abcdef` }; }, /its cost\.what looks like it holds a GitHub token/],
+  "an exportedWith that looks like a secret": [(m) => { m.exportedWith = `sk-ant-${"x".repeat(24)}`; }, /its exportedWith looks like it holds an Anthropic API key/],
+  "a checkedAgainst that looks like a secret": [(m) => { m.tools["claude-code"].checkedAgainst = `AKIA${"ABCDEFGHIJKLMNOP"}`; }, /its tools\.claude-code\.checkedAgainst looks like it holds an AWS access key/],
 };
 
 for (const [name, [change, expected]] of Object.entries(cases)) {

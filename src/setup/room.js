@@ -17,6 +17,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { filePathFor, installPlace, TOOLS } from "./manifest.js";
+import { scanText } from "./secrets.js";
 
 export const branchFor = (role, name) => `setup/${role}/${name}`;
 export const dirFor = (role, name) => `setups/${role}/${name}`;
@@ -124,12 +125,24 @@ export async function listSetups(clone, commit) {
  */
 export function catalogMetaFromManifest(role, name, manifest) {
   if (!manifest || typeof manifest !== "object") return null;
+  // Free text is the team's own words, shown to everyone: one that looks like a secret is withheld,
+  // and the entry says which field and what it looked like, never the text.
+  const withheld = [];
+  const text = (field, value, max) => {
+    if (typeof value !== "string") return null;
+    const cut = value.slice(0, max);
+    const secret = scanText(cut)[0];
+    if (!secret) return cut;
+    withheld.push({ field, why: `it looks like ${secret.kind}` });
+    return null;
+  };
   const tools = {};
   for (const [tool, part] of Object.entries(manifest.tools || {})) {
     if (!part || typeof part !== "object") continue;
     const files = Array.isArray(part.files) ? part.files.length : 0;
-    tools[String(tool).slice(0, 40)] = {
-      checkedAgainst: typeof part.checkedAgainst === "string" ? part.checkedAgainst.slice(0, 80) : null,
+    const key = String(tool).slice(0, 40);
+    tools[key] = {
+      checkedAgainst: text(`tools.${key}.checkedAgainst`, part.checkedAgainst, 80),
       files,
     };
   }
@@ -139,16 +152,17 @@ export function catalogMetaFromManifest(role, name, manifest) {
     role: String(role).slice(0, 40),
     name: String(name).slice(0, 40),
     owner: typeof manifest.owner === "string" ? manifest.owner.slice(0, 39) : null,
-    summary: typeof manifest.summary === "string" ? manifest.summary.slice(0, 300) : null,
+    summary: text("summary", manifest.summary, 300),
     cost:
       manifest.cost && typeof manifest.cost === "object"
         ? {
             usdPerMonth: Number.isFinite(manifest.cost.usdPerMonth) ? manifest.cost.usdPerMonth : null,
-            what: typeof manifest.cost.what === "string" ? manifest.cost.what.slice(0, 120) : null,
+            what: text("cost.what", manifest.cost.what, 120),
           }
         : null,
-    exportedWith: typeof manifest.exportedWith === "string" ? manifest.exportedWith.slice(0, 60) : null,
+    exportedWith: text("exportedWith", manifest.exportedWith, 60),
     tools,
+    ...(withheld.length ? { withheld } : {}),
   };
 }
 
