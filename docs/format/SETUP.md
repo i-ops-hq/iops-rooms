@@ -242,7 +242,9 @@ An agent, command or skill (its `SKILL.md`) is refused if its frontmatter define
 `mcpServers`, sets `permissionMode` to `bypassPermissions` or `auto`, or pre-approves a rule in
 `allowed-tools` that lets any command run; if it runs a command as it loads that names no exact
 version or names a path on someone's machine; or if its frontmatter holds one of those keys in a form
-Rooms cannot read. Any file is refused if a line looks like a secret: a private key, or a token with
+Rooms cannot read. A setup is also refused when the words its owner wrote about it, `summary`,
+`cost.what`, `exportedWith` or a tool's `checkedAgainst`, look like a secret, since the team catalog
+shows them to everyone. Any file is refused if a line looks like a secret: a private key, or a token with
 a known prefix from GitHub, Anthropic, OpenAI, AWS, Slack, Stripe, Google or npm, a JSON Web Token,
 or `Authorization: Bearer` with a long value. That is a guard, not a guarantee: a secret in a format
 nobody listed gets through.

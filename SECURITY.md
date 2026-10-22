@@ -186,6 +186,12 @@ Rooms by I-Ops is local-first. Treat every MCP and skill as untrusted until you 
   become the names of variables, as for Claude Code
 - With `rooms setup show`: read a setup from the team room at a git commit, never from the working
   tree, and check it with every rule export applies before showing it
+- With `rooms setup catalog`: read only each setup's `setup.json`, never its files, and show its name,
+  role, owner, cost and the words its owner wrote about it. Those words (`summary`, what the cost pays
+  for, `exportedWith`, each tool's `checkedAgainst`) are the team's own and seen by everyone with the
+  team room: each is scanned with the same patterns as setup files, withheld when it looks like a
+  secret (the entry says which field, never the text), and refused by export and by the check `show`
+  and `adopt` run. The scan knows the formats it lists; a secret in another format gets through
 - With `rooms setup adopt`, only after a person approves the plan it prints, at a terminal or with
   `--approve` and that plan's digest (`--yes` alone never adopts): write, in the project, only
   `CLAUDE.md`, `.claude/CLAUDE.md`, files under `.claude/rules/`, `agents/`, `commands/`, `skills/` and
@@ -247,7 +253,7 @@ Network is **off** by default. When sync exists later, it is among **your team's
 ## How to verify
 
 1. Read `src/` — unminified.
-2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.13.2 mcp`), never `@latest`.
+2. Pin a version in `mcp.json` (`npx -y iops-rooms@0.13.3 mcp`), never `@latest`.
 3. Open `.room/board.html` as `file://` and confirm the network tab is empty.
 4. Optional `rooms live` — confirm it binds `127.0.0.1` only; DevTools should show only same-origin `/stream`.
 5. `rooms status` / `rooms whoami` print local paths and identity; there is no account.

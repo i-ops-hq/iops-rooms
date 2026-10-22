@@ -304,6 +304,22 @@ export function deriveRequires(manifest, files) {
 
 // ---- building one --------------------------------------------------------------------------------
 
+/**
+ * The free text a setup carries about itself, by field: what the team catalog and listing show
+ * without the setup's files. Only the strings present.
+ */
+export function freeText(manifest) {
+  const out = [];
+  const add = (field, v) => typeof v === "string" && v && out.push([field, v]);
+  add("summary", manifest?.summary);
+  add("cost.what", manifest?.cost?.what);
+  add("exportedWith", manifest?.exportedWith);
+  for (const [tool, part] of Object.entries(isObj(manifest?.tools) ? manifest.tools : {})) {
+    add(`tools.${String(tool).slice(0, 40)}.checkedAgainst`, part?.checkedAgainst);
+  }
+  return out;
+}
+
 /** A declared monthly cost, `"20"`, `"$100 Claude Max 5x"`: shown as declared, never measured. */
 export function parseCost(text) {
   const m = /^\s*\$?(\d{1,6}(?:\.\d{1,2})?)\s*(.*)$/.exec(String(text ?? ""));
@@ -787,6 +803,12 @@ export function checkSetup(manifest, files, { role, name } = {}) {
   if (manifest.summary !== undefined && !(typeof manifest.summary === "string" && manifest.summary.length <= 300)) no("its summary is not text of 300 characters at most");
   if (manifest.exportedWith !== undefined && !(typeof manifest.exportedWith === "string" && manifest.exportedWith.length <= 60)) no("exportedWith is not a short name");
   if (manifest.cost !== undefined && !validCost(manifest.cost)) no("its cost is not a declared amount in US dollars a month");
+  // The words a member types about a setup are checked as its files are: the catalog shows them to
+  // the whole team without the files' scrutiny.
+  for (const [field, value] of freeText(manifest)) {
+    const secret = scanText(value)[0];
+    if (secret) no(`its ${field} looks like it holds ${secret.kind}`);
+  }
   if (!isObj(manifest.tools) || !Object.keys(manifest.tools).length) return [...problems, "it holds no tools"];
   for (const tool of Object.keys(manifest.tools)) if (!TOOLS.includes(tool)) no(`it has ${tool.slice(0, 40)}, which this version of Rooms cannot read; update Rooms`);
   let total = 0;

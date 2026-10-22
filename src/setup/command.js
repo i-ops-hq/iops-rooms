@@ -20,6 +20,7 @@ import { CHECKED_AGAINST, claudeDirs, readClaudeCode, selectItems } from "./clau
 import { CODEX_CHECKED_AGAINST, codexDirs, readCodex } from "./codex.js";
 import { CURSOR_CHECKED_AGAINST, cursorCliDir, cursorDir, describeCursorRule, readCursor } from "./cursor.js";
 import { buildManifest, checkSetup, filePathFor, parseCost, renderReadme, SLUG } from "./manifest.js";
+import { scanText } from "./secrets.js";
 import {
   branchFor,
   commitSetup,
@@ -240,7 +241,8 @@ function renderCatalogText(catalog, { teamId = "", stale = "" } = {}) {
     lines.push(
       `- ${s.role}/${s.name} · @${s.owner || "?"}${cost}` +
         (s.summary ? `\n  ${s.summary}` : "") +
-        `\n  tools: ${tools}`,
+        `\n  tools: ${tools}` +
+        (s.withheld?.length ? `\n  withheld: ${s.withheld.map((w) => `${w.field} (${w.why})`).join(", ")}` : ""),
     );
   }
   lines.push(``);
@@ -291,7 +293,10 @@ async function show(target, argv) {
     for (const { role, name } of setups) {
       const s = await readSetupAt(room.path, commit, role, name);
       const m = s.manifest || {};
-      out(`  ${`${role}/${name}`.padEnd(32)} ${typeof m.owner === "string" ? m.owner.slice(0, 39) : "?"}${typeof m.summary === "string" ? `  ${m.summary.slice(0, 120)}` : ""}`);
+      // The summary as the catalog shows it: withheld when it looks like a secret.
+      const summary = typeof m.summary === "string" ? m.summary.slice(0, 120) : "";
+      const shown = summary && scanText(summary).length ? "  (summary withheld: it looks like a secret)" : summary ? `  ${summary}` : "";
+      out(`  ${`${role}/${name}`.padEnd(32)} ${typeof m.owner === "string" ? m.owner.slice(0, 39) : "?"}${shown}`);
     }
     return;
   }

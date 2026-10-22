@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.13.3
+
+### Setup catalog words are scanned for secrets
+
+`rooms setup catalog` shows every setup's name, owner and cost to the whole team, with the words its
+owner wrote about it: the summary, what the cost pays for, `exportedWith` and each tool's
+`checkedAgainst`. Setup files were scanned for secrets; those words were not, so a token typed into
+`--summary`, or written into `setup.json` by anyone with push access to the team room, reached the
+catalog as written.
+
+Those words are now scanned with the same patterns as setup files:
+- export refuses a setup whose words look like a secret, and so does the check `rooms setup show`
+  and `adopt` run;
+- the catalog and the setup list withhold such a field instead of printing it, and say which field,
+  never the text. The catalog's JSON carries `withheld: [{ field, why }]`.
+
+The scan knows the formats it lists (GitHub, Anthropic, OpenAI, AWS, Slack, Stripe, Google, npm,
+private keys, JSON Web Tokens, bearer headers). A secret in another format still gets through, and
+SECURITY.md says so.
+
 ## 0.13.2
 
 ### The dash says when a team room could not be fetched

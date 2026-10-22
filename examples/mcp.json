@@ -2,7 +2,7 @@
   "mcpServers": {
     "iops-rooms": {
       "command": "npx",
-      "args": ["-y", "iops-rooms@0.13.2", "mcp"]
+      "args": ["-y", "iops-rooms@0.13.3", "mcp"]
     }
   }
 }
